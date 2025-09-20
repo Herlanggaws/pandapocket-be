@@ -1,16 +1,48 @@
 package database
 
 import (
+	"bufio"
 	"database/sql"
 	"fmt"
 	"log"
 	"os"
+	"strings"
 
 	_ "github.com/lib/pq"
 )
 
+// loadEnvFile loads environment variables from .env file if it exists
+func loadEnvFile() {
+	file, err := os.Open(".env")
+	if err != nil {
+		// .env file doesn't exist, use system environment variables
+		return
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) == 2 {
+			key := strings.TrimSpace(parts[0])
+			value := strings.TrimSpace(parts[1])
+			if os.Getenv(key) == "" {
+				os.Setenv(key, value)
+			}
+		}
+	}
+}
+
 // InitDB initializes the PostgreSQL database connection
 func InitDB() (*sql.DB, error) {
+	// Load environment variables from .env file
+	loadEnvFile()
+
 	db, err := initPostgresDB()
 	if err != nil {
 		return nil, err
@@ -29,7 +61,7 @@ func InitDB() (*sql.DB, error) {
 func initPostgresDB() (*sql.DB, error) {
 	host := getEnv("DB_HOST", "localhost")
 	port := getEnv("DB_PORT", "5432")
-	user := getEnv("DB_USER", "postgres")
+	user := getEnv("DB_USER", "herlangga.wicaksono")
 	password := getEnv("DB_PASSWORD", "")
 	dbname := getEnv("DB_NAME", "panda_pocket")
 
