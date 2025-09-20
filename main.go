@@ -7,16 +7,18 @@ import (
 )
 
 func main() {
-	// Initialize database
+	// Initialize database with GORM
 	db, err := database.InitDB()
 	if err != nil {
 		log.Fatal("Failed to initialize database:", err)
 	}
-	defer db.Close()
 
-	// Create default categories and currencies
-	database.CreateDefaultCategories(db)
-	database.CreateDefaultCurrencies(db)
+	// Get underlying sql.DB for connection management
+	sqlDB, err := db.DB()
+	if err != nil {
+		log.Fatal("Failed to get underlying sql.DB:", err)
+	}
+	defer sqlDB.Close()
 
 	// Create application with all dependencies
 	app := application.NewApp(db)

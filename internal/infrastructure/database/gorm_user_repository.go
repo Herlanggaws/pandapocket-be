@@ -1,0 +1,105 @@
+package database
+
+import (
+	"context"
+	"panda-pocket/internal/domain/identity"
+
+	"gorm.io/gorm"
+)
+
+// GormUserRepository implements the UserRepository interface using GORM
+type GormUserRepository struct {
+	db *gorm.DB
+}
+
+// NewGormUserRepository creates a new GORM user repository
+func NewGormUserRepository(db *gorm.DB) *GormUserRepository {
+	return &GormUserRepository{db: db}
+}
+
+// Save saves a user to the database
+func (r *GormUserRepository) Save(ctx context.Context, user *identity.User) error {
+	// Convert domain user to GORM model
+	userModel := &User{
+		Email:        user.Email().Value(),
+		PasswordHash: user.PasswordHash().Value(),
+	}
+
+	if user.ID().Value() != 0 {
+		userModel.ID = uint(user.ID().Value())
+	}
+
+	// Save using GORM
+	if err := r.db.WithContext(ctx).Save(userModel).Error; err != nil {
+		return err
+	}
+
+	// Note: In a real implementation, you'd want to update the domain user's ID
+	// This would require modifying the domain user to be mutable or using a different approach
+	// For now, we rely on the database to handle ID generation
+
+	return nil
+}
+
+// FindByID finds a user by ID
+func (r *GormUserRepository) FindByID(ctx context.Context, id identity.UserID) (*identity.User, error) {
+	var userModel User
+
+	err := r.db.WithContext(ctx).First(&userModel, id.Value()).Error
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, err
+		}
+		return nil, err
+	}
+
+	// Convert GORM model to domain user
+	emailVO, err := identity.NewEmail(userModel.Email)
+	if err != nil {
+		return nil, err
+	}
+
+	passwordHashVO := identity.NewPasswordHash(userModel.PasswordHash)
+	userID := identity.NewUserID(int(userModel.ID))
+
+	user := identity.NewUser(userID, emailVO, passwordHashVO)
+
+	return user, nil
+}
+
+// FindByEmail finds a user by email
+func (r *GormUserRepository) FindByEmail(ctx context.Context, email identity.Email) (*identity.User, error) {
+	var userModel User
+
+	err := r.db.WithContext(ctx).Where("email = ?", email.Value()).First(&userModel).Error
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, err
+		}
+		return nil, err
+	}
+
+	// Convert GORM model to domain user
+	passwordHashVO := identity.NewPasswordHash(userModel.PasswordHash)
+	userID := identity.NewUserID(int(userModel.ID))
+
+	user := identity.NewUser(userID, email, passwordHashVO)
+
+	return user, nil
+}
+
+// Delete deletes a user by ID
+func (r *GormUserRepository) Delete(ctx context.Context, id identity.UserID) error {
+	return r.db.WithContext(ctx).Delete(&User{}, id.Value()).Error
+}
+
+// ExistsByEmail checks if a user exists with the given email
+func (r *GormUserRepository) ExistsByEmail(ctx context.Context, email identity.Email) (bool, error) {
+	var count int64
+	err := r.db.WithContext(ctx).Model(&User{}).Where("email = ?", email.Value()).Count(&count).Error
+	if err != nil {
+		return false, err
+	}
+
+	return count > 0, nil
+}

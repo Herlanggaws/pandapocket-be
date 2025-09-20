@@ -483,13 +483,66 @@ func TestFinanceHandlers_CreateExpense(t *testing.T) {
 
 ## Database Development
 
-### 1. Schema Changes
+### 1. Schema Changes with GORM
 
-#### Adding New Tables
+#### Auto-Migration
+GORM automatically handles schema changes through auto-migration. When you add new fields or models, GORM will automatically create the necessary database changes:
+
+```go
+// Add new fields to existing models
+type User struct {
+    ID           uint      `gorm:"primaryKey" json:"id"`
+    Email        string    `gorm:"uniqueIndex;not null" json:"email"`
+    PasswordHash string    `gorm:"not null" json:"-"`
+    FirstName    string    `gorm:"not null" json:"first_name"`    // New field
+    LastName     string    `gorm:"not null" json:"last_name"`     // New field
+    CreatedAt    time.Time `json:"created_at"`
+    UpdatedAt    time.Time `json:"updated_at"`
+}
+
+// GORM will automatically add the new columns when you run the application
+```
+
+#### Adding New Models
+```go
+// Create a new model
+type Notification struct {
+    ID        uint      `gorm:"primaryKey" json:"id"`
+    UserID    uint      `gorm:"not null;index" json:"user_id"`
+    Title     string    `gorm:"not null" json:"title"`
+    Message   string    `gorm:"type:text;not null" json:"message"`
+    Type      string    `gorm:"not null" json:"type"`
+    IsRead    bool      `gorm:"default:false" json:"is_read"`
+    CreatedAt time.Time `json:"created_at"`
+    UpdatedAt time.Time `json:"updated_at"`
+
+    // Relationships
+    User *User `gorm:"foreignKey:UserID" json:"user,omitempty"`
+}
+
+// Add to auto-migration in init.go
+func autoMigrate(db *gorm.DB) error {
+    return db.AutoMigrate(
+        &User{},
+        &Currency{},
+        &Category{},
+        &Expense{},
+        &Income{},
+        &Budget{},
+        &RecurringTransaction{},
+        &UserPreferences{},
+        &Notification{}, // New model
+    )
+}
+```
+
+#### Manual Schema Changes (if needed)
+For complex schema changes that GORM can't handle automatically:
+
 ```sql
 -- Create migration file: migrations/001_add_budgets.sql
 CREATE TABLE budgets (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL,
     category_id INTEGER NOT NULL,
     amount DECIMAL(10,2) NOT NULL,
@@ -501,14 +554,7 @@ CREATE TABLE budgets (
 );
 ```
 
-#### Modifying Existing Tables
-```sql
--- Create migration file: migrations/002_add_budget_id_to_transactions.sql
-ALTER TABLE transactions ADD COLUMN budget_id INTEGER;
-ALTER TABLE transactions ADD FOREIGN KEY (budget_id) REFERENCES budgets(id);
-```
-
-### 2. Repository Development
+### 2. Repository Development with GORM
 
 #### Interface Definition
 ```go
@@ -523,58 +569,105 @@ type BudgetRepository interface {
 }
 ```
 
-#### Implementation
+#### GORM Implementation
 ```go
 // In infrastructure layer
-type PostgresBudgetRepository struct {
-    db *sql.DB
+type GormBudgetRepository struct {
+    db *gorm.DB
 }
 
-func NewPostgresBudgetRepository(db *sql.DB) *PostgresBudgetRepository {
-    return &PostgresBudgetRepository{db: db}
+func NewGormBudgetRepository(db *gorm.DB) *GormBudgetRepository {
+    return &GormBudgetRepository{db: db}
 }
 
-func (r *PostgresBudgetRepository) Save(ctx context.Context, budget *Budget) error {
-    if budget.ID().Value() == 0 {
-        // Insert new budget
-        query := `INSERT INTO budgets (user_id, category_id, amount, period, start_date, end_date, created_at) 
-                  VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`
-        
-        var id int
-        err := r.db.QueryRowContext(ctx, query,
-            budget.UserID().Value(),
-            budget.CategoryID().Value(),
-            budget.Amount().Amount(),
-            string(budget.Period()),
-            budget.StartDate(),
-            budget.EndDate(),
-            budget.CreatedAt(),
-        ).Scan(&id)
-        
-        if err != nil {
-            return err
-        }
-        
-        // Note: In a real implementation, you'd want to handle the ID assignment properly
-        _ = id
-    } else {
-        // Update existing budget
-        query := `UPDATE budgets SET amount = $1, period = $2, start_date = $3, end_date = $4 
-                  WHERE id = $5`
-        _, err := r.db.ExecContext(ctx, query,
-            budget.Amount().Amount(),
-            string(budget.Period()),
-            budget.StartDate(),
-            budget.EndDate(),
-            budget.ID().Value(),
-        )
-        if err != nil {
-            return err
-        }
+func (r *GormBudgetRepository) Save(ctx context.Context, budget *Budget) error {
+    // Convert domain budget to GORM model
+    budgetModel := &Budget{
+        UserID:     uint(budget.UserID().Value()),
+        CategoryID: uint(budget.CategoryID().Value()),
+        Amount:     budget.Amount().Amount(),
+        Period:     string(budget.Period()),
+        StartDate:  budget.StartDate(),
+        EndDate:    budget.EndDate(),
     }
-    
+
+    if budget.ID().Value() != 0 {
+        budgetModel.ID = uint(budget.ID().Value())
+    }
+
+    // Save using GORM - handles both insert and update automatically
+    if err := r.db.WithContext(ctx).Save(budgetModel).Error; err != nil {
+        return err
+    }
+
     return nil
 }
+
+func (r *GormBudgetRepository) FindByUserID(ctx context.Context, userID UserID) ([]*Budget, error) {
+    var budgetModels []Budget
+
+    err := r.db.WithContext(ctx).Where("user_id = ?", userID.Value()).Find(&budgetModels).Error
+    if err != nil {
+        return nil, err
+    }
+
+    // Convert GORM models to domain budgets
+    var budgets []*Budget
+    for _, model := range budgetModels {
+        budgetID := NewBudgetID(int(model.ID))
+        userIDVO := NewUserID(int(model.UserID))
+        categoryID := NewCategoryID(int(model.CategoryID))
+        amount, _ := NewMoney(model.Amount, NewCurrencyID(1))
+        period := BudgetPeriod(model.Period)
+
+        budget, _ := NewBudget(
+            budgetID,
+            userIDVO,
+            categoryID,
+            amount,
+            period,
+            model.StartDate,
+        )
+        budgets = append(budgets, budget)
+    }
+
+    return budgets, nil
+}
+```
+
+#### GORM Query Examples
+```go
+// Simple queries
+var users []User
+db.Where("email = ?", "user@example.com").Find(&users)
+
+// Complex queries with joins
+var expenses []Expense
+db.Preload("Category").Preload("Currency").Where("user_id = ?", userID).Find(&expenses)
+
+// Raw SQL when needed
+var result []struct {
+    CategoryName string
+    TotalAmount  float64
+}
+db.Raw(`
+    SELECT c.name as category_name, SUM(e.amount) as total_amount 
+    FROM expenses e 
+    JOIN categories c ON e.category_id = c.id 
+    WHERE e.user_id = ? 
+    GROUP BY c.name
+`, userID).Scan(&result)
+
+// Transactions
+err := db.Transaction(func(tx *gorm.DB) error {
+    if err := tx.Create(&user).Error; err != nil {
+        return err
+    }
+    if err := tx.Create(&budget).Error; err != nil {
+        return err
+    }
+    return nil
+})
 ```
 
 ## API Development

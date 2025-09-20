@@ -1,7 +1,6 @@
 package application
 
 import (
-	"database/sql"
 	"net/http"
 	appFinance "panda-pocket/internal/application/finance"
 	appIdentity "panda-pocket/internal/application/identity"
@@ -13,24 +12,25 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 // App represents the application with all its dependencies
 type App struct {
-	DB               *sql.DB
+	DB               *gorm.DB
 	IdentityHandlers *handlers.IdentityHandlers
 	FinanceHandlers  *handlers.FinanceHandlers
 	AuthMiddleware   *middleware.AuthMiddleware
 }
 
 // NewApp creates a new application instance with all dependencies wired up
-func NewApp(db *sql.DB) *App {
-	// Infrastructure layer - repositories (PostgreSQL only)
-	userRepo := database.NewPostgresUserRepository(db)
-	categoryRepo := database.NewPostgresCategoryRepository(db)
-	currencyRepo := database.NewPostgresCurrencyRepository(db)
-	transactionRepo := database.NewPostgresTransactionRepository(db)
-	budgetRepo := database.NewPostgresBudgetRepository(db)
+func NewApp(db *gorm.DB) *App {
+	// Infrastructure layer - repositories (GORM)
+	userRepo := database.NewGormUserRepository(db)
+	categoryRepo := database.NewGormCategoryRepository(db)
+	currencyRepo := database.NewGormCurrencyRepository(db)
+	transactionRepo := database.NewGormTransactionRepository(db)
+	budgetRepo := database.NewGormBudgetRepository(db)
 
 	// Domain layer - services
 	userService := domainIdentity.NewUserService(userRepo)
