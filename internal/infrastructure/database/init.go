@@ -83,7 +83,9 @@ func initGormDB() (*gorm.DB, error) {
 
 	// Configure GORM
 	config := &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Info),
+		Logger:                                   logger.Default.LogMode(logger.Info),
+		DisableForeignKeyConstraintWhenMigrating: true,
+		SkipDefaultTransaction:                   true,
 	}
 
 	db, err := gorm.Open(postgres.Open(dsn), config)
