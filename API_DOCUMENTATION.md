@@ -2,7 +2,7 @@
 
 ## Overview
 
-PandaPocket is a personal finance management API built with Domain-Driven Design (DDD) architecture. The API allows users to track expenses, incomes, and categories. The application follows clean architecture principles with proper separation of concerns.
+PandaPocket is a personal finance management API built with Domain-Driven Design (DDD) architecture. The API allows users to track expenses, incomes, categories, budgets, and currencies with comprehensive analytics.
 
 **Base URL:** `http://localhost:8080`  
 **API Version:** v1 (DDD Refactored)  
@@ -13,20 +13,13 @@ PandaPocket is a personal finance management API built with Domain-Driven Design
 
 ### ✅ Implemented Endpoints
 - **Authentication**: Register, Login, Logout
-- **Categories**: Get all categories, Create category
-- **Expenses**: Get all expenses, Create expense, Delete expense
-- **Incomes**: Get all incomes, Create income, Delete income
-- **Health Check**: Server status
-
-### 🔄 Not Yet Implemented (Future Versions)
-- **Categories**: Get by ID, Update, Delete individual categories
-- **Currencies**: All currency management endpoints
-- **Budgets**: All budget management endpoints
-- **Recurring Transactions**: All recurring transaction endpoints
+- **Categories**: Full CRUD operations (Get, Create, Update, Delete)
+- **Expenses**: Full CRUD operations (Get, Create, Update, Delete)
+- **Incomes**: Full CRUD operations (Get, Create, Update, Delete)
+- **Budgets**: Full CRUD operations (Get, Create, Update, Delete)
+- **Currencies**: Full CRUD operations (Get, Create, Update, Delete)
 - **Analytics**: Spending analytics and reports
-- **User Preferences**: User settings and preferences
-- **Notifications**: User notification system
-- **Admin API**: Administrative endpoints for back-office management
+- **Health Check**: Server status
 
 ### 📊 Architecture Overview
 The application follows Domain-Driven Design principles with the following structure:
@@ -189,6 +182,43 @@ Create a new category.
 }
 ```
 
+### PUT /api/categories/:id
+
+Update an existing category.
+
+**Request Body:**
+```json
+{
+  "name": "Updated Category",
+  "color": "#10B981",
+  "type": "income"
+}
+```
+
+**Response:**
+```json
+{
+  "message": "Category updated successfully",
+  "category": {
+    "id": 1,
+    "name": "Updated Category",
+    "color": "#10B981",
+    "type": "income"
+  }
+}
+```
+
+### DELETE /api/categories/:id
+
+Delete a category.
+
+**Response:**
+```json
+{
+  "message": "Category deleted successfully"
+}
+```
+
 
 ---
 
@@ -243,6 +273,37 @@ Create a new expense.
     "date": "2024-01-15",
     "type": "expense",
     "created_at": "2025-09-10T10:56:56+07:00"
+  }
+}
+```
+
+### PUT /api/expenses/:id
+
+Update an existing expense.
+
+**Request Body:**
+```json
+{
+  "category_id": 1,
+  "amount": 150.00,
+  "description": "Updated lunch at restaurant",
+  "date": "2024-01-15"
+}
+```
+
+**Response:**
+```json
+{
+  "message": "Expense updated successfully",
+  "expense": {
+    "id": 1,
+    "user_id": 7,
+    "category_id": 1,
+    "currency_id": 6,
+    "amount": 150,
+    "description": "Updated lunch at restaurant",
+    "date": "2024-01-15",
+    "type": "expense"
   }
 }
 ```
@@ -315,6 +376,37 @@ Create a new income.
 }
 ```
 
+### PUT /api/incomes/:id
+
+Update an existing income.
+
+**Request Body:**
+```json
+{
+  "category_id": 9,
+  "amount": 4000.00,
+  "description": "Updated monthly salary",
+  "date": "2024-01-01"
+}
+```
+
+**Response:**
+```json
+{
+  "message": "Income updated successfully",
+  "income": {
+    "id": 1,
+    "user_id": 7,
+    "category_id": 9,
+    "currency_id": 6,
+    "amount": 4000,
+    "description": "Updated monthly salary",
+    "date": "2024-01-01",
+    "type": "income"
+  }
+}
+```
+
 ### DELETE /api/incomes/:id
 
 Delete an income.
@@ -326,6 +418,233 @@ Delete an income.
 }
 ```
 
+---
+
+## Budgets
+
+### GET /api/budgets
+
+Get all budgets for the authenticated user.
+
+**Response:**
+```json
+[
+  {
+    "id": 1,
+    "user_id": 7,
+    "category_id": 1,
+    "currency_id": 6,
+    "amount": 500,
+    "period": "monthly",
+    "start_date": "2024-01-01",
+    "end_date": "2024-01-31",
+    "created_at": "2025-09-10T11:02:29+07:00"
+  }
+]
+```
+
+### POST /api/budgets
+
+Create a new budget.
+
+**Request Body:**
+```json
+{
+  "category_id": 1,
+  "amount": 500.00,
+  "period": "monthly",
+  "start_date": "2024-01-01",
+  "end_date": "2024-01-31"
+}
+```
+
+**Response:**
+```json
+{
+  "message": "Budget created successfully",
+  "budget": {
+    "id": 0,
+    "user_id": 7,
+    "category_id": 1,
+    "currency_id": 6,
+    "amount": 500,
+    "period": "monthly",
+    "start_date": "2024-01-01",
+    "end_date": "2024-01-31",
+    "created_at": "2025-09-10T10:56:56+07:00"
+  }
+}
+```
+
+### PUT /api/budgets/:id
+
+Update an existing budget.
+
+**Request Body:**
+```json
+{
+  "category_id": 1,
+  "amount": 750.00,
+  "period": "monthly",
+  "start_date": "2024-01-01"
+}
+```
+
+**Response:**
+```json
+{
+  "message": "Budget updated successfully"
+}
+```
+
+### DELETE /api/budgets/:id
+
+Delete a budget.
+
+**Response:**
+```json
+{
+  "message": "Budget deleted successfully"
+}
+```
+
+---
+
+## Currencies
+
+### GET /api/currencies
+
+Get all currencies available in the system.
+
+**Response:**
+```json
+[
+  {
+    "id": 1,
+    "code": "USD",
+    "name": "US Dollar",
+    "symbol": "$",
+    "is_default": true
+  },
+  {
+    "id": 2,
+    "code": "EUR",
+    "name": "Euro",
+    "symbol": "€",
+    "is_default": false
+  }
+]
+```
+
+### POST /api/currencies
+
+Create a new currency.
+
+**Request Body:**
+```json
+{
+  "code": "GBP",
+  "name": "British Pound",
+  "symbol": "£",
+  "is_default": false
+}
+```
+
+**Response:**
+```json
+{
+  "message": "Currency created successfully",
+  "currency": {
+    "id": 0,
+    "code": "GBP",
+    "name": "British Pound",
+    "symbol": "£",
+    "is_default": false
+  }
+}
+```
+
+### PUT /api/currencies/:id
+
+Update an existing currency.
+
+**Request Body:**
+```json
+{
+  "code": "GBP",
+  "name": "British Pound Sterling",
+  "symbol": "£",
+  "is_default": false
+}
+```
+
+**Response:**
+```json
+{
+  "message": "Currency updated successfully",
+  "currency": {
+    "id": 1,
+    "code": "GBP",
+    "name": "British Pound Sterling",
+    "symbol": "£",
+    "is_default": false
+  }
+}
+```
+
+### DELETE /api/currencies/:id
+
+Delete a currency.
+
+**Response:**
+```json
+{
+  "message": "Currency deleted successfully"
+}
+```
+
+---
+
+## Analytics
+
+### GET /api/analytics
+
+Get spending analytics and reports.
+
+**Query Parameters:**
+- `period` (optional): Time period for analytics (`daily`, `weekly`, `monthly`, `yearly`)
+- `start_date` (optional): Start date for custom period (YYYY-MM-DD)
+- `end_date` (optional): End date for custom period (YYYY-MM-DD)
+
+**Response:**
+```json
+{
+  "total_expenses": 1250.50,
+  "total_incomes": 3000.00,
+  "net_balance": 1749.50,
+  "expenses_by_category": [
+    {
+      "category_id": 1,
+      "category_name": "Food",
+      "amount": 450.00,
+      "percentage": 36.0
+    },
+    {
+      "category_id": 2,
+      "category_name": "Transport",
+      "amount": 200.50,
+      "percentage": 16.0
+    }
+  ],
+  "monthly_trends": [
+    {
+      "month": "2024-01",
+      "expenses": 1250.50,
+      "incomes": 3000.00
+    }
+  ]
+}
+```
 
 ---
 
@@ -380,17 +699,11 @@ All endpoints may return the following error responses:
 - `expense`: For expense transactions
 - `income`: For income transactions
 
----
-
-## Rate Limiting
-
-Currently, no rate limiting is implemented. In production, consider implementing rate limiting to prevent abuse.
-
----
-
-## Database Support
-
-The API supports both SQLite (default) and PostgreSQL databases. The database type can be configured using the `DB_TYPE` environment variable.
+### Budget Periods
+- `daily`: Daily budget
+- `weekly`: Weekly budget
+- `monthly`: Monthly budget
+- `yearly`: Yearly budget
 
 ---
 
@@ -403,15 +716,15 @@ The API supports both SQLite (default) and PostgreSQL databases. The database ty
 - All timestamps are in UTC format
 - Date formats should be in `YYYY-MM-DD` format for input
 - Amounts are stored as floating-point numbers
-- SQLite database is used by default
+- PostgreSQL database is used by default
 - Clean architecture with proper separation of concerns
 
 ---
 
 ## Version History
 
-- **v1.0.0**: Initial release with basic CRUD operations
-- **v1.1.0**: Added budgets and recurring transactions
-- **v1.2.0**: Added analytics and user preferences
-- **v1.3.0**: Added admin API endpoints
 - **v2.0.0**: **DDD Refactored** - Complete architectural overhaul with Domain-Driven Design
+  - Full CRUD operations for Categories, Currencies
+  - Budget management system
+  - Analytics and reporting
+  - Comprehensive transaction tracking

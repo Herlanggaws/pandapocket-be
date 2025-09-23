@@ -98,6 +98,68 @@ func (s *TransactionService) GetTransactionsByUserAndDateRange(
 	return s.transactionRepo.FindByUserIDAndDateRange(ctx, userID, startDate, endDate)
 }
 
+// UpdateTransaction updates a transaction
+func (s *TransactionService) UpdateTransaction(
+	ctx context.Context,
+	transactionID TransactionID,
+	userID UserID,
+	categoryID CategoryID,
+	currencyID CurrencyID,
+	amount Money,
+	description string,
+	date time.Time,
+) (*Transaction, error) {
+	// Get transaction to verify ownership
+	transaction, err := s.transactionRepo.FindByID(ctx, transactionID)
+	if err != nil {
+		return nil, errors.New("transaction not found")
+	}
+
+	if transaction.UserID().Value() != userID.Value() {
+		return nil, errors.New("access denied")
+	}
+
+	// Validate category exists and user has access
+	category, err := s.categoryRepo.FindByID(ctx, categoryID)
+	if err != nil {
+		return nil, errors.New("category not found")
+	}
+
+	// Check if user has access to category (default or user's own)
+	if !category.IsDefault() && (category.UserID() == nil || category.UserID().Value() != userID.Value()) {
+		return nil, errors.New("access denied to category")
+	}
+
+	// Validate currency exists and user has access
+	currency, err := s.currencyRepo.FindByID(ctx, currencyID)
+	if err != nil {
+		return nil, errors.New("currency not found")
+	}
+
+	// Check if user has access to currency (default or user's own)
+	if !currency.IsDefault() && (currency.UserID() == nil || currency.UserID().Value() != userID.Value()) {
+		return nil, errors.New("access denied to currency")
+	}
+
+	// Update transaction fields
+	if err := transaction.UpdateAmount(amount); err != nil {
+		return nil, err
+	}
+	transaction.UpdateDescription(description)
+	transaction.UpdateDate(date)
+
+	// Update the category and currency IDs (these need to be set directly)
+	transaction.categoryID = categoryID
+	transaction.currencyID = currencyID
+
+	// Save updated transaction
+	if err := s.transactionRepo.Save(ctx, transaction); err != nil {
+		return nil, err
+	}
+
+	return transaction, nil
+}
+
 // DeleteTransaction deletes a transaction
 func (s *TransactionService) DeleteTransaction(ctx context.Context, transactionID TransactionID, userID UserID) error {
 	// Get transaction to verify ownership
@@ -180,6 +242,11 @@ func (s *CategoryService) GetCategoriesByUserAndType(
 	categoryType CategoryType,
 ) ([]*Category, error) {
 	return s.categoryRepo.FindByUserIDAndType(ctx, userID, categoryType)
+}
+
+// GetCategoryByID retrieves a category by ID
+func (s *CategoryService) GetCategoryByID(ctx context.Context, categoryID CategoryID) (*Category, error) {
+	return s.categoryRepo.FindByID(ctx, categoryID)
 }
 
 // UpdateCategory updates a category

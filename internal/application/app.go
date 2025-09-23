@@ -45,22 +45,42 @@ func NewApp(db *gorm.DB) *App {
 	loginUserUseCase := appIdentity.NewLoginUserUseCase(userService, tokenService)
 	createTransactionUseCase := appFinance.NewCreateTransactionUseCase(transactionService, currencyService)
 	getTransactionsUseCase := appFinance.NewGetTransactionsUseCase(transactionService)
+	updateTransactionUseCase := appFinance.NewUpdateTransactionUseCase(transactionService)
+	deleteTransactionUseCase := appFinance.NewDeleteTransactionUseCase(transactionService)
 	createCategoryUseCase := appFinance.NewCreateCategoryUseCase(categoryService)
+	updateCategoryUseCase := appFinance.NewUpdateCategoryUseCase(categoryService)
+	deleteCategoryUseCase := appFinance.NewDeleteCategoryUseCase(categoryService)
 	getCategoriesUseCase := appFinance.NewGetCategoriesUseCase(categoryService)
 	getAnalyticsUseCase := appFinance.NewGetAnalyticsUseCase(transactionService)
 	createBudgetUseCase := appFinance.NewCreateBudgetUseCase(budgetService, currencyService)
 	getBudgetsUseCase := appFinance.NewGetBudgetsUseCase(budgetService)
+	updateBudgetUseCase := appFinance.NewUpdateBudgetUseCase(budgetService)
+	deleteBudgetUseCase := appFinance.NewDeleteBudgetUseCase(budgetService)
+	createCurrencyUseCase := appFinance.NewCreateCurrencyUseCase(currencyService)
+	getCurrenciesUseCase := appFinance.NewGetCurrenciesUseCase(currencyService)
+	updateCurrencyUseCase := appFinance.NewUpdateCurrencyUseCase(currencyService)
+	deleteCurrencyUseCase := appFinance.NewDeleteCurrencyUseCase(currencyService)
 
 	// Interface layer - handlers and middleware
 	identityHandlers := handlers.NewIdentityHandlers(registerUserUseCase, loginUserUseCase)
 	financeHandlers := handlers.NewFinanceHandlers(
 		createTransactionUseCase,
 		getTransactionsUseCase,
+		updateTransactionUseCase,
+		deleteTransactionUseCase,
 		createCategoryUseCase,
+		updateCategoryUseCase,
+		deleteCategoryUseCase,
 		getCategoriesUseCase,
 		getAnalyticsUseCase,
 		createBudgetUseCase,
 		getBudgetsUseCase,
+		updateBudgetUseCase,
+		deleteBudgetUseCase,
+		createCurrencyUseCase,
+		getCurrenciesUseCase,
+		updateCurrencyUseCase,
+		deleteCurrencyUseCase,
 	)
 	authMiddleware := middleware.NewAuthMiddleware(tokenService)
 
@@ -108,20 +128,32 @@ func (app *App) SetupRoutes() *gin.Engine {
 			// Categories
 			protected.GET("/categories", app.FinanceHandlers.GetCategories)
 			protected.POST("/categories", app.FinanceHandlers.CreateCategory)
+			protected.PUT("/categories/:id", app.FinanceHandlers.UpdateCategory)
+			protected.DELETE("/categories/:id", app.FinanceHandlers.DeleteCategory)
 
 			// Expenses
 			protected.GET("/expenses", app.FinanceHandlers.GetExpenses)
 			protected.POST("/expenses", app.FinanceHandlers.CreateExpense)
+			protected.PUT("/expenses/:id", app.FinanceHandlers.UpdateExpense)
 			protected.DELETE("/expenses/:id", app.FinanceHandlers.DeleteExpense)
 
 			// Incomes
 			protected.GET("/incomes", app.FinanceHandlers.GetIncomes)
 			protected.POST("/incomes", app.FinanceHandlers.CreateIncome)
+			protected.PUT("/incomes/:id", app.FinanceHandlers.UpdateIncome)
 			protected.DELETE("/incomes/:id", app.FinanceHandlers.DeleteIncome)
 
 			// Budgets
 			protected.GET("/budgets", app.FinanceHandlers.GetBudgets)
 			protected.POST("/budgets", app.FinanceHandlers.CreateBudget)
+			protected.PUT("/budgets/:id", app.FinanceHandlers.UpdateBudget)
+			protected.DELETE("/budgets/:id", app.FinanceHandlers.DeleteBudget)
+
+			// Currencies
+			protected.GET("/currencies", app.FinanceHandlers.GetCurrencies)
+			protected.POST("/currencies", app.FinanceHandlers.CreateCurrency)
+			protected.PUT("/currencies/:id", app.FinanceHandlers.UpdateCurrency)
+			protected.DELETE("/currencies/:id", app.FinanceHandlers.DeleteCurrency)
 
 			// Analytics
 			protected.GET("/analytics", app.FinanceHandlers.GetAnalytics)
