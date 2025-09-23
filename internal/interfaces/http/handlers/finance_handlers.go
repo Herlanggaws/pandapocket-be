@@ -14,6 +14,7 @@ import (
 type FinanceHandlers struct {
 	createTransactionUseCase  *finance.CreateTransactionUseCase
 	getTransactionsUseCase    *finance.GetTransactionsUseCase
+	getAllTransactionsUseCase *finance.GetAllTransactionsUseCase
 	updateTransactionUseCase  *finance.UpdateTransactionUseCase
 	deleteTransactionUseCase  *finance.DeleteTransactionUseCase
 	createCategoryUseCase     *finance.CreateCategoryUseCase
@@ -37,6 +38,7 @@ type FinanceHandlers struct {
 func NewFinanceHandlers(
 	createTransactionUseCase *finance.CreateTransactionUseCase,
 	getTransactionsUseCase *finance.GetTransactionsUseCase,
+	getAllTransactionsUseCase *finance.GetAllTransactionsUseCase,
 	updateTransactionUseCase *finance.UpdateTransactionUseCase,
 	deleteTransactionUseCase *finance.DeleteTransactionUseCase,
 	createCategoryUseCase *finance.CreateCategoryUseCase,
@@ -58,6 +60,7 @@ func NewFinanceHandlers(
 	return &FinanceHandlers{
 		createTransactionUseCase:  createTransactionUseCase,
 		getTransactionsUseCase:    getTransactionsUseCase,
+		getAllTransactionsUseCase: getAllTransactionsUseCase,
 		updateTransactionUseCase:  updateTransactionUseCase,
 		deleteTransactionUseCase:  deleteTransactionUseCase,
 		createCategoryUseCase:     createCategoryUseCase,
@@ -168,6 +171,43 @@ func (h *FinanceHandlers) GetIncomes(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, incomes)
+}
+
+// GetAllTransactions handles getting all transactions with filters
+func (h *FinanceHandlers) GetAllTransactions(c *gin.Context) {
+	userID := c.GetInt("user_id")
+
+	// Parse query parameters
+	req := finance.GetAllTransactionsRequest{
+		Type:      c.Query("type"),
+		StartDate: c.Query("start_date"),
+		EndDate:   c.Query("end_date"),
+	}
+
+	// Parse category IDs from query parameter
+	if categoryIDsParam := c.Query("category_ids"); categoryIDsParam != "" {
+		req.CategoryIDs = []string{categoryIDsParam}
+	}
+
+	// Parse pagination parameters
+	if pageParam := c.Query("page"); pageParam != "" {
+		if page, err := strconv.Atoi(pageParam); err == nil {
+			req.Page = page
+		}
+	}
+	if limitParam := c.Query("limit"); limitParam != "" {
+		if limit, err := strconv.Atoi(limitParam); err == nil {
+			req.Limit = limit
+		}
+	}
+
+	response, err := h.getAllTransactionsUseCase.Execute(c.Request.Context(), userID, req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch transactions"})
+		return
+	}
+
+	c.JSON(http.StatusOK, response)
 }
 
 // CreateCategory handles category creation

@@ -45,6 +45,7 @@ func NewApp(db *gorm.DB) *App {
 	loginUserUseCase := appIdentity.NewLoginUserUseCase(userService, tokenService)
 	createTransactionUseCase := appFinance.NewCreateTransactionUseCase(transactionService, currencyService)
 	getTransactionsUseCase := appFinance.NewGetTransactionsUseCase(transactionService)
+	getAllTransactionsUseCase := appFinance.NewGetAllTransactionsUseCase(transactionService)
 	updateTransactionUseCase := appFinance.NewUpdateTransactionUseCase(transactionService)
 	deleteTransactionUseCase := appFinance.NewDeleteTransactionUseCase(transactionService)
 	createCategoryUseCase := appFinance.NewCreateCategoryUseCase(categoryService)
@@ -68,6 +69,7 @@ func NewApp(db *gorm.DB) *App {
 	financeHandlers := handlers.NewFinanceHandlers(
 		createTransactionUseCase,
 		getTransactionsUseCase,
+		getAllTransactionsUseCase,
 		updateTransactionUseCase,
 		deleteTransactionUseCase,
 		createCategoryUseCase,
@@ -146,6 +148,9 @@ func (app *App) SetupRoutes() *gin.Engine {
 			protected.POST("/incomes", app.FinanceHandlers.CreateIncome)
 			protected.PUT("/incomes/:id", app.FinanceHandlers.UpdateIncome)
 			protected.DELETE("/incomes/:id", app.FinanceHandlers.DeleteIncome)
+
+			// All Transactions (with filters)
+			protected.GET("/transactions", app.FinanceHandlers.GetAllTransactions)
 
 			// Budgets
 			protected.GET("/budgets", app.FinanceHandlers.GetBudgets)

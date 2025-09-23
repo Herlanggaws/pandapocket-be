@@ -16,6 +16,7 @@ PandaPocket is a personal finance management API built with Domain-Driven Design
 - **Categories**: Full CRUD operations (Get, Create, Update, Delete)
 - **Expenses**: Full CRUD operations (Get, Create, Update, Delete)
 - **Incomes**: Full CRUD operations (Get, Create, Update, Delete)
+- **Transactions**: Get all transactions with advanced filtering
 - **Budgets**: Full CRUD operations (Get, Create, Update, Delete)
 - **Currencies**: Full CRUD operations (Get, Create, Update, Delete)
 - **Analytics**: Spending analytics and reports
@@ -420,6 +421,91 @@ Delete an income.
 
 ---
 
+## Transactions
+
+### GET /api/transactions
+
+Get all transactions (both income and expense) for the authenticated user with advanced filtering capabilities.
+
+**Query Parameters:**
+- `type` (optional): Filter by transaction type (`expense` or `income`)
+- `category_ids` (optional): Filter by category IDs (comma-separated, e.g., `1,2,3`)
+- `start_date` (optional): Filter transactions from this date (YYYY-MM-DD format)
+- `end_date` (optional): Filter transactions until this date (YYYY-MM-DD format)
+- `page` (optional): Page number for pagination (1-based, default: 1)
+- `limit` (optional): Number of items per page (default: 20, max: 100)
+
+**Examples:**
+- Get all transactions: `GET /api/transactions`
+- Get only expenses: `GET /api/transactions?type=expense`
+- Get transactions from specific date range: `GET /api/transactions?start_date=2024-01-01&end_date=2024-12-31`
+- Get transactions from specific categories: `GET /api/transactions?category_ids=1,2,3`
+- Combined filters: `GET /api/transactions?type=expense&start_date=2024-01-01&end_date=2024-12-31&category_ids=1,2`
+- Paginated results: `GET /api/transactions?page=2&limit=10`
+- Paginated with filters: `GET /api/transactions?type=expense&page=1&limit=5`
+
+**Response:**
+```json
+{
+  "transactions": [
+    {
+      "id": 4,
+      "user_id": 1,
+      "category_id": 1,
+      "currency_id": 1,
+      "amount": 50,
+      "description": "Test expense",
+      "date": "2024-01-15",
+      "type": "expense",
+      "created_at": "2025-09-24T04:35:44+07:00"
+    },
+    {
+      "id": 5,
+      "user_id": 1,
+      "category_id": 9,
+      "currency_id": 1,
+      "amount": 1000,
+      "description": "Test salary",
+      "date": "2024-01-01",
+      "type": "income",
+      "created_at": "2025-09-24T04:35:44+07:00"
+    }
+  ],
+  "total": 2,
+  "page": 1,
+  "limit": 20,
+  "total_pages": 1,
+  "filters": {
+    "type": "expense",
+    "start_date": "2024-01-01",
+    "end_date": "2024-12-31",
+    "page": 1,
+    "limit": 20
+  }
+}
+```
+
+**Response Fields:**
+- `transactions`: Array of transaction objects
+- `total`: Total number of transactions matching the filters (across all pages)
+- `page`: Current page number (1-based)
+- `limit`: Number of items per page
+- `total_pages`: Total number of pages available
+- `filters`: Object showing the applied filters for transparency
+
+**Transaction Object Fields:**
+- `id`: Unique transaction identifier
+- `user_id`: ID of the user who owns the transaction
+- `category_id`: ID of the category this transaction belongs to
+- `currency_id`: ID of the currency used for this transaction
+- `amount`: Transaction amount
+- `description`: Transaction description
+- `date`: Transaction date (YYYY-MM-DD format)
+- `type`: Transaction type (`expense` or `income`)
+- `created_at`: Timestamp when the transaction was created
+
+---
+
 ## Budgets
 
 ### GET /api/budgets
@@ -749,6 +835,13 @@ All endpoints may return the following error responses:
 ---
 
 ## Version History
+
+- **v2.1.0**: **Enhanced Transaction API** - Advanced filtering and pagination for transaction retrieval
+  - New unified transactions endpoint with filtering capabilities
+  - Support for filtering by transaction type, categories, and date ranges
+  - Combined filter support for complex queries
+  - Pagination support with configurable page size (default: 20, max: 100)
+  - Improved API response structure with pagination metadata and filter transparency
 
 - **v2.0.0**: **DDD Refactored** - Complete architectural overhaul with Domain-Driven Design
   - Full CRUD operations for Categories, Currencies

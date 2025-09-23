@@ -14,6 +14,16 @@ const (
 	TransactionTypeIncome  TransactionType = "income"
 )
 
+// TransactionFilters represents filters for querying transactions
+type TransactionFilters struct {
+	TransactionType *TransactionType
+	CategoryIDs     []CategoryID
+	StartDate       *time.Time
+	EndDate         *time.Time
+	Limit           int
+	Offset          int
+}
+
 // Transaction represents a financial transaction
 type Transaction struct {
 	id              TransactionID
@@ -42,7 +52,7 @@ func (t TransactionID) Value() int {
 
 // UserID is a value object representing a user identifier
 type UserID struct {
-	value int `json:"value"`
+	value int
 }
 
 func NewUserID(id int) UserID {
@@ -73,7 +83,7 @@ func (c CategoryID) Value() int {
 
 // CurrencyID is a value object representing a currency identifier
 type CurrencyID struct {
-	value int `json:"value"`
+	value int
 }
 
 func NewCurrencyID(id int) CurrencyID {

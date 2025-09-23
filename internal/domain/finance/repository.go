@@ -12,6 +12,7 @@ type TransactionRepository interface {
 	FindByUserID(ctx context.Context, userID UserID) ([]*Transaction, error)
 	FindByUserIDAndDateRange(ctx context.Context, userID UserID, startDate, endDate time.Time) ([]*Transaction, error)
 	FindByUserIDAndCategory(ctx context.Context, userID UserID, categoryID CategoryID) ([]*Transaction, error)
+	FindByUserIDWithFilters(ctx context.Context, userID UserID, filters TransactionFilters) ([]*Transaction, int64, error)
 	Delete(ctx context.Context, id TransactionID) error
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"panda-pocket/internal/domain/finance"
+	"sort"
 	"time"
 
 	"gorm.io/gorm"
@@ -209,6 +210,161 @@ func (r *GormTransactionRepository) FindByUserIDAndCategory(ctx context.Context,
 	}
 
 	return transactions, nil
+}
+
+// FindByUserIDWithFilters finds transactions for a user with filters
+func (r *GormTransactionRepository) FindByUserIDWithFilters(ctx context.Context, userID finance.UserID, filters finance.TransactionFilters) ([]*finance.Transaction, int64, error) {
+	var allTransactions []*finance.Transaction
+	var totalCount int64
+
+	// Build base query conditions
+	baseConditions := "user_id = ?"
+	args := []interface{}{userID.Value()}
+
+	// Apply date range filter
+	if filters.StartDate != nil && filters.EndDate != nil {
+		baseConditions += " AND date BETWEEN ? AND ?"
+		args = append(args, *filters.StartDate, *filters.EndDate)
+	} else if filters.StartDate != nil {
+		baseConditions += " AND date >= ?"
+		args = append(args, *filters.StartDate)
+	} else if filters.EndDate != nil {
+		baseConditions += " AND date <= ?"
+		args = append(args, *filters.EndDate)
+	}
+
+	// Apply category filter
+	if len(filters.CategoryIDs) > 0 {
+		categoryIDs := make([]uint, len(filters.CategoryIDs))
+		for i, categoryID := range filters.CategoryIDs {
+			categoryIDs[i] = uint(categoryID.Value())
+		}
+		baseConditions += " AND category_id IN ?"
+		args = append(args, categoryIDs)
+	}
+
+	// Count total records first
+	if filters.TransactionType != nil && *filters.TransactionType == finance.TransactionTypeExpense {
+		// Count expenses
+		err := r.db.WithContext(ctx).Model(&Expense{}).Where(baseConditions, args...).Count(&totalCount).Error
+		if err != nil {
+			return nil, 0, err
+		}
+	} else if filters.TransactionType != nil && *filters.TransactionType == finance.TransactionTypeIncome {
+		// Count incomes
+		err := r.db.WithContext(ctx).Model(&Income{}).Where(baseConditions, args...).Count(&totalCount).Error
+		if err != nil {
+			return nil, 0, err
+		}
+	} else {
+		// Count both expenses and incomes
+		var expenseCount, incomeCount int64
+
+		err := r.db.WithContext(ctx).Model(&Expense{}).Where(baseConditions, args...).Count(&expenseCount).Error
+		if err != nil {
+			return nil, 0, err
+		}
+
+		err = r.db.WithContext(ctx).Model(&Income{}).Where(baseConditions, args...).Count(&incomeCount).Error
+		if err != nil {
+			return nil, 0, err
+		}
+
+		totalCount = expenseCount + incomeCount
+	}
+
+	// Apply pagination and fetch data
+	if filters.TransactionType != nil && *filters.TransactionType == finance.TransactionTypeExpense {
+		// Query expenses only
+		var expenseModels []Expense
+		query := r.db.WithContext(ctx).Where(baseConditions, args...).Order("date DESC, created_at DESC")
+
+		if filters.Limit > 0 {
+			query = query.Limit(filters.Limit)
+		}
+		if filters.Offset > 0 {
+			query = query.Offset(filters.Offset)
+		}
+
+		err := query.Find(&expenseModels).Error
+		if err != nil {
+			return nil, 0, err
+		}
+
+		for _, model := range expenseModels {
+			allTransactions = append(allTransactions, r.expenseToTransaction(&model))
+		}
+	} else if filters.TransactionType != nil && *filters.TransactionType == finance.TransactionTypeIncome {
+		// Query incomes only
+		var incomeModels []Income
+		query := r.db.WithContext(ctx).Where(baseConditions, args...).Order("date DESC, created_at DESC")
+
+		if filters.Limit > 0 {
+			query = query.Limit(filters.Limit)
+		}
+		if filters.Offset > 0 {
+			query = query.Offset(filters.Offset)
+		}
+
+		err := query.Find(&incomeModels).Error
+		if err != nil {
+			return nil, 0, err
+		}
+
+		for _, model := range incomeModels {
+			allTransactions = append(allTransactions, r.incomeToTransaction(&model))
+		}
+	} else {
+		// Query both tables and combine results
+		// For pagination across two tables, we need a more complex approach
+		// We'll fetch from both tables and merge, then apply pagination in memory
+		// This is not ideal for very large datasets, but works for most use cases
+
+		var expenseModels []Expense
+		var incomeModels []Income
+
+		// Fetch all matching records from both tables
+		err := r.db.WithContext(ctx).Where(baseConditions, args...).Order("date DESC, created_at DESC").Find(&expenseModels).Error
+		if err != nil {
+			return nil, 0, err
+		}
+
+		err = r.db.WithContext(ctx).Where(baseConditions, args...).Order("date DESC, created_at DESC").Find(&incomeModels).Error
+		if err != nil {
+			return nil, 0, err
+		}
+
+		// Convert to domain objects
+		for _, model := range expenseModels {
+			allTransactions = append(allTransactions, r.expenseToTransaction(&model))
+		}
+		for _, model := range incomeModels {
+			allTransactions = append(allTransactions, r.incomeToTransaction(&model))
+		}
+
+		// Sort combined results by date DESC, then by created_at DESC
+		sort.Slice(allTransactions, func(i, j int) bool {
+			if allTransactions[i].Date().Equal(allTransactions[j].Date()) {
+				return allTransactions[i].CreatedAt().After(allTransactions[j].CreatedAt())
+			}
+			return allTransactions[i].Date().After(allTransactions[j].Date())
+		})
+
+		// Apply pagination in memory
+		start := filters.Offset
+		end := start + filters.Limit
+
+		if start >= len(allTransactions) {
+			allTransactions = []*finance.Transaction{}
+		} else {
+			if end > len(allTransactions) {
+				end = len(allTransactions)
+			}
+			allTransactions = allTransactions[start:end]
+		}
+	}
+
+	return allTransactions, totalCount, nil
 }
 
 // Helper methods to convert GORM models to domain transactions

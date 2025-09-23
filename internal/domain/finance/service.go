@@ -98,6 +98,15 @@ func (s *TransactionService) GetTransactionsByUserAndDateRange(
 	return s.transactionRepo.FindByUserIDAndDateRange(ctx, userID, startDate, endDate)
 }
 
+// GetTransactionsByUserWithFilters retrieves transactions for a user with filters
+func (s *TransactionService) GetTransactionsByUserWithFilters(
+	ctx context.Context,
+	userID UserID,
+	filters TransactionFilters,
+) ([]*Transaction, int64, error) {
+	return s.transactionRepo.FindByUserIDWithFilters(ctx, userID, filters)
+}
+
 // UpdateTransaction updates a transaction
 func (s *TransactionService) UpdateTransaction(
 	ctx context.Context,
