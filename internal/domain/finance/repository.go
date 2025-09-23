@@ -35,6 +35,8 @@ type CurrencyRepository interface {
 	Delete(ctx context.Context, id CurrencyID) error
 	ExistsByID(ctx context.Context, id CurrencyID) (bool, error)
 	ExistsByCodeAndUserID(ctx context.Context, code string, userID UserID) (bool, error)
+	SetUserDefaultCurrency(ctx context.Context, userID UserID, currencyID CurrencyID) error
+	GetUserDefaultCurrency(ctx context.Context, userID UserID) (*Currency, error)
 }
 
 // BudgetRepository defines the contract for budget persistence

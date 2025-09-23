@@ -1,19 +1,20 @@
 package finance
 
 import (
+	"encoding/json"
 	"errors"
 	"time"
 )
 
 // Currency represents a currency
 type Currency struct {
-	id        CurrencyID
-	userID    *UserID // nil for default currencies
-	code      string
-	name      string
-	symbol    string
-	isDefault bool
-	createdAt time.Time
+	id        CurrencyID `json:"id"`
+	userID    *UserID    `json:"user_id,omitempty"` // nil for default currencies
+	code      string     `json:"code"`
+	name      string     `json:"name"`
+	symbol    string     `json:"symbol"`
+	isDefault bool       `json:"is_default"`
+	createdAt time.Time  `json:"created_at"`
 }
 
 // NewCurrency creates a new currency
@@ -28,15 +29,15 @@ func NewCurrency(
 	if code == "" {
 		return nil, errors.New("currency code cannot be empty")
 	}
-	
+
 	if name == "" {
 		return nil, errors.New("currency name cannot be empty")
 	}
-	
+
 	if symbol == "" {
 		return nil, errors.New("currency symbol cannot be empty")
 	}
-	
+
 	return &Currency{
 		id:        id,
 		userID:    userID,
@@ -107,4 +108,28 @@ func (c *Currency) UpdateSymbol(symbol string) error {
 // CanBeDeleted checks if the currency can be deleted
 func (c *Currency) CanBeDeleted() bool {
 	return !c.isDefault
+}
+
+// MarshalJSON implements json.Marshaler interface
+func (c *Currency) MarshalJSON() ([]byte, error) {
+	type Alias Currency
+	return json.Marshal(&struct {
+		*Alias
+		ID        CurrencyID `json:"id"`
+		UserID    *UserID    `json:"user_id,omitempty"`
+		Code      string     `json:"code"`
+		Name      string     `json:"name"`
+		Symbol    string     `json:"symbol"`
+		IsDefault bool       `json:"is_default"`
+		CreatedAt time.Time  `json:"created_at"`
+	}{
+		Alias:     (*Alias)(c),
+		ID:        c.id,
+		UserID:    c.userID,
+		Code:      c.code,
+		Name:      c.name,
+		Symbol:    c.symbol,
+		IsDefault: c.isDefault,
+		CreatedAt: c.createdAt,
+	})
 }

@@ -72,4 +72,3 @@ func (uc *UpdateCategoryUseCase) Execute(ctx context.Context, userID int, catego
 		Type:  string(category.Type()),
 	}, nil
 }
-

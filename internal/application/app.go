@@ -60,6 +60,8 @@ func NewApp(db *gorm.DB) *App {
 	getCurrenciesUseCase := appFinance.NewGetCurrenciesUseCase(currencyService)
 	updateCurrencyUseCase := appFinance.NewUpdateCurrencyUseCase(currencyService)
 	deleteCurrencyUseCase := appFinance.NewDeleteCurrencyUseCase(currencyService)
+	setDefaultCurrencyUseCase := appFinance.NewSetDefaultCurrencyUseCase(currencyService)
+	getDefaultCurrencyUseCase := appFinance.NewGetDefaultCurrencyUseCase(currencyService)
 
 	// Interface layer - handlers and middleware
 	identityHandlers := handlers.NewIdentityHandlers(registerUserUseCase, loginUserUseCase)
@@ -81,6 +83,8 @@ func NewApp(db *gorm.DB) *App {
 		getCurrenciesUseCase,
 		updateCurrencyUseCase,
 		deleteCurrencyUseCase,
+		setDefaultCurrencyUseCase,
+		getDefaultCurrencyUseCase,
 	)
 	authMiddleware := middleware.NewAuthMiddleware(tokenService)
 
@@ -152,6 +156,8 @@ func (app *App) SetupRoutes() *gin.Engine {
 			// Currencies
 			protected.GET("/currencies", app.FinanceHandlers.GetCurrencies)
 			protected.POST("/currencies", app.FinanceHandlers.CreateCurrency)
+			protected.GET("/currencies/default", app.FinanceHandlers.GetDefaultCurrency)
+			protected.PUT("/currencies/:id/set-default", app.FinanceHandlers.SetDefaultCurrency)
 			protected.PUT("/currencies/:id", app.FinanceHandlers.UpdateCurrency)
 			protected.DELETE("/currencies/:id", app.FinanceHandlers.DeleteCurrency)
 

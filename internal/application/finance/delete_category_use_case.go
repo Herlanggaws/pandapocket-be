@@ -25,4 +25,3 @@ func (uc *DeleteCategoryUseCase) Execute(ctx context.Context, userID int, catego
 		finance.NewUserID(userID),
 	)
 }
-

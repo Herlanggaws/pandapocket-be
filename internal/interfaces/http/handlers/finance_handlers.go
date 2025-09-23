@@ -12,23 +12,25 @@ import (
 
 // FinanceHandlers handles finance-related HTTP requests
 type FinanceHandlers struct {
-	createTransactionUseCase *finance.CreateTransactionUseCase
-	getTransactionsUseCase   *finance.GetTransactionsUseCase
-	updateTransactionUseCase *finance.UpdateTransactionUseCase
-	deleteTransactionUseCase *finance.DeleteTransactionUseCase
-	createCategoryUseCase    *finance.CreateCategoryUseCase
-	updateCategoryUseCase    *finance.UpdateCategoryUseCase
-	deleteCategoryUseCase    *finance.DeleteCategoryUseCase
-	getCategoriesUseCase     *finance.GetCategoriesUseCase
-	getAnalyticsUseCase      *finance.GetAnalyticsUseCase
-	createBudgetUseCase      *finance.CreateBudgetUseCase
-	getBudgetsUseCase        *finance.GetBudgetsUseCase
-	updateBudgetUseCase      *finance.UpdateBudgetUseCase
-	deleteBudgetUseCase      *finance.DeleteBudgetUseCase
-	createCurrencyUseCase    *finance.CreateCurrencyUseCase
-	getCurrenciesUseCase     *finance.GetCurrenciesUseCase
-	updateCurrencyUseCase    *finance.UpdateCurrencyUseCase
-	deleteCurrencyUseCase    *finance.DeleteCurrencyUseCase
+	createTransactionUseCase  *finance.CreateTransactionUseCase
+	getTransactionsUseCase    *finance.GetTransactionsUseCase
+	updateTransactionUseCase  *finance.UpdateTransactionUseCase
+	deleteTransactionUseCase  *finance.DeleteTransactionUseCase
+	createCategoryUseCase     *finance.CreateCategoryUseCase
+	updateCategoryUseCase     *finance.UpdateCategoryUseCase
+	deleteCategoryUseCase     *finance.DeleteCategoryUseCase
+	getCategoriesUseCase      *finance.GetCategoriesUseCase
+	getAnalyticsUseCase       *finance.GetAnalyticsUseCase
+	createBudgetUseCase       *finance.CreateBudgetUseCase
+	getBudgetsUseCase         *finance.GetBudgetsUseCase
+	updateBudgetUseCase       *finance.UpdateBudgetUseCase
+	deleteBudgetUseCase       *finance.DeleteBudgetUseCase
+	createCurrencyUseCase     *finance.CreateCurrencyUseCase
+	getCurrenciesUseCase      *finance.GetCurrenciesUseCase
+	updateCurrencyUseCase     *finance.UpdateCurrencyUseCase
+	deleteCurrencyUseCase     *finance.DeleteCurrencyUseCase
+	setDefaultCurrencyUseCase *finance.SetDefaultCurrencyUseCase
+	getDefaultCurrencyUseCase *finance.GetDefaultCurrencyUseCase
 }
 
 // NewFinanceHandlers creates a new finance handlers instance
@@ -50,25 +52,29 @@ func NewFinanceHandlers(
 	getCurrenciesUseCase *finance.GetCurrenciesUseCase,
 	updateCurrencyUseCase *finance.UpdateCurrencyUseCase,
 	deleteCurrencyUseCase *finance.DeleteCurrencyUseCase,
+	setDefaultCurrencyUseCase *finance.SetDefaultCurrencyUseCase,
+	getDefaultCurrencyUseCase *finance.GetDefaultCurrencyUseCase,
 ) *FinanceHandlers {
 	return &FinanceHandlers{
-		createTransactionUseCase: createTransactionUseCase,
-		getTransactionsUseCase:   getTransactionsUseCase,
-		updateTransactionUseCase: updateTransactionUseCase,
-		deleteTransactionUseCase: deleteTransactionUseCase,
-		createCategoryUseCase:    createCategoryUseCase,
-		updateCategoryUseCase:    updateCategoryUseCase,
-		deleteCategoryUseCase:    deleteCategoryUseCase,
-		getCategoriesUseCase:     getCategoriesUseCase,
-		getAnalyticsUseCase:      getAnalyticsUseCase,
-		createBudgetUseCase:      createBudgetUseCase,
-		getBudgetsUseCase:        getBudgetsUseCase,
-		updateBudgetUseCase:      updateBudgetUseCase,
-		deleteBudgetUseCase:      deleteBudgetUseCase,
-		createCurrencyUseCase:    createCurrencyUseCase,
-		getCurrenciesUseCase:     getCurrenciesUseCase,
-		updateCurrencyUseCase:    updateCurrencyUseCase,
-		deleteCurrencyUseCase:    deleteCurrencyUseCase,
+		createTransactionUseCase:  createTransactionUseCase,
+		getTransactionsUseCase:    getTransactionsUseCase,
+		updateTransactionUseCase:  updateTransactionUseCase,
+		deleteTransactionUseCase:  deleteTransactionUseCase,
+		createCategoryUseCase:     createCategoryUseCase,
+		updateCategoryUseCase:     updateCategoryUseCase,
+		deleteCategoryUseCase:     deleteCategoryUseCase,
+		getCategoriesUseCase:      getCategoriesUseCase,
+		getAnalyticsUseCase:       getAnalyticsUseCase,
+		createBudgetUseCase:       createBudgetUseCase,
+		getBudgetsUseCase:         getBudgetsUseCase,
+		updateBudgetUseCase:       updateBudgetUseCase,
+		deleteBudgetUseCase:       deleteBudgetUseCase,
+		createCurrencyUseCase:     createCurrencyUseCase,
+		getCurrenciesUseCase:      getCurrenciesUseCase,
+		updateCurrencyUseCase:     updateCurrencyUseCase,
+		deleteCurrencyUseCase:     deleteCurrencyUseCase,
+		setDefaultCurrencyUseCase: setDefaultCurrencyUseCase,
+		getDefaultCurrencyUseCase: getDefaultCurrencyUseCase,
 	}
 }
 
@@ -576,4 +582,35 @@ func (h *FinanceHandlers) DeleteCurrency(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"message": response.Message,
 	})
+}
+
+// SetDefaultCurrency handles setting the default currency for a user
+func (h *FinanceHandlers) SetDefaultCurrency(c *gin.Context) {
+	userID := c.GetInt("user_id")
+	currencyID := c.Param("id")
+
+	// Set the default currency
+	err := h.setDefaultCurrencyUseCase.Execute(c.Request.Context(), userID, currencyID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Default currency set successfully",
+	})
+}
+
+// GetDefaultCurrency handles getting the default currency for a user
+func (h *FinanceHandlers) GetDefaultCurrency(c *gin.Context) {
+	userID := c.GetInt("user_id")
+
+	// Get the default currency
+	currency, err := h.getDefaultCurrencyUseCase.Execute(c.Request.Context(), userID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, currency)
 }

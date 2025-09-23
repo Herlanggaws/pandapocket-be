@@ -1,6 +1,7 @@
 package finance
 
 import (
+	"encoding/json"
 	"errors"
 	"time"
 )
@@ -15,15 +16,15 @@ const (
 
 // Transaction represents a financial transaction
 type Transaction struct {
-	id          TransactionID
-	userID      UserID
-	categoryID  CategoryID
-	currencyID  CurrencyID
-	amount      Money
-	description string
-	date        time.Time
+	id              TransactionID
+	userID          UserID
+	categoryID      CategoryID
+	currencyID      CurrencyID
+	amount          Money
+	description     string
+	date            time.Time
 	transactionType TransactionType
-	createdAt   time.Time
+	createdAt       time.Time
 }
 
 // TransactionID is a value object representing a transaction identifier
@@ -41,7 +42,7 @@ func (t TransactionID) Value() int {
 
 // UserID is a value object representing a user identifier
 type UserID struct {
-	value int
+	value int `json:"value"`
 }
 
 func NewUserID(id int) UserID {
@@ -50,6 +51,11 @@ func NewUserID(id int) UserID {
 
 func (u UserID) Value() int {
 	return u.value
+}
+
+// MarshalJSON implements json.Marshaler interface
+func (u UserID) MarshalJSON() ([]byte, error) {
+	return json.Marshal(u.value)
 }
 
 // CategoryID is a value object representing a category identifier
@@ -67,7 +73,7 @@ func (c CategoryID) Value() int {
 
 // CurrencyID is a value object representing a currency identifier
 type CurrencyID struct {
-	value int
+	value int `json:"value"`
 }
 
 func NewCurrencyID(id int) CurrencyID {
@@ -76,6 +82,11 @@ func NewCurrencyID(id int) CurrencyID {
 
 func (c CurrencyID) Value() int {
 	return c.value
+}
+
+// MarshalJSON implements json.Marshaler interface
+func (c CurrencyID) MarshalJSON() ([]byte, error) {
+	return json.Marshal(c.value)
 }
 
 // Money represents a monetary amount

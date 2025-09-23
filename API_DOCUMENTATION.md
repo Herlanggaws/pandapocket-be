@@ -603,6 +603,33 @@ Delete a currency.
 }
 ```
 
+### PUT /api/currencies/:id/set-default
+
+Set a currency as the user's default currency.
+
+**Response:**
+```json
+{
+  "message": "Default currency set successfully"
+}
+```
+
+### GET /api/currencies/default
+
+Get the user's default currency.
+
+**Response:**
+```json
+{
+  "id": 3,
+  "code": "GBP",
+  "name": "British Pound",
+  "symbol": "£",
+  "is_default": true,
+  "created_at": "2025-09-23T16:20:51.976667+07:00"
+}
+```
+
 ---
 
 ## Analytics

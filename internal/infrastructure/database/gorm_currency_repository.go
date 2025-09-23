@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"errors"
 	"panda-pocket/internal/domain/finance"
 
 	"gorm.io/gorm"
@@ -211,4 +212,48 @@ func (r *GormCurrencyRepository) ExistsByCodeAndUserID(ctx context.Context, code
 	}
 
 	return count > 0, nil
+}
+
+// SetUserDefaultCurrency sets the default currency for a user
+func (r *GormCurrencyRepository) SetUserDefaultCurrency(ctx context.Context, userID finance.UserID, currencyID finance.CurrencyID) error {
+	// Use the existing UserPreferences model
+	var preferences UserPreferences
+
+	// Check if user preferences already exist
+	err := r.db.WithContext(ctx).Where("user_id = ?", userID.Value()).First(&preferences).Error
+	if err != nil {
+		// If not found, create new preferences
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			preferences = UserPreferences{
+				UserID:             uint(userID.Value()),
+				PrimaryCurrencyID:  uint(currencyID.Value()),
+				EmailNotifications: true,
+				BudgetAlerts:       true,
+				RecurringReminders: true,
+			}
+			return r.db.WithContext(ctx).Create(&preferences).Error
+		}
+		return err
+	}
+
+	// Update existing preferences
+	preferences.PrimaryCurrencyID = uint(currencyID.Value())
+	return r.db.WithContext(ctx).Save(&preferences).Error
+}
+
+// GetUserDefaultCurrency gets the default currency for a user
+func (r *GormCurrencyRepository) GetUserDefaultCurrency(ctx context.Context, userID finance.UserID) (*finance.Currency, error) {
+	var preferences UserPreferences
+
+	// Get user preferences
+	err := r.db.WithContext(ctx).Where("user_id = ?", userID.Value()).First(&preferences).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, errors.New("no default currency set")
+		}
+		return nil, err
+	}
+
+	// Get the currency by ID
+	return r.FindByID(ctx, finance.NewCurrencyID(int(preferences.PrimaryCurrencyID)))
 }
