@@ -8,7 +8,10 @@ import (
 	domainIdentity "panda-pocket/internal/domain/identity"
 	"panda-pocket/internal/infrastructure/database"
 	"panda-pocket/internal/interfaces/http/handlers"
+	v100 "panda-pocket/internal/interfaces/http/handlers/v100"
+	v120 "panda-pocket/internal/interfaces/http/handlers/v120"
 	"panda-pocket/internal/interfaces/http/middleware"
+	"panda-pocket/internal/interfaces/http/versioning"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -17,10 +20,15 @@ import (
 
 // App represents the application with all its dependencies
 type App struct {
-	DB               *gorm.DB
-	IdentityHandlers *handlers.IdentityHandlers
-	FinanceHandlers  *handlers.FinanceHandlers
-	AuthMiddleware   *middleware.AuthMiddleware
+	DB                  *gorm.DB
+	IdentityHandlers    *handlers.IdentityHandlers
+	FinanceHandlers     *handlers.FinanceHandlers
+	FinanceHandlersV100 *v100.FinanceHandlersV100
+	FinanceHandlersV120 *v120.FinanceHandlersV120
+	DeprecationHandler  *handlers.DeprecationHandler
+	AuthMiddleware      *middleware.AuthMiddleware
+	VersionMiddleware   *middleware.VersionMiddleware
+	VersionManager      *versioning.VersionManager
 }
 
 // NewApp creates a new application instance with all dependencies wired up
@@ -88,13 +96,70 @@ func NewApp(db *gorm.DB) *App {
 		setDefaultCurrencyUseCase,
 		getDefaultCurrencyUseCase,
 	)
+
+	// Version-specific handlers
+	financeHandlersV100 := v100.NewFinanceHandlersV100(
+		createTransactionUseCase,
+		getTransactionsUseCase,
+		getAllTransactionsUseCase,
+		updateTransactionUseCase,
+		deleteTransactionUseCase,
+		createCategoryUseCase,
+		updateCategoryUseCase,
+		deleteCategoryUseCase,
+		getCategoriesUseCase,
+		getAnalyticsUseCase,
+		createBudgetUseCase,
+		getBudgetsUseCase,
+		updateBudgetUseCase,
+		deleteBudgetUseCase,
+		createCurrencyUseCase,
+		getCurrenciesUseCase,
+		updateCurrencyUseCase,
+		deleteCurrencyUseCase,
+		setDefaultCurrencyUseCase,
+		getDefaultCurrencyUseCase,
+	)
+
+	financeHandlersV120 := v120.NewFinanceHandlersV120(
+		createTransactionUseCase,
+		getTransactionsUseCase,
+		getAllTransactionsUseCase,
+		updateTransactionUseCase,
+		deleteTransactionUseCase,
+		createCategoryUseCase,
+		updateCategoryUseCase,
+		deleteCategoryUseCase,
+		getCategoriesUseCase,
+		getAnalyticsUseCase,
+		createBudgetUseCase,
+		getBudgetsUseCase,
+		updateBudgetUseCase,
+		deleteBudgetUseCase,
+		createCurrencyUseCase,
+		getCurrenciesUseCase,
+		updateCurrencyUseCase,
+		deleteCurrencyUseCase,
+		setDefaultCurrencyUseCase,
+		getDefaultCurrencyUseCase,
+	)
+
+	// Version management
+	versionManager := versioning.NewVersionManager()
+	versionMiddleware := middleware.NewVersionMiddleware()
+	deprecationHandler := handlers.NewDeprecationHandler(versionManager)
 	authMiddleware := middleware.NewAuthMiddleware(tokenService)
 
 	return &App{
-		DB:               db,
-		IdentityHandlers: identityHandlers,
-		FinanceHandlers:  financeHandlers,
-		AuthMiddleware:   authMiddleware,
+		DB:                  db,
+		IdentityHandlers:    identityHandlers,
+		FinanceHandlers:     financeHandlers,
+		FinanceHandlersV100: financeHandlersV100,
+		FinanceHandlersV120: financeHandlersV120,
+		DeprecationHandler:  deprecationHandler,
+		AuthMiddleware:      authMiddleware,
+		VersionMiddleware:   versionMiddleware,
+		VersionManager:      versionManager,
 	}
 }
 
@@ -112,15 +177,20 @@ func (app *App) SetupRoutes() *gin.Engine {
 		"http://localhost:3004", // Back office port
 	}
 	config.AllowMethods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}
-	config.AllowHeaders = []string{"Origin", "Content-Type", "Accept", "Authorization"}
+	config.AllowHeaders = []string{"Origin", "Content-Type", "Accept", "Authorization", "X-API-Version"}
 	config.AllowCredentials = false
 	r.Use(cors.New(config))
 
-	// API routes
-	api := r.Group("/api")
+	// Version middleware
+	r.Use(app.VersionMiddleware.ExtractVersion())
+	r.Use(app.VersionMiddleware.ValidateVersion())
+	r.Use(app.VersionMiddleware.AddDeprecationWarning())
+
+	// Legacy routes (for backward compatibility)
+	legacy := r.Group("/api")
 	{
 		// Auth routes
-		auth := api.Group("/auth")
+		auth := legacy.Group("/auth")
 		{
 			auth.POST("/register", app.IdentityHandlers.Register)
 			auth.POST("/login", app.IdentityHandlers.Login)
@@ -128,7 +198,7 @@ func (app *App) SetupRoutes() *gin.Engine {
 		}
 
 		// Protected routes
-		protected := api.Group("")
+		protected := legacy.Group("")
 		protected.Use(app.AuthMiddleware.RequireAuth())
 		{
 			// Categories
@@ -168,6 +238,126 @@ func (app *App) SetupRoutes() *gin.Engine {
 
 			// Analytics
 			protected.GET("/analytics", app.FinanceHandlers.GetAnalytics)
+		}
+	}
+
+	// Versioned routes
+	versioned := r.Group("/api")
+	{
+		// v120 routes (latest)
+		v120 := versioned.Group("/v120")
+		{
+			// Auth routes
+			auth := v120.Group("/auth")
+			{
+				auth.POST("/register", app.IdentityHandlers.Register)
+				auth.POST("/login", app.IdentityHandlers.Login)
+				auth.POST("/logout", app.IdentityHandlers.Logout)
+			}
+
+			// Protected routes
+			protected := v120.Group("")
+			protected.Use(app.AuthMiddleware.RequireAuth())
+			{
+				// Transactions (enhanced with analytics)
+				protected.GET("/transactions", app.FinanceHandlersV120.GetTransactions)
+				protected.POST("/transactions", app.FinanceHandlersV120.CreateTransaction)
+				protected.PUT("/transactions/:id", app.FinanceHandlersV120.UpdateTransaction)
+				protected.DELETE("/transactions/:id", app.FinanceHandlersV120.DeleteTransaction)
+				protected.GET("/transactions/analytics", app.FinanceHandlersV120.GetTransactionsWithAnalytics)
+
+				// Categories
+				protected.GET("/categories", app.FinanceHandlersV120.GetCategories)
+				protected.POST("/categories", app.FinanceHandlersV120.CreateCategory)
+				protected.PUT("/categories/:id", app.FinanceHandlersV120.UpdateCategory)
+				protected.DELETE("/categories/:id", app.FinanceHandlersV120.DeleteCategory)
+
+				// Budgets
+				protected.GET("/budgets", app.FinanceHandlersV120.GetBudgets)
+				protected.POST("/budgets", app.FinanceHandlersV120.CreateBudget)
+				protected.PUT("/budgets/:id", app.FinanceHandlersV120.UpdateBudget)
+				protected.DELETE("/budgets/:id", app.FinanceHandlersV120.DeleteBudget)
+
+				// Currencies
+				protected.GET("/currencies", app.FinanceHandlersV120.GetCurrencies)
+				protected.POST("/currencies", app.FinanceHandlersV120.CreateCurrency)
+				protected.GET("/currencies/default", app.FinanceHandlersV120.GetDefaultCurrency)
+				protected.PUT("/currencies/:id/set-default", app.FinanceHandlersV120.SetDefaultCurrency)
+				protected.PUT("/currencies/:id", app.FinanceHandlersV120.UpdateCurrency)
+				protected.DELETE("/currencies/:id", app.FinanceHandlersV120.DeleteCurrency)
+
+				// Analytics (enhanced)
+				protected.GET("/analytics", app.FinanceHandlersV120.GetAnalytics)
+			}
+		}
+
+		// v100 routes (legacy - deprecated)
+		v100 := versioned.Group("/v100")
+		{
+			// Auth routes
+			auth := v100.Group("/auth")
+			{
+				auth.POST("/register", app.IdentityHandlers.Register)
+				auth.POST("/login", app.IdentityHandlers.Login)
+				auth.POST("/logout", app.IdentityHandlers.Logout)
+			}
+
+			// Protected routes
+			protected := v100.Group("")
+			protected.Use(app.AuthMiddleware.RequireAuth())
+			{
+				// Expenses (legacy)
+				protected.GET("/expenses", app.FinanceHandlersV100.GetExpenses)
+				protected.POST("/expenses", app.FinanceHandlersV100.CreateExpense)
+				protected.PUT("/expenses/:id", app.FinanceHandlersV100.UpdateExpense)
+				protected.DELETE("/expenses/:id", app.FinanceHandlersV100.DeleteExpense)
+
+				// Incomes (legacy)
+				protected.GET("/incomes", app.FinanceHandlersV100.GetIncomes)
+				protected.POST("/incomes", app.FinanceHandlersV100.CreateIncome)
+				protected.PUT("/incomes/:id", app.FinanceHandlersV100.UpdateIncome)
+				protected.DELETE("/incomes/:id", app.FinanceHandlersV100.DeleteIncome)
+
+				// All Transactions (legacy)
+				protected.GET("/transactions", app.FinanceHandlersV100.GetAllTransactions)
+
+				// Categories (legacy)
+				protected.GET("/categories", app.FinanceHandlersV100.GetCategories)
+				protected.POST("/categories", app.FinanceHandlersV100.CreateCategory)
+				protected.PUT("/categories/:id", app.FinanceHandlersV100.UpdateCategory)
+				protected.DELETE("/categories/:id", app.FinanceHandlersV100.DeleteCategory)
+
+				// Budgets (legacy)
+				protected.GET("/budgets", app.FinanceHandlersV100.GetBudgets)
+				protected.POST("/budgets", app.FinanceHandlersV100.CreateBudget)
+				protected.PUT("/budgets/:id", app.FinanceHandlersV100.UpdateBudget)
+				protected.DELETE("/budgets/:id", app.FinanceHandlersV100.DeleteBudget)
+
+				// Currencies (legacy)
+				protected.GET("/currencies", app.FinanceHandlersV100.GetCurrencies)
+				protected.POST("/currencies", app.FinanceHandlersV100.CreateCurrency)
+				protected.GET("/currencies/default", app.FinanceHandlersV100.GetDefaultCurrency)
+				protected.PUT("/currencies/:id/set-default", app.FinanceHandlersV100.SetDefaultCurrency)
+				protected.PUT("/currencies/:id", app.FinanceHandlersV100.UpdateCurrency)
+				protected.DELETE("/currencies/:id", app.FinanceHandlersV100.DeleteCurrency)
+
+				// Analytics (legacy)
+				protected.GET("/analytics", app.FinanceHandlersV100.GetAnalytics)
+			}
+		}
+
+		// Version management routes
+		version := versioned.Group("/version")
+		{
+			version.GET("/info/:version", app.DeprecationHandler.GetDeprecationInfo)
+			version.GET("/status/:version", app.DeprecationHandler.GetVersionStatus)
+			version.GET("/matrix", app.DeprecationHandler.GetVersionMatrix)
+			version.GET("/migration/:version", app.DeprecationHandler.GetMigrationPath)
+			version.GET("/compare", app.DeprecationHandler.CompareVersions)
+			version.GET("/features/:version", app.DeprecationHandler.GetVersionFeatures)
+			version.GET("/validate", app.DeprecationHandler.ValidateVersionTransition)
+			version.GET("/timeline", app.DeprecationHandler.GetDeprecationTimeline)
+			version.GET("/recommendations/:version", app.DeprecationHandler.GetUpgradeRecommendations)
 		}
 	}
 

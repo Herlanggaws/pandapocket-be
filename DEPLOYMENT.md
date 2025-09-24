@@ -5,6 +5,7 @@ This guide covers deployment strategies, environment configuration, and producti
 ## Table of Contents
 
 - [Deployment Overview](#deployment-overview)
+- [Development Guide](#development-guide)
 - [Environment Configuration](#environment-configuration)
 - [Database Setup](#database-setup)
 - [Docker Deployment](#docker-deployment)
@@ -37,6 +38,840 @@ PandaPocket supports multiple deployment strategies:
 - **RAM**: 2+ GB
 - **Storage**: 10+ GB SSD
 - **OS**: Linux (Ubuntu 22.04 LTS)
+
+## Development Guide
+
+This section provides comprehensive guidance for developers working on the PandaPocket backend, including local development setup, API versioning, testing strategies, and best practices.
+
+### Development Environment Setup
+
+#### Prerequisites
+
+**Required Software**:
+- Go 1.23+ (latest stable version)
+- PostgreSQL 14+ or Docker
+- Git
+- Make (optional, for build automation)
+
+**Recommended Tools**:
+- VS Code with Go extension
+- Postman or Insomnia for API testing
+- pgAdmin for database management
+- Docker Desktop for containerized development
+
+#### Local Development Setup
+
+**1. Clone and Setup Repository**:
+```bash
+# Clone the repository
+git clone <repository-url>
+cd PandaPocket/backend
+
+# Install dependencies
+go mod download
+
+# Copy environment configuration
+cp .env.example .env
+```
+
+**2. Environment Configuration**:
+```bash
+# .env file for development
+DB_TYPE=postgres
+DB_HOST=localhost
+DB_PORT=5432
+DB_USER=panda_pocket_dev
+DB_PASSWORD=dev_password
+DB_NAME=panda_pocket_dev
+DB_SSL_MODE=disable
+
+JWT_SECRET=dev-jwt-secret-key-change-in-production
+JWT_EXPIRY=24h
+
+PORT=8080
+GIN_MODE=debug
+HOST=localhost
+
+CORS_ORIGINS=http://localhost:3000,http://localhost:3001
+
+LOG_LEVEL=debug
+LOG_FORMAT=text
+
+BCRYPT_COST=4  # Lower cost for development
+```
+
+**3. Database Setup**:
+```bash
+# Using Docker (recommended)
+docker run --name panda-pocket-postgres \
+  -e POSTGRES_DB=panda_pocket_dev \
+  -e POSTGRES_USER=panda_pocket_dev \
+  -e POSTGRES_PASSWORD=dev_password \
+  -p 5432:5432 \
+  -d postgres:15-alpine
+
+# Or using local PostgreSQL
+createdb panda_pocket_dev
+```
+
+**4. Run Database Migrations**:
+```bash
+# Run the currency setup script
+go run scripts/add_currencies.go
+
+# Or run the SQL script directly
+psql -h localhost -U panda_pocket_dev -d panda_pocket_dev -f scripts/add_currencies.sql
+```
+
+**5. Start Development Server**:
+```bash
+# Run the application
+go run main.go
+
+# Or with hot reload (requires air)
+air
+```
+
+### API Versioning Development
+
+#### Version Structure
+
+The API follows a versioning strategy where each version is maintained independently:
+
+```
+/api/v100/transactions  # Version 1.0.0 (Legacy)
+/api/v110/transactions  # Version 1.1.0 (Previous)
+/api/v120/transactions  # Version 1.2.0 (Latest)
+```
+
+#### Adding New Features
+
+**1. Create Version-Specific Handlers**:
+```go
+// internal/interfaces/http/handlers/v120/finance_handlers.go
+package v120
+
+import (
+    "net/http"
+    "github.com/gin-gonic/gin"
+)
+
+type FinanceHandlersV120 struct {
+    // Include all necessary use cases
+    createTransactionUseCase  *finance.CreateTransactionUseCase
+    getTransactionsUseCase    *finance.GetTransactionsUseCase
+    // ... other use cases
+}
+
+// New features specific to v120
+func (h *FinanceHandlersV120) GetTransactionsWithAnalytics(c *gin.Context) {
+    // Implementation with new analytics features
+    userID := c.GetInt("user_id")
+    
+    // New v120-specific logic
+    response, err := h.getTransactionsUseCase.Execute(c.Request.Context(), userID)
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch transactions"})
+        return
+    }
+    
+    // Enhanced response with analytics
+    c.JSON(http.StatusOK, gin.H{
+        "transactions": response.Transactions,
+        "analytics": gin.H{
+            "total_amount": response.TotalAmount,
+            "category_breakdown": response.CategoryBreakdown,
+            "monthly_trends": response.MonthlyTrends,
+        },
+    })
+}
+```
+
+**2. Update Route Configuration**:
+```go
+// internal/application/app.go
+func (app *App) SetupRoutes() *gin.Engine {
+    r := gin.Default()
+    
+    // Version middleware
+    versionMiddleware := middleware.NewVersionMiddleware()
+    r.Use(versionMiddleware.ExtractVersion())
+    
+    // Versioned routes
+    versioned := r.Group("/api")
+    {
+        // v120 routes (latest)
+        v120 := versioned.Group("/v120")
+        {
+            v120Handlers := handlers.NewFinanceHandlersV120(
+                app.createTransactionUseCase,
+                app.getTransactionsUseCase,
+                // ... other use cases
+            )
+            
+            protected := v120.Group("")
+            protected.Use(app.AuthMiddleware.RequireAuth())
+            {
+                protected.GET("/transactions", v120Handlers.GetTransactionsWithAnalytics)
+                protected.POST("/transactions", v120Handlers.CreateTransaction)
+                // ... other v120 routes
+            }
+        }
+        
+        // v110 routes (previous version)
+        v110 := versioned.Group("/v110")
+        {
+            // v110-specific handlers
+        }
+        
+        // v100 routes (legacy)
+        v100 := versioned.Group("/v100")
+        {
+            // v100-specific handlers
+        }
+    }
+    
+    return r
+}
+```
+
+#### Backward Compatibility
+
+**1. Maintain Previous Versions**:
+```go
+// internal/interfaces/http/handlers/v100/finance_handlers.go
+package v100
+
+// Legacy handlers maintain original functionality
+func (h *FinanceHandlersV100) GetTransactions(c *gin.Context) {
+    // Original implementation without new features
+    userID := c.GetInt("user_id")
+    
+    response, err := h.getTransactionsUseCase.Execute(c.Request.Context(), userID)
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch transactions"})
+        return
+    }
+    
+    // Simple response without analytics
+    c.JSON(http.StatusOK, response.Transactions)
+}
+```
+
+**2. Deprecation Handling**:
+```go
+// internal/interfaces/http/middleware/deprecation_middleware.go
+func DeprecationMiddleware() gin.HandlerFunc {
+    return func(c *gin.Context) {
+        version := c.GetString("api_version")
+        
+        if version == "v100" {
+            c.Header("X-API-Deprecated", "true")
+            c.Header("X-API-Sunset-Date", "2024-06-01")
+            c.Header("X-API-Upgrade-URL", "https://docs.pandapocket.com/upgrade")
+        }
+        
+        c.Next()
+    }
+}
+```
+
+### Testing Strategy
+
+#### Unit Testing
+
+**1. Handler Testing**:
+```go
+// internal/interfaces/http/handlers/v120/finance_handlers_test.go
+package v120
+
+import (
+    "bytes"
+    "encoding/json"
+    "net/http"
+    "net/http/httptest"
+    "testing"
+    "github.com/gin-gonic/gin"
+    "github.com/stretchr/testify/assert"
+)
+
+func TestGetTransactionsWithAnalytics(t *testing.T) {
+    // Setup
+    gin.SetMode(gin.TestMode)
+    router := gin.New()
+    
+    // Mock use case
+    mockUseCase := &MockGetTransactionsUseCase{}
+    handler := &FinanceHandlersV120{
+        getTransactionsUseCase: mockUseCase,
+    }
+    
+    // Setup route
+    router.GET("/transactions", handler.GetTransactionsWithAnalytics)
+    
+    // Test request
+    w := httptest.NewRecorder()
+    req, _ := http.NewRequest("GET", "/transactions", nil)
+    req.Header.Set("user_id", "1")
+    
+    router.ServeHTTP(w, req)
+    
+    // Assertions
+    assert.Equal(t, http.StatusOK, w.Code)
+    
+    var response map[string]interface{}
+    json.Unmarshal(w.Body.Bytes(), &response)
+    
+    assert.Contains(t, response, "transactions")
+    assert.Contains(t, response, "analytics")
+}
+```
+
+**2. Use Case Testing**:
+```go
+// internal/application/finance/get_transactions_use_case_test.go
+package finance
+
+import (
+    "context"
+    "testing"
+    "github.com/stretchr/testify/assert"
+    "github.com/stretchr/testify/mock"
+)
+
+func TestGetTransactionsUseCase_Execute(t *testing.T) {
+    // Setup
+    mockRepo := &MockTransactionRepository{}
+    useCase := NewGetTransactionsUseCase(mockRepo)
+    
+    // Mock expectations
+    mockRepo.On("GetByUserID", mock.Anything, 1).Return([]Transaction{}, nil)
+    
+    // Execute
+    result, err := useCase.Execute(context.Background(), 1)
+    
+    // Assertions
+    assert.NoError(t, err)
+    assert.NotNil(t, result)
+    mockRepo.AssertExpectations(t)
+}
+```
+
+#### Integration Testing
+
+**1. API Integration Tests**:
+```go
+// tests/integration/api_test.go
+package integration
+
+import (
+    "bytes"
+    "encoding/json"
+    "net/http"
+    "net/http/httptest"
+    "testing"
+    "github.com/gin-gonic/gin"
+    "github.com/stretchr/testify/assert"
+)
+
+func TestAPIVersioning(t *testing.T) {
+    // Setup test server
+    gin.SetMode(gin.TestMode)
+    router := setupTestRouter()
+    
+    tests := []struct {
+        name     string
+        version  string
+        endpoint string
+        expected int
+    }{
+        {
+            name:     "v120 transactions",
+            version:  "v120",
+            endpoint: "/api/v120/transactions",
+            expected: http.StatusOK,
+        },
+        {
+            name:     "v100 transactions (deprecated)",
+            version:  "v100",
+            endpoint: "/api/v100/transactions",
+            expected: http.StatusOK,
+        },
+    }
+    
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            w := httptest.NewRecorder()
+            req, _ := http.NewRequest("GET", tt.endpoint, nil)
+            req.Header.Set("Authorization", "Bearer test-token")
+            
+            router.ServeHTTP(w, req)
+            
+            assert.Equal(t, tt.expected, w.Code)
+            
+            if tt.version == "v100" {
+                assert.Equal(t, "true", w.Header().Get("X-API-Deprecated"))
+            }
+        })
+    }
+}
+```
+
+**2. Database Integration Tests**:
+```go
+// tests/integration/database_test.go
+package integration
+
+import (
+    "testing"
+    "github.com/stretchr/testify/assert"
+    "gorm.io/driver/sqlite"
+    "gorm.io/gorm"
+)
+
+func TestDatabaseOperations(t *testing.T) {
+    // Setup in-memory database
+    db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+    assert.NoError(t, err)
+    
+    // Run migrations
+    err = db.AutoMigrate(&Transaction{}, &Category{}, &User{})
+    assert.NoError(t, err)
+    
+    // Test operations
+    transaction := &Transaction{
+        UserID:     1,
+        CategoryID: 1,
+        Amount:     100.0,
+        Type:       "expense",
+    }
+    
+    result := db.Create(transaction)
+    assert.NoError(t, result.Error)
+    assert.NotZero(t, transaction.ID)
+}
+```
+
+#### End-to-End Testing
+
+**1. API End-to-End Tests**:
+```go
+// tests/e2e/api_e2e_test.go
+package e2e
+
+import (
+    "bytes"
+    "encoding/json"
+    "net/http"
+    "testing"
+    "github.com/stretchr/testify/assert"
+)
+
+func TestCompleteUserFlow(t *testing.T) {
+    baseURL := "http://localhost:8080"
+    
+    // 1. Register user
+    registerData := map[string]string{
+        "email":    "test@example.com",
+        "password": "password123",
+    }
+    
+    resp, err := http.Post(baseURL+"/api/auth/register", "application/json", 
+        bytes.NewBuffer(mustMarshal(registerData)))
+    assert.NoError(t, err)
+    assert.Equal(t, http.StatusCreated, resp.StatusCode)
+    
+    // 2. Login
+    loginData := map[string]string{
+        "email":    "test@example.com",
+        "password": "password123",
+    }
+    
+    resp, err = http.Post(baseURL+"/api/auth/login", "application/json",
+        bytes.NewBuffer(mustMarshal(loginData)))
+    assert.NoError(t, err)
+    assert.Equal(t, http.StatusOK, resp.StatusCode)
+    
+    // 3. Create transaction
+    transactionData := map[string]interface{}{
+        "category_id": 1,
+        "amount":      100.0,
+        "description": "Test transaction",
+        "date":        "2024-01-01",
+    }
+    
+    req, _ := http.NewRequest("POST", baseURL+"/api/v120/transactions", 
+        bytes.NewBuffer(mustMarshal(transactionData)))
+    req.Header.Set("Authorization", "Bearer "+extractToken(resp))
+    
+    client := &http.Client{}
+    resp, err = client.Do(req)
+    assert.NoError(t, err)
+    assert.Equal(t, http.StatusCreated, resp.StatusCode)
+}
+```
+
+### Development Best Practices
+
+#### Code Organization
+
+**1. Directory Structure**:
+```
+internal/
+├── application/
+│   ├── finance/
+│   │   ├── create_transaction_use_case.go
+│   │   ├── get_transactions_use_case.go
+│   │   └── ...
+│   └── identity/
+├── domain/
+│   ├── finance/
+│   │   ├── transaction.go
+│   │   ├── repository.go
+│   │   └── service.go
+│   └── identity/
+├── infrastructure/
+│   └── database/
+├── interfaces/
+│   └── http/
+│       ├── handlers/
+│       │   ├── v100/
+│       │   ├── v110/
+│       │   └── v120/
+│       └── middleware/
+└── versioning/
+```
+
+**2. Naming Conventions**:
+- Use descriptive names for functions and variables
+- Follow Go naming conventions (PascalCase for exported, camelCase for private)
+- Use meaningful package names
+- Include version suffixes for version-specific code
+
+#### Error Handling
+
+**1. Structured Error Responses**:
+```go
+type APIError struct {
+    Code    string `json:"code"`
+    Message string `json:"message"`
+    Details string `json:"details,omitempty"`
+}
+
+func (h *FinanceHandlers) CreateTransaction(c *gin.Context) {
+    // ... validation logic
+    
+    if err != nil {
+        c.JSON(http.StatusBadRequest, APIError{
+            Code:    "VALIDATION_ERROR",
+            Message: "Invalid request data",
+            Details: err.Error(),
+        })
+        return
+    }
+    
+    // ... business logic
+}
+```
+
+**2. Error Logging**:
+```go
+import "log/slog"
+
+func (h *FinanceHandlers) CreateTransaction(c *gin.Context) {
+    // ... business logic
+    
+    if err != nil {
+        slog.Error("Failed to create transaction",
+            "user_id", userID,
+            "error", err.Error(),
+            "request_id", c.GetString("request_id"),
+        )
+        
+        c.JSON(http.StatusInternalServerError, APIError{
+            Code:    "INTERNAL_ERROR",
+            Message: "Failed to create transaction",
+        })
+        return
+    }
+}
+```
+
+#### Performance Optimization
+
+**1. Database Query Optimization**:
+```go
+// Use specific field selection
+func (r *GormTransactionRepository) GetByUserID(ctx context.Context, userID int) ([]Transaction, error) {
+    var transactions []Transaction
+    
+    err := r.db.Select("id, user_id, category_id, amount, description, date, type").
+        Where("user_id = ?", userID).
+        Order("date DESC").
+        Find(&transactions).Error
+        
+    return transactions, err
+}
+```
+
+**2. Caching Strategy**:
+```go
+// internal/infrastructure/cache/redis_cache.go
+package cache
+
+import (
+    "context"
+    "encoding/json"
+    "time"
+    "github.com/redis/go-redis/v9"
+)
+
+type RedisCache struct {
+    client *redis.Client
+}
+
+func (r *RedisCache) Get(ctx context.Context, key string, dest interface{}) error {
+    val, err := r.client.Get(ctx, key).Result()
+    if err != nil {
+        return err
+    }
+    
+    return json.Unmarshal([]byte(val), dest)
+}
+
+func (r *RedisCache) Set(ctx context.Context, key string, value interface{}, expiration time.Duration) error {
+    data, err := json.Marshal(value)
+    if err != nil {
+        return err
+    }
+    
+    return r.client.Set(ctx, key, data, expiration).Err()
+}
+```
+
+#### Security Best Practices
+
+**1. Input Validation**:
+```go
+import "github.com/go-playground/validator/v10"
+
+type CreateTransactionRequest struct {
+    CategoryID  int     `json:"category_id" binding:"required,min=1"`
+    Amount      float64 `json:"amount" binding:"required,gt=0"`
+    Description string  `json:"description" binding:"required,min=1,max=255"`
+    Date        string  `json:"date" binding:"required,datetime=2006-01-02"`
+}
+
+func (h *FinanceHandlers) CreateTransaction(c *gin.Context) {
+    var req CreateTransactionRequest
+    
+    if err := c.ShouldBindJSON(&req); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+        return
+    }
+    
+    // Additional validation
+    if err := validateTransactionRequest(req); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+        return
+    }
+    
+    // ... business logic
+}
+```
+
+**2. Rate Limiting**:
+```go
+import "golang.org/x/time/rate"
+
+func RateLimitMiddleware() gin.HandlerFunc {
+    limiter := rate.NewLimiter(rate.Every(time.Minute), 100)
+    
+    return func(c *gin.Context) {
+        if !limiter.Allow() {
+            c.JSON(http.StatusTooManyRequests, gin.H{
+                "error": "Rate limit exceeded",
+            })
+            c.Abort()
+            return
+        }
+        
+        c.Next()
+    }
+}
+```
+
+### Development Workflow
+
+#### Git Workflow
+
+**1. Feature Branch Strategy**:
+```bash
+# Create feature branch
+git checkout -b feature/api-versioning
+
+# Make changes
+git add .
+git commit -m "feat: implement API versioning middleware"
+
+# Push and create PR
+git push origin feature/api-versioning
+```
+
+**2. Commit Message Convention**:
+```
+feat: add new feature
+fix: bug fix
+docs: documentation changes
+style: code formatting
+refactor: code refactoring
+test: add tests
+chore: maintenance tasks
+```
+
+#### Code Review Process
+
+**1. Pull Request Template**:
+```markdown
+## Description
+Brief description of changes
+
+## Type of Change
+- [ ] Bug fix
+- [ ] New feature
+- [ ] Breaking change
+- [ ] Documentation update
+
+## Testing
+- [ ] Unit tests pass
+- [ ] Integration tests pass
+- [ ] Manual testing completed
+
+## Checklist
+- [ ] Code follows style guidelines
+- [ ] Self-review completed
+- [ ] Documentation updated
+- [ ] No breaking changes (or documented)
+```
+
+**2. Review Checklist**:
+- Code follows Go best practices
+- Proper error handling
+- Adequate test coverage
+- Documentation updated
+- No security vulnerabilities
+- Performance considerations
+
+### Debugging and Troubleshooting
+
+#### Local Debugging
+
+**1. Enable Debug Mode**:
+```bash
+export GIN_MODE=debug
+export LOG_LEVEL=debug
+go run main.go
+```
+
+**2. Database Debugging**:
+```go
+// Enable SQL logging
+db.Logger = logger.Default.LogMode(logger.Info)
+
+// Add debug middleware
+func DebugMiddleware() gin.HandlerFunc {
+    return func(c *gin.Context) {
+        start := time.Now()
+        
+        c.Next()
+        
+        log.Printf("Request: %s %s - Status: %d - Duration: %v",
+            c.Request.Method,
+            c.Request.URL.Path,
+            c.Writer.Status(),
+            time.Since(start),
+        )
+    }
+}
+```
+
+#### Common Issues and Solutions
+
+**1. Database Connection Issues**:
+```bash
+# Check database status
+docker ps | grep postgres
+
+# Check connection
+psql -h localhost -U panda_pocket_dev -d panda_pocket_dev -c "SELECT 1;"
+
+# Reset database
+docker-compose down
+docker-compose up -d
+```
+
+**2. Port Conflicts**:
+```bash
+# Check port usage
+lsof -i :8080
+
+# Kill process using port
+kill -9 $(lsof -t -i:8080)
+```
+
+**3. Environment Variable Issues**:
+```bash
+# Check environment variables
+env | grep DB_
+
+# Load from .env file
+source .env
+```
+
+### Performance Monitoring
+
+#### Application Metrics
+
+**1. Response Time Monitoring**:
+```go
+func ResponseTimeMiddleware() gin.HandlerFunc {
+    return func(c *gin.Context) {
+        start := time.Now()
+        
+        c.Next()
+        
+        duration := time.Since(start)
+        
+        // Log slow requests
+        if duration > 1*time.Second {
+            slog.Warn("Slow request detected",
+                "method", c.Request.Method,
+                "path", c.Request.URL.Path,
+                "duration", duration,
+            )
+        }
+    }
+}
+```
+
+**2. Database Query Monitoring**:
+```go
+// Enable query logging
+db.Logger = logger.Default.LogMode(logger.Info)
+
+// Add query timing
+func (r *GormTransactionRepository) GetByUserID(ctx context.Context, userID int) ([]Transaction, error) {
+    start := time.Now()
+    defer func() {
+        slog.Info("Database query completed",
+            "query", "GetByUserID",
+            "duration", time.Since(start),
+        )
+    }()
+    
+    // ... query logic
+}
+```
 
 ## Environment Configuration
 
