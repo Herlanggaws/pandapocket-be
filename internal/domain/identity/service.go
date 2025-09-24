@@ -24,19 +24,19 @@ func (s *UserService) RegisterUser(ctx context.Context, email Email, password Pa
 	if err != nil {
 		return nil, err
 	}
-	
+
 	if exists {
 		return nil, errors.New("user already exists")
 	}
-	
+
 	// Create new user
 	user := NewUser(UserID{}, email, password)
-	
+
 	// Save user
 	if err := s.userRepo.Save(ctx, user); err != nil {
 		return nil, err
 	}
-	
+
 	return user, nil
 }
 
@@ -46,13 +46,13 @@ func (s *UserService) AuthenticateUser(ctx context.Context, email Email, passwor
 	if err != nil {
 		return nil, errors.New("invalid credentials")
 	}
-	
+
 	// In a real implementation, you would verify the password hash here
 	// For now, we'll assume the password is already hashed and matches
 	if user.PasswordHash() != password {
 		return nil, errors.New("invalid credentials")
 	}
-	
+
 	return user, nil
 }
 
@@ -66,23 +66,28 @@ func (s *UserService) GetUserByEmail(ctx context.Context, email Email) (*User, e
 	return s.userRepo.FindByEmail(ctx, email)
 }
 
+// GetAllUsers retrieves all users
+func (s *UserService) GetAllUsers(ctx context.Context) ([]*User, error) {
+	return s.userRepo.FindAll(ctx)
+}
+
 // UpdateUserEmail updates a user's email
 func (s *UserService) UpdateUserEmail(ctx context.Context, id UserID, newEmail Email) error {
 	user, err := s.userRepo.FindByID(ctx, id)
 	if err != nil {
 		return err
 	}
-	
+
 	// Check if new email already exists
 	exists, err := s.userRepo.ExistsByEmail(ctx, newEmail)
 	if err != nil {
 		return err
 	}
-	
+
 	if exists {
 		return errors.New("email already exists")
 	}
-	
+
 	user.ChangeEmail(newEmail)
 	return s.userRepo.Save(ctx, user)
 }

@@ -93,6 +93,32 @@ func (r *GormUserRepository) Delete(ctx context.Context, id identity.UserID) err
 	return r.db.WithContext(ctx).Delete(&User{}, id.Value()).Error
 }
 
+// FindAll finds all users
+func (r *GormUserRepository) FindAll(ctx context.Context) ([]*identity.User, error) {
+	var userModels []User
+
+	err := r.db.WithContext(ctx).Find(&userModels).Error
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert GORM models to domain users
+	users := make([]*identity.User, len(userModels))
+	for i, userModel := range userModels {
+		emailVO, err := identity.NewEmail(userModel.Email)
+		if err != nil {
+			return nil, err
+		}
+
+		passwordHashVO := identity.NewPasswordHash(userModel.PasswordHash)
+		userID := identity.NewUserID(int(userModel.ID))
+
+		users[i] = identity.NewUser(userID, emailVO, passwordHashVO)
+	}
+
+	return users, nil
+}
+
 // ExistsByEmail checks if a user exists with the given email
 func (r *GormUserRepository) ExistsByEmail(ctx context.Context, email identity.Email) (bool, error) {
 	var count int64

@@ -11,16 +11,19 @@ import (
 type IdentityHandlers struct {
 	registerUserUseCase *identity.RegisterUserUseCase
 	loginUserUseCase    *identity.LoginUserUseCase
+	getUsersUseCase     *identity.GetUsersUseCase
 }
 
 // NewIdentityHandlers creates a new identity handlers instance
 func NewIdentityHandlers(
 	registerUserUseCase *identity.RegisterUserUseCase,
 	loginUserUseCase *identity.LoginUserUseCase,
+	getUsersUseCase *identity.GetUsersUseCase,
 ) *IdentityHandlers {
 	return &IdentityHandlers{
 		registerUserUseCase: registerUserUseCase,
 		loginUserUseCase:    loginUserUseCase,
+		getUsersUseCase:     getUsersUseCase,
 	}
 }
 
@@ -69,6 +72,20 @@ func (h *IdentityHandlers) Login(c *gin.Context) {
 			"id":    response.UserID,
 			"email": response.Email,
 		},
+	})
+}
+
+// GetUsers handles getting all users
+func (h *IdentityHandlers) GetUsers(c *gin.Context) {
+	response, err := h.getUsersUseCase.Execute(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Users retrieved successfully",
+		"data":    response,
 	})
 }
 

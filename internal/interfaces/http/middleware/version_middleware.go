@@ -27,26 +27,12 @@ type VersionMiddleware struct {
 func NewVersionMiddleware() *VersionMiddleware {
 	return &VersionMiddleware{
 		supportedVersions: map[string]VersionInfo{
-			"v120": {
-				Version:      "v120",
-				IsSupported:  true,
-				IsDeprecated: false,
-				SunsetDate:   "",
-				UpgradeURL:   "",
-			},
-			"v110": {
-				Version:      "v110",
-				IsSupported:  true,
-				IsDeprecated: false,
-				SunsetDate:   "",
-				UpgradeURL:   "",
-			},
 			"v100": {
 				Version:      "v100",
 				IsSupported:  true,
-				IsDeprecated: true,
-				SunsetDate:   "2024-06-01",
-				UpgradeURL:   "https://docs.pandapocket.com/upgrade",
+				IsDeprecated: false,
+				SunsetDate:   "",
+				UpgradeURL:   "",
 			},
 		},
 	}
@@ -80,8 +66,8 @@ func (vm *VersionMiddleware) ExtractVersion() gin.HandlerFunc {
 		}
 
 		// No version specified - redirect to latest
-		c.Header("X-API-Version", "v120")
-		c.Header("X-API-Latest", "v120")
+		c.Header("X-API-Version", "v100")
+		c.Header("X-API-Latest", "v100")
 		c.Next()
 	}
 }
@@ -93,7 +79,7 @@ func (vm *VersionMiddleware) ValidateVersion() gin.HandlerFunc {
 
 		if version == "" {
 			// No version specified, use latest
-			c.Set("api_version", "v120")
+			c.Set("api_version", "v100")
 			c.Next()
 			return
 		}
@@ -102,8 +88,8 @@ func (vm *VersionMiddleware) ValidateVersion() gin.HandlerFunc {
 		if !exists {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"error":              "Unsupported API version",
-				"supported_versions": []string{"v120", "v110", "v100"},
-				"latest_version":     "v120",
+				"supported_versions": []string{"v100"},
+				"latest_version":     "v100",
 			})
 			c.Abort()
 			return
@@ -113,7 +99,7 @@ func (vm *VersionMiddleware) ValidateVersion() gin.HandlerFunc {
 			c.JSON(http.StatusGone, gin.H{
 				"error":          "API version no longer supported",
 				"version":        version,
-				"latest_version": "v120",
+				"latest_version": "v100",
 				"upgrade_url":    "https://docs.pandapocket.com/upgrade",
 			})
 			c.Abort()
@@ -158,7 +144,7 @@ func (vm *VersionMiddleware) addDeprecationWarningToResponse(c *gin.Context) {
 	response := c.Writer.Header().Get("Content-Type")
 	if strings.Contains(response, "application/json") {
 		// Add deprecation warning to JSON response
-		c.Header("X-API-Deprecation-Warning", fmt.Sprintf("API version %s is deprecated and will be removed on %s. Please upgrade to v120.", version, versionInfo.SunsetDate))
+		c.Header("X-API-Deprecation-Warning", fmt.Sprintf("API version %s is deprecated and will be removed on %s. Please upgrade to v100.", version, versionInfo.SunsetDate))
 	}
 }
 
@@ -217,7 +203,7 @@ func (vm *VersionMiddleware) RemoveVersion(version string) {
 
 // GetCurrentVersion returns the current/latest version
 func (vm *VersionMiddleware) GetCurrentVersion() string {
-	return "v120"
+	return "v100"
 }
 
 // GetDeprecatedVersions returns list of deprecated versions

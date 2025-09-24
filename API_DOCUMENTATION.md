@@ -5,7 +5,7 @@
 PandaPocket is a personal finance management API built with Domain-Driven Design (DDD) architecture. The API allows users to track expenses, incomes, categories, budgets, and currencies with comprehensive analytics.
 
 **Base URL:** `http://localhost:8080`  
-**API Versioning:** Multi-version support (v110)  
+**API Versioning:** Versioned endpoints only (v100)  
 **Content-Type:** `application/json`  
 **Architecture:** Domain-Driven Design (DDD)
 
@@ -17,12 +17,12 @@ The PandaPocket API supports multiple versions to ensure backward compatibility 
 
 | Version | Status | Features | Sunset Date |
 |---------|--------|----------|-------------|
-| **v110** | ✅ Current | Latest features, analytics, advanced filtering | - |
+| **v100** | ✅ Current | Core features, transactions, categories, budgets, currencies, analytics | - |
 
 ### Version Endpoints
 
-- **Current Version (v110):** `/api/v110/transactions`
-- **Legacy Routes:** `/api/transactions` (redirects to v110)
+- **Current Version (v100):** `/api/v100/transactions`
+- **All endpoints require versioning** - Version must be specified in URL
 
 ### Version Headers
 
@@ -54,12 +54,12 @@ For future version management:
 - **Analytics**: Advanced analytics with detailed insights
 - **Version Management**: Complete version lifecycle management
 
-#### Legacy Routes (Backward Compatibility)
-- **Authentication**: Register, Login, Logout
+#### Versioned Routes (v100 Only)
+- **Authentication**: Register, Login, Logout (versioned)
 - **Categories**: Full CRUD operations (Get, Create, Update, Delete)
-- **Expenses**: Full CRUD operations (Get, Create, Update, Delete)
-- **Incomes**: Full CRUD operations (Get, Create, Update, Delete)
-- **Transactions**: Get all transactions with advanced filtering
+- **Expenses**: Core operations (Get, Create, Delete)
+- **Incomes**: Core operations (Get, Create, Delete)
+- **Transactions**: Get all transactions with advanced filtering and pagination
 - **Budgets**: Full CRUD operations (Get, Create, Update, Delete)
 - **Currencies**: Full CRUD operations (Get, Create, Update, Delete)
 - **Analytics**: Spending analytics and reports
@@ -112,92 +112,49 @@ Check if the API is running.
 
 ## Version-Specific Endpoints
 
-### Version 1.2.0 (v120) - Latest Features
+### Version 1.0.0 (v100) - Current Features
 
-#### Enhanced Transactions
-- **GET** `/api/v120/transactions` - Get transactions with advanced analytics
-- **POST** `/api/v120/transactions` - Create transaction with enhanced validation
-- **PUT** `/api/v120/transactions/{id}` - Update transaction with enhanced validation
-- **DELETE** `/api/v120/transactions/{id}` - Delete transaction with confirmation
-- **GET** `/api/v120/transactions/analytics` - Get detailed transaction analytics
+#### Authentication
+- **POST** `/api/v100/auth/register` - Register new user
+- **POST** `/api/v100/auth/login` - Login user
+- **POST** `/api/v100/auth/logout` - Logout user
 
-#### Enhanced Categories
-- **GET** `/api/v120/categories` - Get categories with analytics
-- **POST** `/api/v120/categories` - Create category with enhanced validation
-- **PUT** `/api/v120/categories/{id}` - Update category with enhanced validation
-- **DELETE** `/api/v120/categories/{id}` - Delete category with confirmation
+#### Categories
+- **GET** `/api/v100/categories` - Get categories
+- **POST** `/api/v100/categories` - Create category
+- **PUT** `/api/v100/categories/{id}` - Update category
+- **DELETE** `/api/v100/categories/{id}` - Delete category
 
-#### Enhanced Budgets
-- **GET** `/api/v120/budgets` - Get budgets with analytics
-- **POST** `/api/v120/budgets` - Create budget with enhanced validation
-- **PUT** `/api/v120/budgets/{id}` - Update budget with enhanced validation
-- **DELETE** `/api/v120/budgets/{id}` - Delete budget with confirmation
+#### Expenses
+- **GET** `/api/v100/expenses` - Get expenses
+- **POST** `/api/v100/expenses` - Create expense
+- **DELETE** `/api/v100/expenses/{id}` - Delete expense
 
-#### Enhanced Currencies
-- **GET** `/api/v120/currencies` - Get currencies with analytics
-- **POST** `/api/v120/currencies` - Create currency with enhanced validation
-- **PUT** `/api/v120/currencies/{id}` - Update currency with enhanced validation
-- **DELETE** `/api/v120/currencies/{id}` - Delete currency with confirmation
-- **GET** `/api/v120/currencies/default` - Get default currency with analytics
-- **PUT** `/api/v120/currencies/{id}/set-default` - Set default currency with enhanced validation
+#### Incomes
+- **GET** `/api/v100/incomes` - Get incomes
+- **POST** `/api/v100/incomes` - Create income
+- **DELETE** `/api/v100/incomes/{id}` - Delete income
 
-#### Enhanced Analytics
-- **GET** `/api/v120/analytics` - Get advanced analytics with detailed insights
+#### Transactions
+- **GET** `/api/v100/transactions` - Get all transactions with filtering
 
-### Version 1.0.0 (v100) - Legacy (Deprecated)
+#### Budgets
+- **GET** `/api/v100/budgets` - Get budgets
+- **POST** `/api/v100/budgets` - Create budget
+- **PUT** `/api/v100/budgets/{id}` - Update budget
+- **DELETE** `/api/v100/budgets/{id}` - Delete budget
 
-#### Legacy Expenses
-- **GET** `/api/v100/expenses` - Get expenses (deprecated)
-- **POST** `/api/v100/expenses` - Create expense (deprecated)
-- **PUT** `/api/v100/expenses/{id}` - Update expense (deprecated)
-- **DELETE** `/api/v100/expenses/{id}` - Delete expense (deprecated)
+#### Currencies
+- **GET** `/api/v100/currencies` - Get currencies
+- **POST** `/api/v100/currencies` - Create currency
+- **PUT** `/api/v100/currencies/{id}` - Update currency
+- **DELETE** `/api/v100/currencies/{id}` - Delete currency
+- **GET** `/api/v100/currencies/default` - Get default currency
+- **PUT** `/api/v100/currencies/{id}/set-default` - Set default currency
 
-#### Legacy Incomes
-- **GET** `/api/v100/incomes` - Get incomes (deprecated)
-- **POST** `/api/v100/incomes` - Create income (deprecated)
-- **PUT** `/api/v100/incomes/{id}` - Update income (deprecated)
-- **DELETE** `/api/v100/incomes/{id}` - Delete income (deprecated)
+#### Analytics
+- **GET** `/api/v100/analytics` - Get spending analytics
 
-#### Legacy Transactions
-- **GET** `/api/v100/transactions` - Get all transactions (deprecated)
-
-#### Legacy Categories
-- **GET** `/api/v100/categories` - Get categories (deprecated)
-- **POST** `/api/v100/categories` - Create category (deprecated)
-- **PUT** `/api/v100/categories/{id}` - Update category (deprecated)
-- **DELETE** `/api/v100/categories/{id}` - Delete category (deprecated)
-
-#### Legacy Budgets
-- **GET** `/api/v100/budgets` - Get budgets (deprecated)
-- **POST** `/api/v100/budgets` - Create budget (deprecated)
-- **PUT** `/api/v100/budgets/{id}` - Update budget (deprecated)
-- **DELETE** `/api/v100/budgets/{id}` - Delete budget (deprecated)
-
-#### Legacy Currencies
-- **GET** `/api/v100/currencies` - Get currencies (deprecated)
-- **POST** `/api/v100/currencies` - Create currency (deprecated)
-- **PUT** `/api/v100/currencies/{id}` - Update currency (deprecated)
-- **DELETE** `/api/v100/currencies/{id}` - Delete currency (deprecated)
-- **GET** `/api/v100/currencies/default` - Get default currency (deprecated)
-- **PUT** `/api/v100/currencies/{id}/set-default` - Set default currency (deprecated)
-
-#### Legacy Analytics
-- **GET** `/api/v100/analytics` - Get basic analytics (deprecated)
-
-### Version Management Endpoints
-
-#### Version Information
-- **GET** `/api/version/info/{version}` - Get version information
-- **GET** `/api/version/status/{version}` - Get version status
-- **GET** `/api/version/matrix` - Get version matrix
-- **GET** `/api/version/features/{version}` - Get version features
-
-#### Migration Support
-- **GET** `/api/version/migration/{version}` - Get migration path
-- **GET** `/api/version/compare` - Compare versions
-- **GET** `/api/version/validate` - Validate version transition
-- **GET** `/api/version/timeline` - Get deprecation timeline
-- **GET** `/api/version/recommendations/{version}` - Get upgrade recommendations
 
 ---
 
@@ -440,342 +397,6 @@ Get advanced analytics with detailed insights.
 }
 ```
 
-### Version 1.0.0 (v100) - Legacy (Deprecated)
-
-#### Legacy Expenses
-
-##### GET /api/v100/expenses
-
-Get expenses (deprecated - use v120 transactions).
-
-**Response:**
-```json
-{
-  "expenses": [
-    {
-      "id": 1,
-      "user_id": 1,
-      "category_id": 1,
-      "currency_id": 1,
-      "amount": 50.0,
-      "description": "Legacy expense",
-      "date": "2024-01-15",
-      "type": "expense"
-    }
-  ],
-  "version": "v100",
-  "deprecated": true,
-  "sunset_date": "2024-06-01",
-  "upgrade_url": "https://docs.pandapocket.com/upgrade"
-}
-```
-
-##### POST /api/v100/expenses
-
-Create expense (deprecated - use v120 transactions).
-
-**Request Body:**
-```json
-{
-  "category_id": 1,
-  "amount": 50.0,
-  "description": "Legacy expense",
-  "date": "2024-01-15"
-}
-```
-
-**Response:**
-```json
-{
-  "message": "Expense created successfully",
-  "expense": {
-    "id": 1,
-    "user_id": 1,
-    "category_id": 1,
-    "currency_id": 1,
-    "amount": 50.0,
-    "description": "Legacy expense",
-    "date": "2024-01-15",
-    "type": "expense"
-  },
-  "version": "v100",
-  "deprecated": true,
-  "sunset_date": "2024-06-01",
-  "upgrade_url": "https://docs.pandapocket.com/upgrade"
-}
-```
-
-#### Legacy Incomes
-
-##### GET /api/v100/incomes
-
-Get incomes (deprecated - use v120 transactions).
-
-**Response:**
-```json
-{
-  "incomes": [
-    {
-      "id": 1,
-      "user_id": 1,
-      "category_id": 9,
-      "currency_id": 1,
-      "amount": 2000.0,
-      "description": "Legacy income",
-      "date": "2024-01-01",
-      "type": "income"
-    }
-  ],
-  "version": "v100",
-  "deprecated": true,
-  "sunset_date": "2024-06-01",
-  "upgrade_url": "https://docs.pandapocket.com/upgrade"
-}
-```
-
-### Version Management Endpoints
-
-#### Version Information
-
-##### GET /api/version/info/{version}
-
-Get detailed information about a specific version.
-
-**Parameters:**
-- `version`: Version identifier (e.g., `v100`, `v120`)
-
-**Response:**
-```json
-{
-  "version": "v100",
-  "deprecated": true,
-  "sunset_date": "2024-06-01",
-  "warning_message": "API version v100 is deprecated and will be removed on 2024-06-01. Please upgrade to v120.",
-  "upgrade_url": "https://docs.pandapocket.com/upgrade",
-  "latest_version": "v120",
-  "is_sunset": false
-}
-```
-
-##### GET /api/version/status/{version}
-
-Get the status and lifecycle information for a version.
-
-**Response:**
-```json
-{
-  "version": "v120",
-  "status": "supported",
-  "lifecycle": {
-    "version": "v110",
-    "status": "supported",
-    "current": true,
-    "deprecated": false
-  },
-  "current_version": "v120",
-  "supported_versions": ["v120", "v110", "v100"]
-}
-```
-
-##### GET /api/version/matrix
-
-Get a complete matrix of all versions and their status.
-
-**Response:**
-```json
-{
-  "current_version": "v120",
-  "supported_versions": ["v120", "v110", "v100"],
-  "deprecated_versions": ["v100"],
-  "versions": {
-    "v120": {
-      "version": "v110",
-      "status": "supported",
-      "current": true,
-      "deprecated": false
-    },
-    "v100": {
-      "version": "v100",
-      "status": "deprecated",
-      "current": false,
-      "deprecated": true,
-      "sunset_date": "2024-06-01",
-      "warning_message": "API version v100 is deprecated...",
-      "upgrade_url": "https://docs.pandapocket.com/upgrade",
-      "is_sunset": false
-    }
-  }
-}
-```
-
-##### GET /api/version/features/{version}
-
-Get the features available in a specific version.
-
-**Response:**
-```json
-{
-  "version": "v120",
-  "features": {
-    "basic_transactions": true,
-    "categories": true,
-    "currencies": true,
-    "budgets": true,
-    "analytics": true,
-    "advanced_filtering": true,
-    "bulk_operations": true,
-    "export_functionality": true
-  },
-  "status": "supported"
-}
-```
-
-#### Migration Support
-
-##### GET /api/version/migration/{version}
-
-Get the recommended migration path for a version.
-
-**Response:**
-```json
-{
-  "from_version": "v100",
-  "migration_path": ["v120"],
-  "current_version": "v120",
-  "features": {
-    "basic_transactions": true,
-    "categories": true,
-    "currencies": true,
-    "budgets": true
-  }
-}
-```
-
-##### GET /api/version/compare
-
-Compare two versions to see differences.
-
-**Query Parameters:**
-- `version1`: First version to compare
-- `version2`: Second version to compare
-
-**Example:** `GET /api/version/compare?version1=v100&version2=v120`
-
-**Response:**
-```json
-{
-  "version1": "v100",
-  "version2": "v120",
-  "features1": {
-    "basic_transactions": true,
-    "categories": true,
-    "currencies": true,
-    "budgets": true
-  },
-  "features2": {
-    "basic_transactions": true,
-    "categories": true,
-    "currencies": true,
-    "budgets": true,
-    "analytics": true,
-    "advanced_filtering": true,
-    "bulk_operations": true,
-    "export_functionality": true
-  },
-  "differences": {
-    "analytics": {
-      "v100": false,
-      "v120": true
-    },
-    "advanced_filtering": {
-      "v100": false,
-      "v120": true
-    }
-  }
-}
-```
-
-##### GET /api/version/validate
-
-Validate if a version transition is valid.
-
-**Query Parameters:**
-- `from`: Source version
-- `to`: Target version
-
-**Response:**
-```json
-{
-  "valid": true,
-  "from_version": "v100",
-  "to_version": "v120",
-  "message": "Version transition is valid"
-}
-```
-
-##### GET /api/version/timeline
-
-Get the deprecation timeline for all versions.
-
-**Response:**
-```json
-{
-  "timeline": {
-    "v120": {
-      "version": "v110",
-      "status": "supported",
-      "current": true,
-      "deprecated": false
-    },
-    "v100": {
-      "version": "v100",
-      "status": "deprecated",
-      "current": false,
-      "deprecated": true,
-      "sunset_date": "2024-06-01",
-      "warning_message": "API version v100 is deprecated...",
-      "upgrade_url": "https://docs.pandapocket.com/upgrade",
-      "is_sunset": false
-    }
-  },
-  "current_date": "2024-01-15",
-  "current_version": "v120"
-}
-```
-
-##### GET /api/version/recommendations/{version}
-
-Get upgrade recommendations for a version.
-
-**Response:**
-```json
-{
-  "current_version": "v120",
-  "requested_version": "v100",
-  "is_deprecated": true,
-  "is_sunset": false,
-  "migration_path": ["v120"],
-  "features": {
-    "basic_transactions": true,
-    "categories": true,
-    "currencies": true,
-    "budgets": true
-  },
-  "new_features": {
-    "basic_transactions": true,
-    "categories": true,
-    "currencies": true,
-    "budgets": true,
-    "analytics": true,
-    "advanced_filtering": true,
-    "bulk_operations": true,
-    "export_functionality": true
-  },
-  "sunset_date": "2024-06-01",
-  "warning_message": "API version v100 is deprecated and will be removed on 2024-06-01. Please upgrade to v120.",
-  "upgrade_url": "https://docs.pandapocket.com/upgrade"
-}
-```
 
 ---
 
@@ -1056,7 +677,7 @@ if (features.includes('analytics')) {
 
 ## User Authentication
 
-### POST /api/auth/register
+### POST /api/v100/auth/register
 
 Register a new user account.
 
@@ -1075,12 +696,13 @@ Register a new user account.
   "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
   "user": {
     "id": 1,
-    "email": "user@example.com"
+    "email": "user@example.com",
+    "name": "User"
   }
 }
 ```
 
-### POST /api/auth/login
+### POST /api/v100/auth/login
 
 Login to get an authentication token.
 
@@ -1099,12 +721,13 @@ Login to get an authentication token.
   "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
   "user": {
     "id": 1,
-    "email": "user@example.com"
+    "email": "user@example.com",
+    "name": "User"
   }
 }
 ```
 
-### POST /api/auth/logout
+### POST /api/v100/auth/logout
 
 Logout and invalidate the current token.
 
@@ -1119,7 +742,7 @@ Logout and invalidate the current token.
 
 ## Categories
 
-### GET /api/categories
+### GET /api/v100/categories
 
 Get all categories available to the user (default + user-created).
 
@@ -1144,7 +767,7 @@ Get all categories available to the user (default + user-created).
 ]
 ```
 
-### POST /api/categories
+### POST /api/v100/categories
 
 Create a new category.
 
@@ -1170,7 +793,7 @@ Create a new category.
 }
 ```
 
-### PUT /api/categories/:id
+### PUT /api/v100/categories/:id
 
 Update an existing category.
 
@@ -1196,7 +819,7 @@ Update an existing category.
 }
 ```
 
-### DELETE /api/categories/:id
+### DELETE /api/v100/categories/:id
 
 Delete a category.
 
@@ -1212,36 +835,40 @@ Delete a category.
 
 ## Expenses
 
-### GET /api/expenses
+### GET /api/v100/expenses
 
-Get all expenses for the authenticated user.
+Get all expense transactions for the authenticated user.
 
 **Response:**
 ```json
 [
   {
-    "id": 13,
-    "user_id": 7,
+    "id": 1,
+    "user_id": 1,
     "category_id": 1,
-    "currency_id": 6,
-    "amount": 50,
-    "description": "Final Test Expense",
-    "date": "2024-01-17",
-    "type": "expense",
-    "created_at": "2025-09-10T11:02:29+07:00"
+    "category": {
+      "id": 1,
+      "name": "Food",
+      "color": "#EF4444",
+      "type": "expense"
+    },
+    "amount": 50.0,
+    "description": "Lunch at restaurant",
+    "date": "2024-01-15",
+    "created_at": "2024-01-15T10:00:00Z"
   }
 ]
 ```
 
-### POST /api/expenses
+### POST /api/v100/expenses
 
-Create a new expense.
+Create a new expense transaction.
 
 **Request Body:**
 ```json
 {
   "category_id": 1,
-  "amount": 25.50,
+  "amount": 50.0,
   "description": "Lunch at restaurant",
   "date": "2024-01-15"
 }
@@ -1252,53 +879,20 @@ Create a new expense.
 {
   "message": "Expense created successfully",
   "expense": {
-    "id": 0,
-    "user_id": 7,
+    "id": 1,
+    "user_id": 1,
     "category_id": 1,
-    "currency_id": 6,
-    "amount": 25.5,
+    "amount": 50.0,
     "description": "Lunch at restaurant",
     "date": "2024-01-15",
-    "type": "expense",
-    "created_at": "2025-09-10T10:56:56+07:00"
+    "created_at": "2024-01-15T10:00:00Z"
   }
 }
 ```
 
-### PUT /api/expenses/:id
+### DELETE /api/v100/expenses/:id
 
-Update an existing expense.
-
-**Request Body:**
-```json
-{
-  "category_id": 1,
-  "amount": 150.00,
-  "description": "Updated lunch at restaurant",
-  "date": "2024-01-15"
-}
-```
-
-**Response:**
-```json
-{
-  "message": "Expense updated successfully",
-  "expense": {
-    "id": 1,
-    "user_id": 7,
-    "category_id": 1,
-    "currency_id": 6,
-    "amount": 150,
-    "description": "Updated lunch at restaurant",
-    "date": "2024-01-15",
-    "type": "expense"
-  }
-}
-```
-
-### DELETE /api/expenses/:id
-
-Delete an expense.
+Delete an expense transaction.
 
 **Response:**
 ```json
@@ -1311,36 +905,40 @@ Delete an expense.
 
 ## Incomes
 
-### GET /api/incomes
+### GET /api/v100/incomes
 
-Get all incomes for the authenticated user.
+Get all income transactions for the authenticated user.
 
 **Response:**
 ```json
 [
   {
-    "id": 8,
-    "user_id": 7,
+    "id": 1,
+    "user_id": 1,
     "category_id": 9,
-    "currency_id": 6,
-    "amount": 2000,
-    "description": "Final Test Income",
-    "date": "2024-01-17",
-    "type": "income",
-    "created_at": "2025-09-10T11:02:50+07:00"
+    "category": {
+      "id": 9,
+      "name": "Salary",
+      "color": "#10B981",
+      "type": "income"
+    },
+    "amount": 3000.0,
+    "description": "Monthly salary",
+    "date": "2024-01-01",
+    "created_at": "2024-01-01T09:00:00Z"
   }
 ]
 ```
 
-### POST /api/incomes
+### POST /api/v100/incomes
 
-Create a new income.
+Create a new income transaction.
 
 **Request Body:**
 ```json
 {
-  "category_id": 5,
-  "amount": 3000.00,
+  "category_id": 9,
+  "amount": 3000.0,
   "description": "Monthly salary",
   "date": "2024-01-01"
 }
@@ -1351,53 +949,20 @@ Create a new income.
 {
   "message": "Income created successfully",
   "income": {
-    "id": 0,
-    "user_id": 7,
+    "id": 1,
+    "user_id": 1,
     "category_id": 9,
-    "currency_id": 6,
-    "amount": 3000,
+    "amount": 3000.0,
     "description": "Monthly salary",
     "date": "2024-01-01",
-    "type": "income",
-    "created_at": "2025-09-10T10:57:04+07:00"
+    "created_at": "2024-01-01T09:00:00Z"
   }
 }
 ```
 
-### PUT /api/incomes/:id
+### DELETE /api/v100/incomes/:id
 
-Update an existing income.
-
-**Request Body:**
-```json
-{
-  "category_id": 9,
-  "amount": 4000.00,
-  "description": "Updated monthly salary",
-  "date": "2024-01-01"
-}
-```
-
-**Response:**
-```json
-{
-  "message": "Income updated successfully",
-  "income": {
-    "id": 1,
-    "user_id": 7,
-    "category_id": 9,
-    "currency_id": 6,
-    "amount": 4000,
-    "description": "Updated monthly salary",
-    "date": "2024-01-01",
-    "type": "income"
-  }
-}
-```
-
-### DELETE /api/incomes/:id
-
-Delete an income.
+Delete an income transaction.
 
 **Response:**
 ```json
@@ -1410,7 +975,7 @@ Delete an income.
 
 ## Transactions
 
-### GET /api/transactions
+### GET /api/v100/transactions
 
 Get all transactions (both income and expense) for the authenticated user with advanced filtering capabilities.
 
@@ -1423,13 +988,13 @@ Get all transactions (both income and expense) for the authenticated user with a
 - `limit` (optional): Number of items per page (default: 20, max: 100)
 
 **Examples:**
-- Get all transactions: `GET /api/transactions`
-- Get only expenses: `GET /api/transactions?type=expense`
-- Get transactions from specific date range: `GET /api/transactions?start_date=2024-01-01&end_date=2024-12-31`
-- Get transactions from specific categories: `GET /api/transactions?category_ids=1,2,3`
-- Combined filters: `GET /api/transactions?type=expense&start_date=2024-01-01&end_date=2024-12-31&category_ids=1,2`
-- Paginated results: `GET /api/transactions?page=2&limit=10`
-- Paginated with filters: `GET /api/transactions?type=expense&page=1&limit=5`
+- Get all transactions: `GET /api/v100/transactions`
+- Get only expenses: `GET /api/v100/transactions?type=expense`
+- Get transactions from specific date range: `GET /api/v100/transactions?start_date=2024-01-01&end_date=2024-12-31`
+- Get transactions from specific categories: `GET /api/v100/transactions?category_ids=1,2,3`
+- Combined filters: `GET /api/v100/transactions?type=expense&start_date=2024-01-01&end_date=2024-12-31&category_ids=1,2`
+- Paginated results: `GET /api/v100/transactions?page=2&limit=10`
+- Paginated with filters: `GET /api/v100/transactions?type=expense&page=1&limit=5`
 
 **Response:**
 ```json
@@ -1444,7 +1009,13 @@ Get all transactions (both income and expense) for the authenticated user with a
       "description": "Test expense",
       "date": "2024-01-15",
       "type": "expense",
-      "created_at": "2025-09-24T04:35:44+07:00"
+      "created_at": "2025-09-24T04:35:44+07:00",
+      "category": {
+        "id": 1,
+        "name": "Food",
+        "color": "#EF4444",
+        "type": "expense"
+      }
     },
     {
       "id": 5,
@@ -1455,7 +1026,13 @@ Get all transactions (both income and expense) for the authenticated user with a
       "description": "Test salary",
       "date": "2024-01-01",
       "type": "income",
-      "created_at": "2025-09-24T04:35:44+07:00"
+      "created_at": "2025-09-24T04:35:44+07:00",
+      "category": {
+        "id": 9,
+        "name": "Salary",
+        "color": "#10B981",
+        "type": "income"
+      }
     }
   ],
   "total": 2,
@@ -1495,7 +1072,7 @@ Get all transactions (both income and expense) for the authenticated user with a
 
 ## Budgets
 
-### GET /api/budgets
+### GET /api/v100/budgets
 
 Get all budgets for the authenticated user.
 
@@ -1516,7 +1093,7 @@ Get all budgets for the authenticated user.
 ]
 ```
 
-### POST /api/budgets
+### POST /api/v100/budgets
 
 Create a new budget.
 
@@ -1549,7 +1126,7 @@ Create a new budget.
 }
 ```
 
-### PUT /api/budgets/:id
+### PUT /api/v100/budgets/:id
 
 Update an existing budget.
 
@@ -1570,7 +1147,7 @@ Update an existing budget.
 }
 ```
 
-### DELETE /api/budgets/:id
+### DELETE /api/v100/budgets/:id
 
 Delete a budget.
 
@@ -1585,7 +1162,7 @@ Delete a budget.
 
 ## Currencies
 
-### GET /api/currencies
+### GET /api/v100/currencies
 
 Get all currencies available in the system.
 
@@ -1609,7 +1186,7 @@ Get all currencies available in the system.
 ]
 ```
 
-### POST /api/currencies
+### POST /api/v100/currencies
 
 Create a new currency.
 
@@ -1637,7 +1214,7 @@ Create a new currency.
 }
 ```
 
-### PUT /api/currencies/:id
+### PUT /api/v100/currencies/:id
 
 Update an existing currency.
 
@@ -1665,7 +1242,7 @@ Update an existing currency.
 }
 ```
 
-### DELETE /api/currencies/:id
+### DELETE /api/v100/currencies/:id
 
 Delete a currency.
 
@@ -1676,7 +1253,7 @@ Delete a currency.
 }
 ```
 
-### PUT /api/currencies/:id/set-default
+### PUT /api/v100/currencies/:id/set-default
 
 Set a currency as the user's default currency.
 
@@ -1687,7 +1264,7 @@ Set a currency as the user's default currency.
 }
 ```
 
-### GET /api/currencies/default
+### GET /api/v100/currencies/default
 
 Get the user's default currency.
 
@@ -1707,7 +1284,7 @@ Get the user's default currency.
 
 ## Analytics
 
-### GET /api/analytics
+### GET /api/v100/analytics
 
 Get spending analytics and reports.
 
@@ -1822,6 +1399,13 @@ All endpoints may return the following error responses:
 ---
 
 ## Version History
+
+- **v2.3.0**: **Enhanced API Documentation** - Updated documentation to reflect current implementation
+  - Added detailed documentation for Expenses and Incomes endpoints
+  - Updated Transactions endpoint with enhanced response structure including category details
+  - Improved pagination and filtering documentation
+  - Added comprehensive request/response examples for all endpoints
+  - Updated version history and implementation status
 
 - **v2.2.0**: **API Versioning System** - Multi-version API support with backward compatibility
   - Complete API versioning implementation with support for v110
