@@ -243,11 +243,11 @@ func BenchmarkVersionMiddleware(b *testing.B) {
 	})
 
 	req, _ := http.NewRequest("GET", "/api/v120/test", nil)
-	w := httptest.NewRecorder()
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		router.ServeHTTP(w, httptest.NewRecorder())
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
 	}
 }
 
