@@ -28,17 +28,24 @@ func (uc *UpdateBudgetUseCase) Execute(
 	amount float64,
 	periodStr string,
 	startDateStr string,
-) error {
+	endDateStr string,
+) (*finance.Budget, error) {
 	// Parse budget ID
 	budgetIDInt, err := strconv.Atoi(budgetIDStr)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Parse start date
 	startDate, err := time.Parse("2006-01-02", startDateStr)
 	if err != nil {
-		return err
+		return nil, err
+	}
+
+	// Parse end date
+	endDate, err := time.Parse("2006-01-02", endDateStr)
+	if err != nil {
+		return nil, err
 	}
 
 	// Convert to domain types
@@ -46,17 +53,23 @@ func (uc *UpdateBudgetUseCase) Execute(
 	userIDDomain := finance.NewUserID(userID)
 	amountDomain, err := finance.NewMoney(amount, finance.NewCurrencyID(1)) // Default currency
 	if err != nil {
-		return err
+		return nil, err
 	}
 	period := finance.BudgetPeriod(periodStr)
 
 	// Update budget
-	return uc.budgetService.UpdateBudget(
+	updatedBudget, err := uc.budgetService.UpdateBudget(
 		ctx,
 		budgetID,
 		userIDDomain,
 		amountDomain,
 		period,
 		startDate,
+		endDate,
 	)
+	if err != nil {
+		return nil, err
+	}
+
+	return updatedBudget, nil
 }

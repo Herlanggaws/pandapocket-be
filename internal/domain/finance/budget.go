@@ -51,7 +51,7 @@ func NewBudget(
 	if amount.Amount() <= 0 {
 		return nil, errors.New("budget amount must be positive")
 	}
-	
+
 	// Calculate end date based on period
 	var endDate time.Time
 	switch period {
@@ -64,7 +64,7 @@ func NewBudget(
 	default:
 		return nil, errors.New("invalid budget period")
 	}
-	
+
 	return &Budget{
 		id:         id,
 		userID:     userID,
@@ -135,7 +135,7 @@ func (b *Budget) UpdatePeriod(newPeriod BudgetPeriod) error {
 	default:
 		return errors.New("invalid budget period")
 	}
-	
+
 	b.period = newPeriod
 	b.endDate = endDate
 	return nil
@@ -144,7 +144,7 @@ func (b *Budget) UpdatePeriod(newPeriod BudgetPeriod) error {
 // UpdateStartDate updates the start date and recalculates end date
 func (b *Budget) UpdateStartDate(newStartDate time.Time) {
 	b.startDate = newStartDate
-	
+
 	// Recalculate end date
 	switch b.period {
 	case BudgetPeriodWeekly:
@@ -154,6 +154,11 @@ func (b *Budget) UpdateStartDate(newStartDate time.Time) {
 	case BudgetPeriodYearly:
 		b.endDate = newStartDate.AddDate(1, 0, 0)
 	}
+}
+
+// UpdateEndDate updates the end date
+func (b *Budget) UpdateEndDate(newEndDate time.Time) {
+	b.endDate = newEndDate
 }
 
 // IsActive checks if the budget is currently active

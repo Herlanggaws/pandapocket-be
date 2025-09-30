@@ -69,6 +69,8 @@ func (r *GormBudgetRepository) FindByID(ctx context.Context, id finance.BudgetID
 		period,
 		budgetModel.StartDate,
 	)
+	// Set the actual end date from database instead of calculated one
+	budget.UpdateEndDate(budgetModel.EndDate)
 
 	return budget, nil
 }
@@ -99,6 +101,8 @@ func (r *GormBudgetRepository) FindByUserID(ctx context.Context, userID finance.
 			period,
 			model.StartDate,
 		)
+		// Set the actual end date from database instead of calculated one
+		budget.UpdateEndDate(model.EndDate)
 		budgets = append(budgets, budget)
 	}
 
@@ -131,6 +135,8 @@ func (r *GormBudgetRepository) FindByUserIDAndCategory(ctx context.Context, user
 			period,
 			model.StartDate,
 		)
+		// Set the actual end date from database instead of calculated one
+		budget.UpdateEndDate(model.EndDate)
 		budgets = append(budgets, budget)
 	}
 
@@ -164,6 +170,8 @@ func (r *GormBudgetRepository) FindActiveByUserID(ctx context.Context, userID fi
 			period,
 			model.StartDate,
 		)
+		// Set the actual end date from database instead of calculated one
+		budget.UpdateEndDate(model.EndDate)
 		budgets = append(budgets, budget)
 	}
 

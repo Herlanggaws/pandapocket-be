@@ -386,31 +386,37 @@ func (s *BudgetService) UpdateBudget(
 	amount Money,
 	period BudgetPeriod,
 	startDate time.Time,
-) error {
+	endDate time.Time,
+) (*Budget, error) {
 	// Get budget
 	budget, err := s.budgetRepo.FindByID(ctx, budgetID)
 	if err != nil {
-		return errors.New("budget not found")
+		return nil, errors.New("budget not found")
 	}
 
 	// Check if user can update this budget
 	if budget.UserID().Value() != userID.Value() {
-		return errors.New("access denied")
+		return nil, errors.New("access denied")
 	}
 
 	// Update budget
 	if err := budget.UpdateAmount(amount); err != nil {
-		return err
+		return nil, err
 	}
 
 	if err := budget.UpdatePeriod(period); err != nil {
-		return err
+		return nil, err
 	}
 
 	budget.UpdateStartDate(startDate)
+	budget.UpdateEndDate(endDate)
 
 	// Save updated budget
-	return s.budgetRepo.Save(ctx, budget)
+	if err := s.budgetRepo.Save(ctx, budget); err != nil {
+		return nil, err
+	}
+
+	return budget, nil
 }
 
 // DeleteBudget deletes a budget

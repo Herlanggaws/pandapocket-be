@@ -492,6 +492,7 @@ func (h *FinanceHandlers) UpdateBudget(c *gin.Context) {
 		Amount     float64 `json:"amount" binding:"required"`
 		Period     string  `json:"period" binding:"required"`
 		StartDate  string  `json:"start_date" binding:"required"`
+		EndDate    string  `json:"end_date" binding:"required"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -500,7 +501,7 @@ func (h *FinanceHandlers) UpdateBudget(c *gin.Context) {
 	}
 
 	// Update the budget
-	err := h.updateBudgetUseCase.Execute(
+	updatedBudget, err := h.updateBudgetUseCase.Execute(
 		c.Request.Context(),
 		budgetID,
 		userID,
@@ -508,6 +509,7 @@ func (h *FinanceHandlers) UpdateBudget(c *gin.Context) {
 		req.Amount,
 		req.Period,
 		req.StartDate,
+		req.EndDate,
 	)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -516,6 +518,16 @@ func (h *FinanceHandlers) UpdateBudget(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Budget updated successfully",
+		"budget": gin.H{
+			"id":          updatedBudget.ID().Value(),
+			"user_id":     updatedBudget.UserID().Value(),
+			"category_id": updatedBudget.CategoryID().Value(),
+			"amount":      updatedBudget.Amount().Amount(),
+			"period":      string(updatedBudget.Period()),
+			"start_date":  updatedBudget.StartDate().Format("2006-01-02"),
+			"end_date":    updatedBudget.EndDate().Format("2006-01-02"),
+			"created_at":  updatedBudget.CreatedAt().Format("2006-01-02 15:04:05"),
+		},
 	})
 }
 

@@ -1160,7 +1160,8 @@ Update an existing budget.
   "category_id": 1,
   "amount": 750.00,
   "period": "monthly",
-  "start_date": "2024-01-01"
+  "start_date": "2024-01-01",
+  "end_date": "2024-01-31"
 }
 ```
 
