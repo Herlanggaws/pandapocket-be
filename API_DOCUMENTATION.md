@@ -334,11 +334,16 @@ Get budgets with analytics.
     {
       "id": 1,
       "user_id": 1,
-      "category_id": 1,
       "amount": 500.0,
       "period": "monthly",
       "start_date": "2024-01-01",
-      "end_date": "2024-01-31"
+      "end_date": "2024-01-31",
+      "category": {
+        "id": 1,
+        "name": "Food",
+        "color": "#EF4444",
+        "type": "expense"
+      }
     }
   ],
   "analytics": {
@@ -1080,18 +1085,36 @@ Get all budgets for the authenticated user.
 ```json
 [
   {
-    "id": 1,
-    "user_id": 7,
-    "category_id": 1,
-    "currency_id": 6,
+    "id": 8,
+    "user_id": 1,
     "amount": 500,
     "period": "monthly",
     "start_date": "2024-01-01",
-    "end_date": "2024-01-31",
-    "created_at": "2025-09-10T11:02:29+07:00"
+    "end_date": "2024-02-01",
+    "created_at": "2025-09-30T09:51:35+07:00",
+    "category": {
+      "id": 1,
+      "name": "Food",
+      "color": "#EF4444",
+      "type": "expense"
+    }
   }
 ]
 ```
+
+**Response Fields:**
+- `id` (integer): Budget ID
+- `user_id` (integer): User ID who owns the budget
+- `amount` (number): Budget amount
+- `period` (string): Budget period (weekly, monthly, yearly)
+- `start_date` (string): Budget start date (YYYY-MM-DD)
+- `end_date` (string): Budget end date (YYYY-MM-DD)
+- `created_at` (string): Budget creation timestamp (ISO 8601)
+- `category` (object, optional): Category information
+  - `id` (integer): Category ID
+  - `name` (string): Category name
+  - `color` (string): Category color (hex code)
+  - `type` (string): Category type (expense or income)
 
 ### POST /api/v100/budgets
 
@@ -1114,17 +1137,18 @@ Create a new budget.
   "message": "Budget created successfully",
   "budget": {
     "id": 0,
-    "user_id": 7,
-    "category_id": 1,
-    "currency_id": 6,
-    "amount": 500,
+    "user_id": 1,
+    "category_id": 2,
+    "amount": 300,
     "period": "monthly",
-    "start_date": "2024-01-01",
-    "end_date": "2024-01-31",
-    "created_at": "2025-09-10T10:56:56+07:00"
+    "start_date": "2024-02-01",
+    "end_date": "2024-03-01",
+    "created_at": "2025-09-30T09:55:29+07:00"
   }
 }
 ```
+
+**Note:** The POST response includes `category_id` for backward compatibility. Use the GET endpoint to retrieve the full category object.
 
 ### PUT /api/v100/budgets/:id
 
