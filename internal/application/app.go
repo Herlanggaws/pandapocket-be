@@ -59,7 +59,7 @@ func NewApp(db *gorm.DB) *App {
 	getCategoriesUseCase := appFinance.NewGetCategoriesUseCase(categoryService)
 	getAnalyticsUseCase := appFinance.NewGetAnalyticsUseCase(transactionService)
 	createBudgetUseCase := appFinance.NewCreateBudgetUseCase(budgetService, currencyService)
-	getBudgetsUseCase := appFinance.NewGetBudgetsUseCase(budgetService, categoryService)
+	getBudgetsUseCase := appFinance.NewGetBudgetsUseCase(budgetService, categoryService, transactionService)
 	updateBudgetUseCase := appFinance.NewUpdateBudgetUseCase(budgetService)
 	deleteBudgetUseCase := appFinance.NewDeleteBudgetUseCase(budgetService)
 	createCurrencyUseCase := appFinance.NewCreateCurrencyUseCase(currencyService)

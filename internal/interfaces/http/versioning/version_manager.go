@@ -23,16 +23,9 @@ type DeprecationInfo struct {
 // NewVersionManager creates a new version manager instance
 func NewVersionManager() *VersionManager {
 	return &VersionManager{
-		currentVersion:    "v120",
-		supportedVersions: []string{"v120", "v110", "v100"},
-		deprecatedVersions: map[string]DeprecationInfo{
-			"v100": {
-				Version:        "v100",
-				SunsetDate:     time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC),
-				WarningMessage: "API version v100 is deprecated and will be removed on 2024-06-01. Please upgrade to v120.",
-				UpgradeURL:     "https://docs.pandapocket.com/upgrade",
-			},
-		},
+		currentVersion:     "v100",
+		supportedVersions:  []string{"v100"},
+		deprecatedVersions: map[string]DeprecationInfo{},
 	}
 }
 
@@ -224,16 +217,11 @@ func (vm *VersionManager) GetVersionFeatures(version string) map[string]interfac
 
 	// Add version-specific features
 	switch version {
-	case "v120":
+	case "v100":
 		features["analytics"] = true
 		features["advanced_filtering"] = true
 		features["bulk_operations"] = true
 		features["export_functionality"] = true
-	case "v110":
-		features["analytics"] = true
-		features["advanced_filtering"] = true
-	case "v100":
-		// Basic features only
 	}
 
 	return features
