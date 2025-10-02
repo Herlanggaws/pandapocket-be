@@ -31,12 +31,14 @@ type GetAllTransactionsResponse struct {
 // GetAllTransactionsUseCase handles getting all transactions for a user with filters
 type GetAllTransactionsUseCase struct {
 	transactionService *finance.TransactionService
+	categoryService    *finance.CategoryService
 }
 
 // NewGetAllTransactionsUseCase creates a new get all transactions use case
-func NewGetAllTransactionsUseCase(transactionService *finance.TransactionService) *GetAllTransactionsUseCase {
+func NewGetAllTransactionsUseCase(transactionService *finance.TransactionService, categoryService *finance.CategoryService) *GetAllTransactionsUseCase {
 	return &GetAllTransactionsUseCase{
 		transactionService: transactionService,
+		categoryService:    categoryService,
 	}
 }
 
@@ -119,10 +121,22 @@ func (uc *GetAllTransactionsUseCase) Execute(ctx context.Context, userID int, re
 	// Convert to response format
 	transactionResponses := make([]TransactionResponse, len(transactions))
 	for i, transaction := range transactions {
+		// Fetch category details
+		category, err := uc.categoryService.GetCategoryByID(ctx, transaction.CategoryID())
+		if err != nil {
+			// If category not found, create a default response
+			category = &finance.Category{}
+		}
+
 		transactionResponses[i] = TransactionResponse{
-			ID:          transaction.ID().Value(),
-			UserID:      transaction.UserID().Value(),
-			CategoryID:  transaction.CategoryID().Value(),
+			ID:     transaction.ID().Value(),
+			UserID: transaction.UserID().Value(),
+			Category: CategoryResponse{
+				ID:    category.ID().Value(),
+				Name:  category.Name(),
+				Color: category.Color(),
+				Type:  string(category.Type()),
+			},
 			CurrencyID:  transaction.CurrencyID().Value(),
 			Amount:      transaction.Amount().Amount(),
 			Description: transaction.Description(),

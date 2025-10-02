@@ -11,28 +11,17 @@ type GetTransactionsResponse struct {
 	Transactions []TransactionResponse `json:"transactions"`
 }
 
-// TransactionResponse represents a transaction in the response
-type TransactionResponse struct {
-	ID          int     `json:"id"`
-	UserID      int     `json:"user_id"`
-	CategoryID  int     `json:"category_id"`
-	CurrencyID  int     `json:"currency_id"`
-	Amount      float64 `json:"amount"`
-	Description string  `json:"description"`
-	Date        string  `json:"date"`
-	Type        string  `json:"type"`
-	CreatedAt   string  `json:"created_at"`
-}
-
 // GetTransactionsUseCase handles getting transactions for a user
 type GetTransactionsUseCase struct {
 	transactionService *finance.TransactionService
+	categoryService    *finance.CategoryService
 }
 
 // NewGetTransactionsUseCase creates a new get transactions use case
-func NewGetTransactionsUseCase(transactionService *finance.TransactionService) *GetTransactionsUseCase {
+func NewGetTransactionsUseCase(transactionService *finance.TransactionService, categoryService *finance.CategoryService) *GetTransactionsUseCase {
 	return &GetTransactionsUseCase{
 		transactionService: transactionService,
+		categoryService:    categoryService,
 	}
 }
 
@@ -43,14 +32,26 @@ func (uc *GetTransactionsUseCase) Execute(ctx context.Context, userID int) (*Get
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Convert to response format
 	transactionResponses := make([]TransactionResponse, len(transactions))
 	for i, transaction := range transactions {
+		// Fetch category details
+		category, err := uc.categoryService.GetCategoryByID(ctx, transaction.CategoryID())
+		if err != nil {
+			// If category not found, create a default response
+			category = &finance.Category{}
+		}
+
 		transactionResponses[i] = TransactionResponse{
-			ID:          transaction.ID().Value(),
-			UserID:      transaction.UserID().Value(),
-			CategoryID:  transaction.CategoryID().Value(),
+			ID:     transaction.ID().Value(),
+			UserID: transaction.UserID().Value(),
+			Category: CategoryResponse{
+				ID:    category.ID().Value(),
+				Name:  category.Name(),
+				Color: category.Color(),
+				Type:  string(category.Type()),
+			},
 			CurrencyID:  transaction.CurrencyID().Value(),
 			Amount:      transaction.Amount().Amount(),
 			Description: transaction.Description(),
@@ -59,7 +60,7 @@ func (uc *GetTransactionsUseCase) Execute(ctx context.Context, userID int) (*Get
 			CreatedAt:   transaction.CreatedAt().Format(time.RFC3339),
 		}
 	}
-	
+
 	return &GetTransactionsResponse{
 		Transactions: transactionResponses,
 	}, nil

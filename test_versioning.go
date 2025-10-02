@@ -39,24 +39,12 @@ func TestAPIVersioning(t *testing.T) {
 		expectedHeaders map[string]string
 	}{
 		{
-			name:           "v120 transactions endpoint",
-			method:         "GET",
-			path:           "/api/v120/transactions",
-			expectedStatus: http.StatusUnauthorized, // No auth token
-			expectedHeaders: map[string]string{
-				"X-API-Version": "v120",
-			},
-		},
-		{
-			name:           "v100 transactions endpoint (deprecated)",
+			name:           "v100 transactions endpoint",
 			method:         "GET",
 			path:           "/api/v100/transactions",
 			expectedStatus: http.StatusUnauthorized, // No auth token
 			expectedHeaders: map[string]string{
-				"X-API-Version":     "v100",
-				"X-API-Deprecated":  "true",
-				"X-API-Sunset-Date": "2024-06-01",
-				"X-API-Upgrade-URL": "https://docs.pandapocket.com/upgrade",
+				"X-API-Version": "v100",
 			},
 		},
 		{
@@ -65,8 +53,8 @@ func TestAPIVersioning(t *testing.T) {
 			path:           "/api/transactions",
 			expectedStatus: http.StatusUnauthorized, // No auth token
 			expectedHeaders: map[string]string{
-				"X-API-Version": "v120",
-				"X-API-Latest":  "v120",
+				"X-API-Version": "v100",
+				"X-API-Latest":  "v100",
 			},
 		},
 		{
@@ -122,24 +110,24 @@ func TestVersionMiddleware(t *testing.T) {
 	router.Use(versionMiddleware.ExtractVersion())
 
 	// Add test route
-	router.GET("/api/v120/test", func(c *gin.Context) {
+	router.GET("/api/v100/test", func(c *gin.Context) {
 		version := c.GetString("api_version")
 		c.JSON(http.StatusOK, gin.H{"version": version})
 	})
 
 	// Test request
-	req, _ := http.NewRequest("GET", "/api/v120/test", nil)
+	req, _ := http.NewRequest("GET", "/api/v100/test", nil)
 	w := httptest.NewRecorder()
 
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	assert.Equal(t, "v120", w.Header().Get("X-API-Version"))
+	assert.Equal(t, "v100", w.Header().Get("X-API-Version"))
 
 	var response map[string]interface{}
 	err := json.Unmarshal(w.Body.Bytes(), &response)
 	assert.NoError(t, err)
-	assert.Equal(t, "v120", response["version"])
+	assert.Equal(t, "v100", response["version"])
 }
 
 func TestDeprecationHandler(t *testing.T) {
@@ -177,36 +165,27 @@ func TestVersionManager(t *testing.T) {
 	vm := versioning.NewVersionManager()
 
 	// Test supported versions
-	assert.True(t, vm.IsVersionSupported("v120"))
-	assert.True(t, vm.IsVersionSupported("v110"))
 	assert.True(t, vm.IsVersionSupported("v100"))
+	assert.False(t, vm.IsVersionSupported("v120"))
+	assert.False(t, vm.IsVersionSupported("v110"))
 	assert.False(t, vm.IsVersionSupported("v090"))
 
 	// Test deprecated versions
-	assert.True(t, vm.IsVersionDeprecated("v100"))
-	assert.False(t, vm.IsVersionDeprecated("v120"))
+	assert.False(t, vm.IsVersionDeprecated("v100"))
 
 	// Test current version
-	assert.Equal(t, "v120", vm.GetCurrentVersion())
+	assert.Equal(t, "v100", vm.GetCurrentVersion())
 
 	// Test supported versions list
 	supportedVersions := vm.GetSupportedVersions()
-	assert.Contains(t, supportedVersions, "v120")
-	assert.Contains(t, supportedVersions, "v110")
 	assert.Contains(t, supportedVersions, "v100")
 }
 
 func TestVersionComparison(t *testing.T) {
 	vm := versioning.NewVersionManager()
 
-	// Test version comparison
-	comparison := vm.CompareVersions("v100", "v120")
-	assert.NotNil(t, comparison)
-	assert.Equal(t, "v100", comparison["version1"])
-	assert.Equal(t, "v120", comparison["version2"])
-
 	// Test version features
-	features := vm.GetVersionFeatures("v120")
+	features := vm.GetVersionFeatures("v100")
 	assert.NotNil(t, features)
 	assert.True(t, features["analytics"].(bool))
 	assert.True(t, features["advanced_filtering"].(bool))
@@ -220,13 +199,13 @@ func TestMigrationPath(t *testing.T) {
 	// Test migration path
 	migrationPath := vm.GetMigrationPath("v100")
 	assert.NotNil(t, migrationPath)
-	assert.Contains(t, migrationPath, "v120")
+	assert.Contains(t, migrationPath, "v100")
 
 	// Test version transition validation
-	err := vm.ValidateVersionTransition("v100", "v120")
+	err := vm.ValidateVersionTransition("v100", "v100")
 	assert.NoError(t, err)
 
-	err = vm.ValidateVersionTransition("v100", "v090")
+	err = vm.ValidateVersionTransition("v100", "v120")
 	assert.Error(t, err)
 }
 
@@ -238,11 +217,11 @@ func BenchmarkVersionMiddleware(b *testing.B) {
 	versionMiddleware := middleware.NewVersionMiddleware()
 	router.Use(versionMiddleware.ExtractVersion())
 
-	router.GET("/api/v120/test", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"version": "v120"})
+	router.GET("/api/v100/test", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"version": "v100"})
 	})
 
-	req, _ := http.NewRequest("GET", "/api/v120/test", nil)
+	req, _ := http.NewRequest("GET", "/api/v100/test", nil)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -256,7 +235,7 @@ func BenchmarkVersionManager(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		vm.IsVersionSupported("v120")
+		vm.IsVersionSupported("v100")
 		vm.IsVersionDeprecated("v100")
 		vm.GetCurrentVersion()
 	}
