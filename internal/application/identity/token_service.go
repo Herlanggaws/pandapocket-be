@@ -15,12 +15,13 @@ const (
 type Claims struct {
 	UserID int    `json:"user_id"`
 	Email  string `json:"email"`
+	Role   string `json:"role"`
 	jwt.RegisteredClaims
 }
 
 // TokenService interface defines token operations
 type TokenService interface {
-	GenerateToken(userID int, email string) (string, error)
+	GenerateToken(userID int, email string, role string) (string, error)
 	ValidateToken(tokenString string) (*Claims, error)
 }
 
@@ -33,10 +34,11 @@ func NewTokenService() TokenService {
 }
 
 // GenerateToken generates a JWT token for a user
-func (s *tokenService) GenerateToken(userID int, email string) (string, error) {
+func (s *tokenService) GenerateToken(userID int, email string, role string) (string, error) {
 	claims := Claims{
 		UserID: userID,
 		Email:  email,
+		Role:   role,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),

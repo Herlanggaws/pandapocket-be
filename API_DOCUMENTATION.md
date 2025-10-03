@@ -155,6 +155,9 @@ Check if the API is running.
 #### Analytics
 - **GET** `/api/v100/analytics` - Get spending analytics
 
+#### Dashboard Statistics (Admin Only)
+- **GET** `/api/v100/dashboard/stats` - Get dashboard statistics for back office
+
 
 ---
 
@@ -1424,6 +1427,14 @@ All endpoints may return the following error responses:
 ---
 
 ## Version History
+
+- **v2.4.0**: **Dashboard Statistics API** - Added comprehensive dashboard statistics for back office
+  - New admin-only dashboard statistics endpoint (`GET /api/v100/dashboard/stats`)
+  - Real-time metrics including user counts, transaction totals, and budget analytics
+  - Role-based access control ensuring only admin users can access dashboard data
+  - Comprehensive error handling and response documentation
+  - User registration automatically assigns "user" role by default
+  - Dashboard statistics filter to show only regular users (excludes admin accounts)
 
 - **v2.3.0**: **Enhanced API Documentation** - Updated documentation to reflect current implementation
   - Added detailed documentation for Expenses and Incomes endpoints

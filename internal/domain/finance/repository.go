@@ -14,6 +14,10 @@ type TransactionRepository interface {
 	FindByUserIDAndCategory(ctx context.Context, userID UserID, categoryID CategoryID) ([]*Transaction, error)
 	FindByUserIDWithFilters(ctx context.Context, userID UserID, filters TransactionFilters) ([]*Transaction, int64, error)
 	Delete(ctx context.Context, id TransactionID) error
+	// Dashboard stats methods
+	GetTotalCount(ctx context.Context) (int, error)
+	GetTotalExpenses(ctx context.Context) (float64, error)
+	GetTotalIncome(ctx context.Context) (float64, error)
 }
 
 // CategoryRepository defines the contract for category persistence
@@ -48,6 +52,9 @@ type BudgetRepository interface {
 	FindByUserIDAndCategory(ctx context.Context, userID UserID, categoryID CategoryID) ([]*Budget, error)
 	FindActiveByUserID(ctx context.Context, userID UserID) ([]*Budget, error)
 	Delete(ctx context.Context, id BudgetID) error
+	// Dashboard stats methods
+	GetTotalCount(ctx context.Context) (int, error)
+	GetCountByDateRange(ctx context.Context, startDate, endDate time.Time) (int, error)
 }
 
 // RecurringTransactionRepository defines the contract for recurring transaction persistence

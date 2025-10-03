@@ -193,3 +193,25 @@ func (r *GormBudgetRepository) ExistsByID(ctx context.Context, id finance.Budget
 
 	return count > 0, nil
 }
+
+// GetTotalCount gets the total count of budgets
+func (r *GormBudgetRepository) GetTotalCount(ctx context.Context) (int, error) {
+	var count int64
+	err := r.db.WithContext(ctx).Model(&Budget{}).Count(&count).Error
+	if err != nil {
+		return 0, err
+	}
+	return int(count), nil
+}
+
+// GetCountByDateRange gets the count of budgets created within the date range
+func (r *GormBudgetRepository) GetCountByDateRange(ctx context.Context, startDate, endDate time.Time) (int, error) {
+	var count int64
+	err := r.db.WithContext(ctx).Model(&Budget{}).
+		Where("created_at >= ? AND created_at <= ?", startDate, endDate).
+		Count(&count).Error
+	if err != nil {
+		return 0, err
+	}
+	return int(count), nil
+}

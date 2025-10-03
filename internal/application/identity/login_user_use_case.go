@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"panda-pocket/internal/domain/identity"
+
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -41,25 +42,25 @@ func (uc *LoginUserUseCase) Execute(ctx context.Context, req LoginUserRequest) (
 	if err != nil {
 		return nil, errors.New("invalid email format")
 	}
-	
+
 	// Get user by email
 	user, err := uc.userService.GetUserByEmail(ctx, email)
 	if err != nil {
 		return nil, errors.New("invalid credentials")
 	}
-	
+
 	// Verify password
 	err = bcrypt.CompareHashAndPassword([]byte(user.PasswordHash().Value()), []byte(req.Password))
 	if err != nil {
 		return nil, errors.New("invalid credentials")
 	}
-	
+
 	// Generate token
-	token, err := uc.tokenService.GenerateToken(user.ID().Value(), user.Email().Value())
+	token, err := uc.tokenService.GenerateToken(user.ID().Value(), user.Email().Value(), user.Role().Value())
 	if err != nil {
 		return nil, errors.New("failed to generate token")
 	}
-	
+
 	return &LoginUserResponse{
 		UserID: user.ID().Value(),
 		Email:  user.Email().Value(),

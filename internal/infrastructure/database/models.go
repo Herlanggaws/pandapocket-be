@@ -6,11 +6,13 @@ import (
 
 // User represents a user in the database
 type User struct {
-	ID           uint      `gorm:"primaryKey" json:"id"`
-	Email        string    `gorm:"uniqueIndex;not null" json:"email"`
-	PasswordHash string    `gorm:"not null" json:"-"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	ID           uint       `gorm:"primaryKey" json:"id"`
+	Email        string     `gorm:"uniqueIndex;not null" json:"email"`
+	PasswordHash string     `gorm:"not null" json:"-"`
+	Role         string     `gorm:"default:'user';check:role IN ('user', 'admin', 'super_admin')" json:"role"`
+	LastLoginAt  *time.Time `json:"last_login_at,omitempty"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
 
 	// Relationships
 	Currencies            []Currency             `gorm:"foreignKey:UserID" json:"currencies,omitempty"`

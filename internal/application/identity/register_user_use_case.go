@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"panda-pocket/internal/domain/identity"
+
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -22,7 +23,7 @@ type RegisterUserResponse struct {
 
 // RegisterUserUseCase handles user registration
 type RegisterUserUseCase struct {
-	userService *identity.UserService
+	userService  *identity.UserService
 	tokenService TokenService
 }
 
@@ -41,27 +42,27 @@ func (uc *RegisterUserUseCase) Execute(ctx context.Context, req RegisterUserRequ
 	if err != nil {
 		return nil, errors.New("invalid email format")
 	}
-	
+
 	// Hash password
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
 		return nil, errors.New("failed to hash password")
 	}
-	
+
 	passwordHash := identity.NewPasswordHash(string(hashedPassword))
-	
+
 	// Register user
 	user, err := uc.userService.RegisterUser(ctx, email, passwordHash)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Generate token
-	token, err := uc.tokenService.GenerateToken(user.ID().Value(), user.Email().Value())
+	token, err := uc.tokenService.GenerateToken(user.ID().Value(), user.Email().Value(), user.Role().Value())
 	if err != nil {
 		return nil, errors.New("failed to generate token")
 	}
-	
+
 	return &RegisterUserResponse{
 		UserID: user.ID().Value(),
 		Email:  user.Email().Value(),

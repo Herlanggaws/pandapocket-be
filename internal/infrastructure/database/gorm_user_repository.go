@@ -23,6 +23,7 @@ func (r *GormUserRepository) Save(ctx context.Context, user *identity.User) erro
 	userModel := &User{
 		Email:        user.Email().Value(),
 		PasswordHash: user.PasswordHash().Value(),
+		Role:         user.Role().Value(),
 	}
 
 	if user.ID().Value() != 0 {
@@ -60,9 +61,13 @@ func (r *GormUserRepository) FindByID(ctx context.Context, id identity.UserID) (
 	}
 
 	passwordHashVO := identity.NewPasswordHash(userModel.PasswordHash)
+	roleVO, err := identity.NewRole(userModel.Role)
+	if err != nil {
+		return nil, err
+	}
 	userID := identity.NewUserID(int(userModel.ID))
 
-	user := identity.NewUser(userID, emailVO, passwordHashVO)
+	user := identity.NewUser(userID, emailVO, passwordHashVO, roleVO)
 
 	return user, nil
 }
@@ -81,9 +86,13 @@ func (r *GormUserRepository) FindByEmail(ctx context.Context, email identity.Ema
 
 	// Convert GORM model to domain user
 	passwordHashVO := identity.NewPasswordHash(userModel.PasswordHash)
+	roleVO, err := identity.NewRole(userModel.Role)
+	if err != nil {
+		return nil, err
+	}
 	userID := identity.NewUserID(int(userModel.ID))
 
-	user := identity.NewUser(userID, email, passwordHashVO)
+	user := identity.NewUser(userID, email, passwordHashVO, roleVO)
 
 	return user, nil
 }
@@ -111,9 +120,13 @@ func (r *GormUserRepository) FindAll(ctx context.Context) ([]*identity.User, err
 		}
 
 		passwordHashVO := identity.NewPasswordHash(userModel.PasswordHash)
+		roleVO, err := identity.NewRole(userModel.Role)
+		if err != nil {
+			return nil, err
+		}
 		userID := identity.NewUserID(int(userModel.ID))
 
-		users[i] = identity.NewUser(userID, emailVO, passwordHashVO)
+		users[i] = identity.NewUser(userID, emailVO, passwordHashVO, roleVO)
 	}
 
 	return users, nil

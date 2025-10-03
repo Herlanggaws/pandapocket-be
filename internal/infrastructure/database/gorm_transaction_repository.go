@@ -417,3 +417,46 @@ func (r *GormTransactionRepository) incomeToTransaction(income *Income) *finance
 	)
 	return transaction
 }
+
+// GetTotalCount gets the total count of transactions
+func (r *GormTransactionRepository) GetTotalCount(ctx context.Context) (int, error) {
+	var expenseCount, incomeCount int64
+
+	// Count expenses
+	err := r.db.WithContext(ctx).Model(&Expense{}).Count(&expenseCount).Error
+	if err != nil {
+		return 0, err
+	}
+
+	// Count incomes
+	err = r.db.WithContext(ctx).Model(&Income{}).Count(&incomeCount).Error
+	if err != nil {
+		return 0, err
+	}
+
+	return int(expenseCount + incomeCount), nil
+}
+
+// GetTotalExpenses gets the total amount of expenses
+func (r *GormTransactionRepository) GetTotalExpenses(ctx context.Context) (float64, error) {
+	var total float64
+	err := r.db.WithContext(ctx).Model(&Expense{}).
+		Select("COALESCE(SUM(amount), 0)").
+		Scan(&total).Error
+	if err != nil {
+		return 0, err
+	}
+	return total, nil
+}
+
+// GetTotalIncome gets the total amount of income
+func (r *GormTransactionRepository) GetTotalIncome(ctx context.Context) (float64, error) {
+	var total float64
+	err := r.db.WithContext(ctx).Model(&Income{}).
+		Select("COALESCE(SUM(amount), 0)").
+		Scan(&total).Error
+	if err != nil {
+		return 0, err
+	}
+	return total, nil
+}
