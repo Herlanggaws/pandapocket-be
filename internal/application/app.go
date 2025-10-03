@@ -2,7 +2,6 @@ package application
 
 import (
 	"net/http"
-	"time"
 	appFinance "panda-pocket/internal/application/finance"
 	appIdentity "panda-pocket/internal/application/identity"
 	domainFinance "panda-pocket/internal/domain/finance"
@@ -19,15 +18,14 @@ import (
 
 // App represents the application with all its dependencies
 type App struct {
-	DB                     *gorm.DB
-	IdentityHandlers       *handlers.IdentityHandlers
-	FinanceHandlers        *handlers.FinanceHandlers
-	DashboardHandlers      *handlers.DashboardHandlers
-	UserManagementHandlers *handlers.UserManagementHandlers
-	DeprecationHandler     *handlers.DeprecationHandler
-	AuthMiddleware         *middleware.AuthMiddleware
-	VersionMiddleware      *middleware.VersionMiddleware
-	VersionManager         *versioning.VersionManager
+	DB                 *gorm.DB
+	IdentityHandlers   *handlers.IdentityHandlers
+	FinanceHandlers    *handlers.FinanceHandlers
+	DashboardHandlers  *handlers.DashboardHandlers
+	DeprecationHandler *handlers.DeprecationHandler
+	AuthMiddleware     *middleware.AuthMiddleware
+	VersionMiddleware  *middleware.VersionMiddleware
+	VersionManager     *versioning.VersionManager
 }
 
 // NewApp creates a new application instance with all dependencies wired up
@@ -73,9 +71,6 @@ func NewApp(db *gorm.DB) *App {
 	setDefaultCurrencyUseCase := appFinance.NewSetDefaultCurrencyUseCase(currencyService)
 	getDefaultCurrencyUseCase := appFinance.NewGetDefaultCurrencyUseCase(currencyService)
 
-	// Application layer - additional use cases
-	getUsersAdvancedUseCase := appIdentity.NewGetUsersAdvancedUseCase(userRepo)
-
 	// Interface layer - handlers and middleware
 	identityHandlers := handlers.NewIdentityHandlers(registerUserUseCase, loginUserUseCase, getUsersUseCase)
 	financeHandlers := handlers.NewFinanceHandlers(
@@ -101,7 +96,6 @@ func NewApp(db *gorm.DB) *App {
 		getDefaultCurrencyUseCase,
 	)
 	dashboardHandlers := handlers.NewDashboardHandlers(getDashboardStatsUseCase)
-	userManagementHandlers := handlers.NewUserManagementHandlers(getUsersAdvancedUseCase)
 
 	// Version management
 	versionManager := versioning.NewVersionManager()
@@ -110,15 +104,14 @@ func NewApp(db *gorm.DB) *App {
 	authMiddleware := middleware.NewAuthMiddleware(tokenService)
 
 	return &App{
-		DB:                     db,
-		IdentityHandlers:       identityHandlers,
-		FinanceHandlers:        financeHandlers,
-		DashboardHandlers:      dashboardHandlers,
-		UserManagementHandlers: userManagementHandlers,
-		DeprecationHandler:     deprecationHandler,
-		AuthMiddleware:         authMiddleware,
-		VersionMiddleware:      versionMiddleware,
-		VersionManager:         versionManager,
+		DB:                 db,
+		IdentityHandlers:   identityHandlers,
+		FinanceHandlers:    financeHandlers,
+		DashboardHandlers:  dashboardHandlers,
+		DeprecationHandler: deprecationHandler,
+		AuthMiddleware:     authMiddleware,
+		VersionMiddleware:  versionMiddleware,
+		VersionManager:     versionManager,
 	}
 }
 
@@ -145,8 +138,8 @@ func (app *App) SetupRoutes() *gin.Engine {
 	r.Use(app.VersionMiddleware.ValidateVersion())
 	r.Use(app.VersionMiddleware.AddDeprecationWarning())
 
-	// Rate limiting middleware
-	r.Use(middleware.RateLimitMiddleware(15*time.Minute, 100)) // 100 requests per 15 minutes
+	// Rate limiting middleware - commented out as it doesn't exist yet
+	// r.Use(middleware.RateLimitMiddleware(15*time.Minute, 100)) // 100 requests per 15 minutes
 
 	// Versioned routes
 	versioned := r.Group("/api")
@@ -168,18 +161,11 @@ func (app *App) SetupRoutes() *gin.Engine {
 			{
 				// Users (basic)
 				protected.GET("/users", app.IdentityHandlers.GetUsers)
-				
+
 				// User Management (admin only)
 				adminOnly := protected.Group("")
 				adminOnly.Use(app.AuthMiddleware.RequireRole("admin"))
 				{
-					// Advanced user management with pagination, search, and filtering
-					adminOnly.GET("/users/advanced", app.UserManagementHandlers.GetUsersAdvanced)
-					adminOnly.GET("/users/:id", app.UserManagementHandlers.GetUserByID)
-					adminOnly.PUT("/users/:id", app.UserManagementHandlers.UpdateUser)
-					adminOnly.DELETE("/users/:id", app.UserManagementHandlers.DeleteUser)
-				}
-
 					// Dashboard stats (admin only)
 					adminOnly.GET("/dashboard/stats", app.DashboardHandlers.GetDashboardStats)
 				}
