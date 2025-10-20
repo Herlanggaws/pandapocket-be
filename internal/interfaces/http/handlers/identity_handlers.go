@@ -3,8 +3,10 @@ package handlers
 import (
 	"net/http"
 	"panda-pocket/internal/application/identity"
+	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/go-playground/validator/v10"
 )
 
 // IdentityHandlers handles identity-related HTTP requests
@@ -27,11 +29,37 @@ func NewIdentityHandlers(
 	}
 }
 
+// formatValidationError converts technical validation errors to user-friendly messages
+func formatValidationError(err error) string {
+	if validationErrs, ok := err.(validator.ValidationErrors); ok {
+		var messages []string
+		for _, e := range validationErrs {
+			field := strings.ToLower(e.Field())
+			switch e.Tag() {
+			case "required":
+				messages = append(messages, field+" is required")
+			case "email":
+				messages = append(messages, "Please provide a valid email address")
+			case "min":
+				messages = append(messages, field+" must be at least "+e.Param()+" characters")
+			case "max":
+				messages = append(messages, field+" must not exceed "+e.Param()+" characters")
+			default:
+				messages = append(messages, field+" is invalid")
+			}
+		}
+		if len(messages) > 0 {
+			return strings.Join(messages, ", ")
+		}
+	}
+	return "Invalid request. Please check your input and try again"
+}
+
 // Register handles user registration
 func (h *IdentityHandlers) Register(c *gin.Context) {
 	var req identity.RegisterUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": formatValidationError(err)})
 		return
 	}
 
@@ -55,12 +83,13 @@ func (h *IdentityHandlers) Register(c *gin.Context) {
 func (h *IdentityHandlers) Login(c *gin.Context) {
 	var req identity.LoginUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": formatValidationError(err)})
 		return
 	}
 
 	response, err := h.loginUserUseCase.Execute(c.Request.Context(), req)
 	if err != nil {
+		// Use the error message from the use case, which is already user-friendly
 		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
 	}
