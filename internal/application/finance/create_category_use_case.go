@@ -15,10 +15,11 @@ type CreateCategoryRequest struct {
 
 // CreateCategoryResponse represents the response after creating a category
 type CreateCategoryResponse struct {
-	ID    int    `json:"id"`
-	Name  string `json:"name"`
-	Color string `json:"color"`
-	Type  string `json:"type"`
+	ID        int    `json:"id"`
+	Name      string `json:"name"`
+	Color     string `json:"color"`
+	Type      string `json:"type"`
+	IsDefault bool   `json:"is_default"`
 }
 
 // CreateCategoryUseCase handles category creation
@@ -45,7 +46,7 @@ func (uc *CreateCategoryUseCase) Execute(ctx context.Context, userID int, req Cr
 	default:
 		return nil, errors.New("invalid category type")
 	}
-	
+
 	// Create category
 	category, err := uc.categoryService.CreateCategory(
 		ctx,
@@ -57,11 +58,12 @@ func (uc *CreateCategoryUseCase) Execute(ctx context.Context, userID int, req Cr
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return &CreateCategoryResponse{
-		ID:    category.ID().Value(),
-		Name:  category.Name(),
-		Color: category.Color(),
-		Type:  string(category.Type()),
+		ID:        category.ID().Value(),
+		Name:      category.Name(),
+		Color:     category.Color(),
+		Type:      string(category.Type()),
+		IsDefault: category.IsDefault(),
 	}, nil
 }

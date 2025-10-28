@@ -764,13 +764,15 @@ Get all categories available to the user (default + user-created).
     "id": 1,
     "name": "Food",
     "color": "#EF4444",
-    "type": "expense"
+    "type": "expense",
+    "is_default": true
   },
   {
     "id": 9,
     "name": "Salary",
     "color": "#10B981",
-    "type": "income"
+    "type": "income",
+    "is_default": true
   }
 ]
 ```

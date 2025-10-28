@@ -15,10 +15,11 @@ type UpdateCategoryRequest struct {
 
 // UpdateCategoryResponse represents the response after updating a category
 type UpdateCategoryResponse struct {
-	ID    int    `json:"id"`
-	Name  string `json:"name"`
-	Color string `json:"color"`
-	Type  string `json:"type"`
+	ID        int    `json:"id"`
+	Name      string `json:"name"`
+	Color     string `json:"color"`
+	Type      string `json:"type"`
+	IsDefault bool   `json:"is_default"`
 }
 
 // UpdateCategoryUseCase handles category updates
@@ -66,9 +67,10 @@ func (uc *UpdateCategoryUseCase) Execute(ctx context.Context, userID int, catego
 	}
 
 	return &UpdateCategoryResponse{
-		ID:    category.ID().Value(),
-		Name:  category.Name(),
-		Color: category.Color(),
-		Type:  string(category.Type()),
+		ID:        category.ID().Value(),
+		Name:      category.Name(),
+		Color:     category.Color(),
+		Type:      string(category.Type()),
+		IsDefault: category.IsDefault(),
 	}, nil
 }
