@@ -36,6 +36,12 @@ func (uc *UpdateBudgetUseCase) Execute(
 		return nil, err
 	}
 
+	// Parse category ID
+	categoryIDInt, err := strconv.Atoi(categoryIDStr)
+	if err != nil {
+		return nil, err
+	}
+
 	// Parse start date
 	startDate, err := time.Parse("2006-01-02", startDateStr)
 	if err != nil {
@@ -51,7 +57,14 @@ func (uc *UpdateBudgetUseCase) Execute(
 	// Convert to domain types
 	budgetID := finance.NewBudgetID(budgetIDInt)
 	userIDDomain := finance.NewUserID(userID)
-	amountDomain, err := finance.NewMoney(amount, finance.NewCurrencyID(1)) // Default currency
+
+	// Load existing budget to preserve its currency when updating amount
+	existingBudget, err := uc.budgetService.GetBudgetByID(ctx, budgetID)
+	if err != nil {
+		return nil, err
+	}
+
+	amountDomain, err := finance.NewMoney(amount, existingBudget.Amount().Currency())
 	if err != nil {
 		return nil, err
 	}
@@ -62,6 +75,7 @@ func (uc *UpdateBudgetUseCase) Execute(
 		ctx,
 		budgetID,
 		userIDDomain,
+		finance.NewCategoryID(categoryIDInt),
 		amountDomain,
 		period,
 		startDate,

@@ -327,6 +327,11 @@ func NewBudgetService(budgetRepo BudgetRepository, categoryRepo CategoryReposito
 	}
 }
 
+// GetBudgetByID retrieves a budget by its ID
+func (s *BudgetService) GetBudgetByID(ctx context.Context, budgetID BudgetID) (*Budget, error) {
+	return s.budgetRepo.FindByID(ctx, budgetID)
+}
+
 // CreateBudget creates a new budget
 func (s *BudgetService) CreateBudget(
 	ctx context.Context,
@@ -383,6 +388,7 @@ func (s *BudgetService) UpdateBudget(
 	ctx context.Context,
 	budgetID BudgetID,
 	userID UserID,
+	categoryID CategoryID,
 	amount Money,
 	period BudgetPeriod,
 	startDate time.Time,
@@ -397,6 +403,19 @@ func (s *BudgetService) UpdateBudget(
 	// Check if user can update this budget
 	if budget.UserID().Value() != userID.Value() {
 		return nil, errors.New("access denied")
+	}
+
+	// Validate category exists and user has access (when changing category)
+	if categoryID.Value() != 0 {
+		category, err := s.categoryRepo.FindByID(ctx, categoryID)
+		if err != nil {
+			return nil, errors.New("category not found")
+		}
+		if !category.IsDefault() && (category.UserID() == nil || category.UserID().Value() != userID.Value()) {
+			return nil, errors.New("access denied to category")
+		}
+		// Update the category ID directly on the aggregate
+		budget.categoryID = categoryID
 	}
 
 	// Update budget
