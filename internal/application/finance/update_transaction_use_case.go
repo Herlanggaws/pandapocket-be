@@ -29,6 +29,7 @@ func (uc *UpdateTransactionUseCase) Execute(
 	amount float64,
 	description string,
 	dateStr string,
+	expectedType finance.TransactionType,
 ) (*finance.Transaction, error) {
 	// Parse transaction ID
 	transactionIDInt, err := strconv.Atoi(transactionIDStr)
@@ -74,5 +75,6 @@ func (uc *UpdateTransactionUseCase) Execute(
 		amountDomain,
 		description,
 		date,
+		expectedType,
 	)
 }

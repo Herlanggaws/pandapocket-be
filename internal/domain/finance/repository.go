@@ -9,6 +9,7 @@ import (
 type TransactionRepository interface {
 	Save(ctx context.Context, transaction *Transaction) error
 	FindByID(ctx context.Context, id TransactionID) (*Transaction, error)
+	FindByIDAndType(ctx context.Context, id TransactionID, transactionType TransactionType) (*Transaction, error)
 	FindByUserID(ctx context.Context, userID UserID) ([]*Transaction, error)
 	FindByUserIDAndDateRange(ctx context.Context, userID UserID, startDate, endDate time.Time) ([]*Transaction, error)
 	FindByUserIDAndCategory(ctx context.Context, userID UserID, categoryID CategoryID) ([]*Transaction, error)

@@ -117,15 +117,21 @@ func (s *TransactionService) UpdateTransaction(
 	amount Money,
 	description string,
 	date time.Time,
+	expectedType TransactionType,
 ) (*Transaction, error) {
-	// Get transaction to verify ownership
-	transaction, err := s.transactionRepo.FindByID(ctx, transactionID)
+	// Get transaction to verify ownership, querying the correct table first based on expected type
+	transaction, err := s.transactionRepo.FindByIDAndType(ctx, transactionID, expectedType)
 	if err != nil {
 		return nil, errors.New("transaction not found")
 	}
 
 	if transaction.UserID().Value() != userID.Value() {
 		return nil, errors.New("access denied")
+	}
+
+	// Verify transaction type matches expected type (double-check for safety)
+	if transaction.Type() != expectedType {
+		return nil, errors.New("transaction type mismatch")
 	}
 
 	// Validate category exists and user has access

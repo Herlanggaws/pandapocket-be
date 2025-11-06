@@ -57,8 +57,8 @@ For future version management:
 #### Versioned Routes (v100 Only)
 - **Authentication**: Register, Login, Logout (versioned)
 - **Categories**: Full CRUD operations (Get, Create, Update, Delete)
-- **Expenses**: Core operations (Get, Create, Delete)
-- **Incomes**: Core operations (Get, Create, Delete)
+- **Expenses**: Full CRUD operations (Get, Create, Update, Delete)
+- **Incomes**: Full CRUD operations (Get, Create, Update, Delete)
 - **Transactions**: Get all transactions with advanced filtering and pagination
 - **Budgets**: Full CRUD operations (Get, Create, Update, Delete)
 - **Currencies**: Full CRUD operations (Get, Create, Update, Delete)
@@ -128,11 +128,13 @@ Check if the API is running.
 #### Expenses
 - **GET** `/api/v100/expenses` - Get expenses
 - **POST** `/api/v100/expenses` - Create expense
+- **PUT** `/api/v100/expenses/{id}` - Update expense
 - **DELETE** `/api/v100/expenses/{id}` - Delete expense
 
 #### Incomes
 - **GET** `/api/v100/incomes` - Get incomes
 - **POST** `/api/v100/incomes` - Create income
+- **PUT** `/api/v100/incomes/{id}` - Update income
 - **DELETE** `/api/v100/incomes/{id}` - Delete income
 
 #### Transactions
@@ -900,6 +902,96 @@ Create a new expense transaction.
 }
 ```
 
+### PUT /api/v100/expenses/:id
+
+Update an existing expense transaction.
+
+**Request Body:**
+```json
+{
+  "category_id": 1,
+  "amount": 75.0,
+  "description": "Updated lunch at restaurant",
+  "date": "2024-01-15"
+}
+```
+
+**Response:**
+```json
+{
+  "message": "Expense updated successfully",
+  "expense": {
+    "id": 1,
+    "user_id": 1,
+    "category_id": 1,
+    "currency_id": 1,
+    "amount": 75.0,
+    "description": "Updated lunch at restaurant",
+    "date": "2024-01-15",
+    "type": "expense"
+  }
+}
+```
+
+**Error Responses:**
+
+**400 Bad Request - Access Denied:**
+The "access denied" error can occur in the following scenarios:
+
+1. **Transaction Ownership**: The transaction with the given ID does not belong to the authenticated user.
+   ```json
+   {
+     "error": "access denied"
+   }
+   ```
+
+2. **Transaction Type Mismatch**: The transaction ID exists but is of a different type (e.g., trying to update an expense but the ID points to an income, or vice versa).
+   ```json
+   {
+     "error": "transaction type mismatch"
+   }
+   ```
+   **Note**: This can happen if an expense and income share the same ID in their respective tables. The system now validates that the transaction type matches the endpoint being used.
+
+3. **Category Access**: The `category_id` provided is not a default category and does not belong to the authenticated user.
+   ```json
+   {
+     "error": "access denied to category"
+   }
+   ```
+   **Solution**: Ensure you're using either:
+   - A default category (available to all users)
+   - A category that you created (belongs to your user account)
+
+4. **Currency Access**: The currency being used is not a default currency and does not belong to the authenticated user.
+   ```json
+   {
+     "error": "access denied to currency"
+   }
+   ```
+   **Note**: Currently, the handler uses currency ID `1` (default USD). If this currency doesn't exist or isn't accessible, you'll get this error.
+
+**400 Bad Request - Transaction Not Found:**
+```json
+{
+  "error": "transaction not found"
+}
+```
+
+**400 Bad Request - Category Not Found:**
+```json
+{
+  "error": "category not found"
+}
+```
+
+**400 Bad Request - Currency Not Found:**
+```json
+{
+  "error": "currency not found"
+}
+```
+
 ### DELETE /api/v100/expenses/:id
 
 Delete an expense transaction.
@@ -967,6 +1059,96 @@ Create a new income transaction.
     "date": "2024-01-01",
     "created_at": "2024-01-01T09:00:00Z"
   }
+}
+```
+
+### PUT /api/v100/incomes/:id
+
+Update an existing income transaction.
+
+**Request Body:**
+```json
+{
+  "category_id": 9,
+  "amount": 3500.0,
+  "description": "Updated monthly salary",
+  "date": "2024-01-01"
+}
+```
+
+**Response:**
+```json
+{
+  "message": "Income updated successfully",
+  "income": {
+    "id": 1,
+    "user_id": 1,
+    "category_id": 9,
+    "currency_id": 1,
+    "amount": 3500.0,
+    "description": "Updated monthly salary",
+    "date": "2024-01-01",
+    "type": "income"
+  }
+}
+```
+
+**Error Responses:**
+
+**400 Bad Request - Access Denied:**
+The "access denied" error can occur in the following scenarios:
+
+1. **Transaction Ownership**: The transaction with the given ID does not belong to the authenticated user.
+   ```json
+   {
+     "error": "access denied"
+   }
+   ```
+
+2. **Transaction Type Mismatch**: The transaction ID exists but is of a different type (e.g., trying to update an income but the ID points to an expense, or vice versa).
+   ```json
+   {
+     "error": "transaction type mismatch"
+   }
+   ```
+   **Note**: This can happen if an expense and income share the same ID in their respective tables. The system now validates that the transaction type matches the endpoint being used.
+
+3. **Category Access**: The `category_id` provided is not a default category and does not belong to the authenticated user.
+   ```json
+   {
+     "error": "access denied to category"
+   }
+   ```
+   **Solution**: Ensure you're using either:
+   - A default category (available to all users)
+   - A category that you created (belongs to your user account)
+
+4. **Currency Access**: The currency being used is not a default currency and does not belong to the authenticated user.
+   ```json
+   {
+     "error": "access denied to currency"
+   }
+   ```
+   **Note**: Currently, the handler uses currency ID `1` (default USD). If this currency doesn't exist or isn't accessible, you'll get this error.
+
+**400 Bad Request - Transaction Not Found:**
+```json
+{
+  "error": "transaction not found"
+}
+```
+
+**400 Bad Request - Category Not Found:**
+```json
+{
+  "error": "category not found"
+}
+```
+
+**400 Bad Request - Currency Not Found:**
+```json
+{
+  "error": "currency not found"
 }
 ```
 

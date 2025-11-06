@@ -360,6 +360,7 @@ func (h *FinanceHandlers) UpdateExpense(c *gin.Context) {
 		req.Amount,
 		req.Description,
 		req.Date,
+		domainFinance.TransactionTypeExpense,
 	)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -408,6 +409,7 @@ func (h *FinanceHandlers) UpdateIncome(c *gin.Context) {
 		req.Amount,
 		req.Description,
 		req.Date,
+		domainFinance.TransactionTypeIncome,
 	)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})

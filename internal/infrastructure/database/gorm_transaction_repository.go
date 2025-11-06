@@ -65,7 +65,7 @@ func (r *GormTransactionRepository) Save(ctx context.Context, transaction *finan
 	return nil
 }
 
-// FindByID finds a transaction by ID
+// FindByID finds a transaction by ID (checks expenses first, then incomes)
 func (r *GormTransactionRepository) FindByID(ctx context.Context, id finance.TransactionID) (*finance.Transaction, error) {
 	// Try to find in expenses first
 	var expenseModel Expense
@@ -85,6 +85,27 @@ func (r *GormTransactionRepository) FindByID(ctx context.Context, id finance.Tra
 	}
 
 	return r.incomeToTransaction(&incomeModel), nil
+}
+
+// FindByIDAndType finds a transaction by ID, checking the correct table first based on transaction type
+func (r *GormTransactionRepository) FindByIDAndType(ctx context.Context, id finance.TransactionID, transactionType finance.TransactionType) (*finance.Transaction, error) {
+	if transactionType == finance.TransactionTypeExpense {
+		// Check expenses table first
+		var expenseModel Expense
+		err := r.db.WithContext(ctx).First(&expenseModel, id.Value()).Error
+		if err != nil {
+			return nil, err
+		}
+		return r.expenseToTransaction(&expenseModel), nil
+	} else {
+		// Check incomes table first
+		var incomeModel Income
+		err := r.db.WithContext(ctx).First(&incomeModel, id.Value()).Error
+		if err != nil {
+			return nil, err
+		}
+		return r.incomeToTransaction(&incomeModel), nil
+	}
 }
 
 // FindByUserID finds all transactions for a user
