@@ -127,8 +127,8 @@ func (app *App) SetupRoutes() *gin.Engine {
 		"http://localhost:3002",
 		"http://localhost:3003",
 		"http://localhost:3004",      // Back office port
-		"https://pandapoket.com",     // Production frontend
-		"https://www.pandapoket.com", // Production frontend with www
+		"https://berbudget.com",     // Production frontend
+		"https://www.berbudget.com", // Production frontend with www
 	}
 	config.AllowMethods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}
 	config.AllowHeaders = []string{"Origin", "Content-Type", "Accept", "Authorization", "X-API-Version"}
