@@ -1321,21 +1321,18 @@ Create a new budget.
 **Response:**
 ```json
 {
-  "message": "Budget created successfully",
-  "budget": {
-    "id": 0,
-    "user_id": 1,
-    "category_id": 2,
-    "amount": 300,
-    "period": "monthly",
-    "start_date": "2024-02-01",
-    "end_date": "2024-03-01",
-    "created_at": "2025-09-30T09:55:29+07:00"
+  "amount": 500,
+  "period": "monthly",
+  "start_date": "2024-01-01",
+  "end_date": "2024-02-01",
+  "category": {
+    "id": 1,
+    "name": "Food",
+    "color": "#EF4444",
+    "type": "expense"
   }
 }
 ```
-
-**Note:** The POST response includes `category_id` for backward compatibility. Use the GET endpoint to retrieve the full category object.
 
 ### PUT /api/v100/budgets/:id
 
@@ -1355,7 +1352,16 @@ Update an existing budget.
 **Response:**
 ```json
 {
-  "message": "Budget updated successfully"
+  "amount": 750,
+  "period": "monthly",
+  "start_date": "2024-01-01",
+  "end_date": "2024-01-31",
+  "category": {
+    "id": 1,
+    "name": "Food",
+    "color": "#EF4444",
+    "type": "expense"
+  }
 }
 ```
 
