@@ -465,10 +465,7 @@ func (h *FinanceHandlers) CreateBudget(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{
-		"message": "Budget created successfully",
-		"budget":  response,
-	})
+	c.JSON(http.StatusCreated, response)
 }
 
 // GetBudgets handles getting budgets
@@ -503,7 +500,7 @@ func (h *FinanceHandlers) UpdateBudget(c *gin.Context) {
 	}
 
 	// Update the budget
-	updatedBudget, err := h.updateBudgetUseCase.Execute(
+	response, err := h.updateBudgetUseCase.Execute(
 		c.Request.Context(),
 		budgetID,
 		userID,
@@ -518,19 +515,7 @@ func (h *FinanceHandlers) UpdateBudget(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"message": "Budget updated successfully",
-		"budget": gin.H{
-			"id":          updatedBudget.ID().Value(),
-			"user_id":     updatedBudget.UserID().Value(),
-			"category_id": updatedBudget.CategoryID().Value(),
-			"amount":      updatedBudget.Amount().Amount(),
-			"period":      string(updatedBudget.Period()),
-			"start_date":  updatedBudget.StartDate().Format("2006-01-02"),
-			"end_date":    updatedBudget.EndDate().Format("2006-01-02"),
-			"created_at":  updatedBudget.CreatedAt().Format("2006-01-02 15:04:05"),
-		},
-	})
+	c.JSON(http.StatusOK, response)
 }
 
 // DeleteBudget handles budget deletion

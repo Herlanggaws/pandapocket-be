@@ -16,27 +16,26 @@ type CreateBudgetRequest struct {
 
 // CreateBudgetResponse represents the response for creating a budget
 type CreateBudgetResponse struct {
-	ID         int     `json:"id"`
-	UserID     int     `json:"user_id"`
-	CategoryID int     `json:"category_id"`
-	Amount     float64 `json:"amount"`
-	Period     string  `json:"period"`
-	StartDate  string  `json:"start_date"`
-	EndDate    string  `json:"end_date"`
-	CreatedAt  string  `json:"created_at"`
+	Amount    float64           `json:"amount"`
+	Period    string            `json:"period"`
+	StartDate string            `json:"start_date"`
+	EndDate   string            `json:"end_date"`
+	Category  *CategoryResponse `json:"category"`
 }
 
 // CreateBudgetUseCase handles budget creation
 type CreateBudgetUseCase struct {
 	budgetService   *finance.BudgetService
 	currencyService *finance.CurrencyService
+	categoryService *finance.CategoryService
 }
 
 // NewCreateBudgetUseCase creates a new create budget use case
-func NewCreateBudgetUseCase(budgetService *finance.BudgetService, currencyService *finance.CurrencyService) *CreateBudgetUseCase {
+func NewCreateBudgetUseCase(budgetService *finance.BudgetService, currencyService *finance.CurrencyService, categoryService *finance.CategoryService) *CreateBudgetUseCase {
 	return &CreateBudgetUseCase{
 		budgetService:   budgetService,
 		currencyService: currencyService,
+		categoryService: categoryService,
 	}
 }
 
@@ -73,15 +72,24 @@ func (uc *CreateBudgetUseCase) Execute(ctx context.Context, userID int, req Crea
 		return nil, err
 	}
 
+	// Fetch category information
+	category, err := uc.categoryService.GetCategoryByID(ctx, budget.CategoryID())
+	var categoryResponse *CategoryResponse
+	if err == nil {
+		categoryResponse = &CategoryResponse{
+			ID:    category.ID().Value(),
+			Name:  category.Name(),
+			Color: category.Color(),
+			Type:  string(category.Type()),
+		}
+	}
+
 	// Convert to response format
 	return &CreateBudgetResponse{
-		ID:         budget.ID().Value(),
-		UserID:     budget.UserID().Value(),
-		CategoryID: budget.CategoryID().Value(),
-		Amount:     budget.Amount().Amount(),
-		Period:     string(budget.Period()),
-		StartDate:  budget.StartDate().Format("2006-01-02"),
-		EndDate:    budget.EndDate().Format("2006-01-02"),
-		CreatedAt:  budget.CreatedAt().Format(time.RFC3339),
+		Amount:    budget.Amount().Amount(),
+		Period:    string(budget.Period()),
+		StartDate: budget.StartDate().Format("2006-01-02"),
+		EndDate:   budget.EndDate().Format("2006-01-02"),
+		Category:  categoryResponse,
 	}, nil
 }
