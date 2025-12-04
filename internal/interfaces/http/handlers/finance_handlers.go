@@ -87,7 +87,7 @@ func (h *FinanceHandlers) CreateExpense(c *gin.Context) {
 
 	var req finance.CreateTransactionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		ValidationErrorResponse(c, err.Error())
 		return
 	}
 
@@ -96,12 +96,11 @@ func (h *FinanceHandlers) CreateExpense(c *gin.Context) {
 
 	response, err := h.createTransactionUseCase.Execute(c.Request.Context(), userID, req)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		HandleError(c, err, http.StatusBadRequest)
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{
-		"message": "Expense created successfully",
+	SuccessResponse(c, http.StatusCreated, gin.H{
 		"expense": response,
 	})
 }
@@ -112,7 +111,7 @@ func (h *FinanceHandlers) CreateIncome(c *gin.Context) {
 
 	var req finance.CreateTransactionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		ValidationErrorResponse(c, err.Error())
 		return
 	}
 
@@ -121,13 +120,12 @@ func (h *FinanceHandlers) CreateIncome(c *gin.Context) {
 
 	response, err := h.createTransactionUseCase.Execute(c.Request.Context(), userID, req)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		HandleError(c, err, http.StatusBadRequest)
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{
-		"message": "Income created successfully",
-		"income":  response,
+	SuccessResponse(c, http.StatusCreated, gin.H{
+		"income": response,
 	})
 }
 
@@ -137,7 +135,7 @@ func (h *FinanceHandlers) GetExpenses(c *gin.Context) {
 
 	response, err := h.getTransactionsUseCase.Execute(c.Request.Context(), userID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch expenses"})
+		InternalServerErrorResponse(c, "FETCH_EXPENSES_ERROR", "Failed to fetch expenses")
 		return
 	}
 
@@ -149,7 +147,7 @@ func (h *FinanceHandlers) GetExpenses(c *gin.Context) {
 		}
 	}
 
-	c.JSON(http.StatusOK, expenses)
+	SuccessResponse(c, http.StatusOK, expenses)
 }
 
 // GetIncomes handles getting incomes
@@ -158,7 +156,7 @@ func (h *FinanceHandlers) GetIncomes(c *gin.Context) {
 
 	response, err := h.getTransactionsUseCase.Execute(c.Request.Context(), userID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch incomes"})
+		InternalServerErrorResponse(c, "FETCH_INCOMES_ERROR", "Failed to fetch incomes")
 		return
 	}
 
@@ -170,7 +168,7 @@ func (h *FinanceHandlers) GetIncomes(c *gin.Context) {
 		}
 	}
 
-	c.JSON(http.StatusOK, incomes)
+	SuccessResponse(c, http.StatusOK, incomes)
 }
 
 // GetAllTransactions handles getting all transactions with filters
@@ -203,11 +201,11 @@ func (h *FinanceHandlers) GetAllTransactions(c *gin.Context) {
 
 	response, err := h.getAllTransactionsUseCase.Execute(c.Request.Context(), userID, req)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch transactions"})
+		InternalServerErrorResponse(c, "FETCH_TRANSACTIONS_ERROR", "Failed to fetch transactions")
 		return
 	}
 
-	c.JSON(http.StatusOK, response)
+	SuccessResponse(c, http.StatusOK, response)
 }
 
 // CreateCategory handles category creation
@@ -216,18 +214,17 @@ func (h *FinanceHandlers) CreateCategory(c *gin.Context) {
 
 	var req finance.CreateCategoryRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		ValidationErrorResponse(c, err.Error())
 		return
 	}
 
 	response, err := h.createCategoryUseCase.Execute(c.Request.Context(), userID, req)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		HandleError(c, err, http.StatusBadRequest)
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{
-		"message":  "Category created successfully",
+	SuccessResponse(c, http.StatusCreated, gin.H{
 		"category": response,
 	})
 }
@@ -239,11 +236,11 @@ func (h *FinanceHandlers) GetCategories(c *gin.Context) {
 
 	response, err := h.getCategoriesUseCase.Execute(c.Request.Context(), userID, categoryType)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch categories"})
+		InternalServerErrorResponse(c, "FETCH_CATEGORIES_ERROR", "Failed to fetch categories")
 		return
 	}
 
-	c.JSON(http.StatusOK, response.Categories)
+	SuccessResponse(c, http.StatusOK, response.Categories)
 }
 
 // UpdateCategory handles category updates
@@ -254,24 +251,23 @@ func (h *FinanceHandlers) UpdateCategory(c *gin.Context) {
 	// Parse category ID
 	var categoryID int
 	if _, err := fmt.Sscanf(categoryIDStr, "%d", &categoryID); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid category ID"})
+		BadRequestResponse(c, "INVALID_CATEGORY_ID", "Invalid category ID")
 		return
 	}
 
 	var req finance.UpdateCategoryRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		ValidationErrorResponse(c, err.Error())
 		return
 	}
 
 	response, err := h.updateCategoryUseCase.Execute(c.Request.Context(), userID, categoryID, req)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		HandleError(c, err, http.StatusBadRequest)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"message":  "Category updated successfully",
+	SuccessResponse(c, http.StatusOK, gin.H{
 		"category": response,
 	})
 }
@@ -284,17 +280,17 @@ func (h *FinanceHandlers) DeleteCategory(c *gin.Context) {
 	// Parse category ID
 	var categoryID int
 	if _, err := fmt.Sscanf(categoryIDStr, "%d", &categoryID); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid category ID"})
+		BadRequestResponse(c, "INVALID_CATEGORY_ID", "Invalid category ID")
 		return
 	}
 
 	err := h.deleteCategoryUseCase.Execute(c.Request.Context(), userID, categoryID)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		HandleError(c, err, http.StatusBadRequest)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	SuccessResponse(c, http.StatusOK, gin.H{
 		"message": "Category deleted successfully",
 	})
 }
@@ -307,11 +303,11 @@ func (h *FinanceHandlers) DeleteExpense(c *gin.Context) {
 	// Delete the expense transaction
 	err := h.deleteTransactionUseCase.Execute(c.Request.Context(), expenseID, userID)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		HandleError(c, err, http.StatusBadRequest)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	SuccessResponse(c, http.StatusOK, gin.H{
 		"message": "Expense deleted successfully",
 	})
 }
@@ -324,11 +320,11 @@ func (h *FinanceHandlers) DeleteIncome(c *gin.Context) {
 	// Delete the income transaction
 	err := h.deleteTransactionUseCase.Execute(c.Request.Context(), incomeID, userID)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		HandleError(c, err, http.StatusBadRequest)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	SuccessResponse(c, http.StatusOK, gin.H{
 		"message": "Income deleted successfully",
 	})
 }
@@ -346,7 +342,7 @@ func (h *FinanceHandlers) UpdateExpense(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		ValidationErrorResponse(c, err.Error())
 		return
 	}
 
@@ -363,12 +359,11 @@ func (h *FinanceHandlers) UpdateExpense(c *gin.Context) {
 		domainFinance.TransactionTypeExpense,
 	)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		HandleError(c, err, http.StatusBadRequest)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"message": "Expense updated successfully",
+	SuccessResponse(c, http.StatusOK, gin.H{
 		"expense": gin.H{
 			"id":          transaction.ID().Value(),
 			"user_id":     transaction.UserID().Value(),
@@ -395,7 +390,7 @@ func (h *FinanceHandlers) UpdateIncome(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		ValidationErrorResponse(c, err.Error())
 		return
 	}
 
@@ -412,12 +407,11 @@ func (h *FinanceHandlers) UpdateIncome(c *gin.Context) {
 		domainFinance.TransactionTypeIncome,
 	)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		HandleError(c, err, http.StatusBadRequest)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"message": "Income updated successfully",
+	SuccessResponse(c, http.StatusOK, gin.H{
 		"income": gin.H{
 			"id":          transaction.ID().Value(),
 			"user_id":     transaction.UserID().Value(),
@@ -442,11 +436,11 @@ func (h *FinanceHandlers) GetAnalytics(c *gin.Context) {
 
 	response, err := h.getAnalyticsUseCase.Execute(c.Request.Context(), userID, req)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch analytics"})
+		InternalServerErrorResponse(c, "FETCH_ANALYTICS_ERROR", "Failed to fetch analytics")
 		return
 	}
 
-	c.JSON(http.StatusOK, response)
+	SuccessResponse(c, http.StatusOK, response)
 }
 
 // CreateBudget handles budget creation
@@ -455,17 +449,17 @@ func (h *FinanceHandlers) CreateBudget(c *gin.Context) {
 
 	var req finance.CreateBudgetRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		ValidationErrorResponse(c, err.Error())
 		return
 	}
 
 	response, err := h.createBudgetUseCase.Execute(c.Request.Context(), userID, req)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		HandleError(c, err, http.StatusBadRequest)
 		return
 	}
 
-	c.JSON(http.StatusCreated, response)
+	SuccessResponse(c, http.StatusCreated, response)
 }
 
 // GetBudgets handles getting budgets
@@ -474,11 +468,11 @@ func (h *FinanceHandlers) GetBudgets(c *gin.Context) {
 
 	response, err := h.getBudgetsUseCase.Execute(c.Request.Context(), userID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch budgets"})
+		InternalServerErrorResponse(c, "FETCH_BUDGETS_ERROR", "Failed to fetch budgets")
 		return
 	}
 
-	c.JSON(http.StatusOK, response.Budgets)
+	SuccessResponse(c, http.StatusOK, response.Budgets)
 }
 
 // UpdateBudget handles budget updates
@@ -495,7 +489,7 @@ func (h *FinanceHandlers) UpdateBudget(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		ValidationErrorResponse(c, err.Error())
 		return
 	}
 
@@ -511,11 +505,11 @@ func (h *FinanceHandlers) UpdateBudget(c *gin.Context) {
 		req.EndDate,
 	)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		HandleError(c, err, http.StatusBadRequest)
 		return
 	}
 
-	c.JSON(http.StatusOK, response)
+	SuccessResponse(c, http.StatusOK, response)
 }
 
 // DeleteBudget handles budget deletion
@@ -526,11 +520,11 @@ func (h *FinanceHandlers) DeleteBudget(c *gin.Context) {
 	// Delete the budget
 	err := h.deleteBudgetUseCase.Execute(c.Request.Context(), budgetID, userID)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		HandleError(c, err, http.StatusBadRequest)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	SuccessResponse(c, http.StatusOK, gin.H{
 		"message": "Budget deleted successfully",
 	})
 }
@@ -541,11 +535,11 @@ func (h *FinanceHandlers) GetCurrencies(c *gin.Context) {
 
 	response, err := h.getCurrenciesUseCase.Execute(c.Request.Context(), domainFinance.NewUserID(userID))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch currencies"})
+		InternalServerErrorResponse(c, "FETCH_CURRENCIES_ERROR", "Failed to fetch currencies")
 		return
 	}
 
-	c.JSON(http.StatusOK, response.Currencies)
+	SuccessResponse(c, http.StatusOK, response.Currencies)
 }
 
 // CreateCurrency handles currency creation
@@ -554,18 +548,17 @@ func (h *FinanceHandlers) CreateCurrency(c *gin.Context) {
 
 	var req finance.CreateCurrencyRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		ValidationErrorResponse(c, err.Error())
 		return
 	}
 
 	response, err := h.createCurrencyUseCase.Execute(c.Request.Context(), domainFinance.NewUserID(userID), req)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		HandleError(c, err, http.StatusBadRequest)
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{
-		"message":  response.Message,
+	SuccessResponse(c, http.StatusCreated, gin.H{
 		"currency": response.Currency,
 	})
 }
@@ -578,24 +571,23 @@ func (h *FinanceHandlers) UpdateCurrency(c *gin.Context) {
 	// Convert string ID to CurrencyID
 	currencyIDInt, err := strconv.Atoi(currencyID)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid currency ID"})
+		BadRequestResponse(c, "INVALID_CURRENCY_ID", "Invalid currency ID")
 		return
 	}
 
 	var req finance.UpdateCurrencyRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		ValidationErrorResponse(c, err.Error())
 		return
 	}
 
 	response, err := h.updateCurrencyUseCase.Execute(c.Request.Context(), domainFinance.NewUserID(userID), domainFinance.NewCurrencyID(currencyIDInt), req)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		HandleError(c, err, http.StatusBadRequest)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"message":  response.Message,
+	SuccessResponse(c, http.StatusOK, gin.H{
 		"currency": response.Currency,
 	})
 }
@@ -608,17 +600,17 @@ func (h *FinanceHandlers) DeleteCurrency(c *gin.Context) {
 	// Convert string ID to CurrencyID
 	currencyIDInt, err := strconv.Atoi(currencyID)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid currency ID"})
+		BadRequestResponse(c, "INVALID_CURRENCY_ID", "Invalid currency ID")
 		return
 	}
 
 	response, err := h.deleteCurrencyUseCase.Execute(c.Request.Context(), domainFinance.NewUserID(userID), domainFinance.NewCurrencyID(currencyIDInt))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		HandleError(c, err, http.StatusBadRequest)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	SuccessResponse(c, http.StatusOK, gin.H{
 		"message": response.Message,
 	})
 }
@@ -631,11 +623,11 @@ func (h *FinanceHandlers) SetDefaultCurrency(c *gin.Context) {
 	// Set the default currency
 	err := h.setDefaultCurrencyUseCase.Execute(c.Request.Context(), userID, currencyID)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		HandleError(c, err, http.StatusBadRequest)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	SuccessResponse(c, http.StatusOK, gin.H{
 		"message": "Default currency set successfully",
 	})
 }
@@ -647,9 +639,9 @@ func (h *FinanceHandlers) GetDefaultCurrency(c *gin.Context) {
 	// Get the default currency
 	currency, err := h.getDefaultCurrencyUseCase.Execute(c.Request.Context(), userID)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		HandleError(c, err, http.StatusBadRequest)
 		return
 	}
 
-	c.JSON(http.StatusOK, currency)
+	SuccessResponse(c, http.StatusOK, currency)
 }

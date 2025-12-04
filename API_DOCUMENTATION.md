@@ -104,9 +104,75 @@ Check if the API is running.
 **Response:**
 ```json
 {
-  "status": "ok"
+  "status": "success",
+  "data": {
+    "status": "ok"
+  },
+  "error": null
 }
 ```
+
+---
+
+## Standardized Response Structure
+
+All API endpoints follow a standardized response structure:
+
+**Success Response:**
+```json
+{
+  "status": "success",
+  "data": {
+    // Response data here
+  },
+  "error": null
+}
+```
+
+**Error Response:**
+```json
+{
+  "status": "error",
+  "data": null,
+  "error": {
+    "error_code": "ERROR_CODE",
+    "error_message": "Human-readable error message"
+  }
+}
+```
+
+### Response Fields
+
+- `status` (string): Either `"success"` or `"error"`
+- `data` (object/array/null): The response data for successful requests, `null` for errors
+- `error` (object/null): Error details for failed requests, `null` for successful requests
+  - `error_code` (string): Machine-readable error code (e.g., `VALIDATION_ERROR`, `ACCESS_DENIED`)
+  - `error_message` (string): Human-readable error message
+
+### Common Error Codes
+
+- `VALIDATION_ERROR`: Request validation failed
+- `INVALID_CREDENTIALS`: Invalid email or password
+- `INVALID_TOKEN`: Invalid or expired authentication token
+- `AUTHORIZATION_HEADER_REQUIRED`: Missing Authorization header
+- `ACCESS_DENIED`: User doesn't have permission to access the resource
+- `CATEGORY_ACCESS_DENIED`: User doesn't have access to the category
+- `CURRENCY_ACCESS_DENIED`: User doesn't have access to the currency
+- `TRANSACTION_NOT_FOUND`: Transaction not found
+- `CATEGORY_NOT_FOUND`: Category not found
+- `CURRENCY_NOT_FOUND`: Currency not found
+- `BUDGET_NOT_FOUND`: Budget not found
+- `TRANSACTION_TYPE_MISMATCH`: Transaction type doesn't match the endpoint
+- `INVALID_CATEGORY_ID`: Invalid category ID format
+- `INVALID_CURRENCY_ID`: Invalid currency ID format
+- `FETCH_EXPENSES_ERROR`: Failed to fetch expenses
+- `FETCH_INCOMES_ERROR`: Failed to fetch incomes
+- `FETCH_TRANSACTIONS_ERROR`: Failed to fetch transactions
+- `FETCH_CATEGORIES_ERROR`: Failed to fetch categories
+- `FETCH_BUDGETS_ERROR`: Failed to fetch budgets
+- `FETCH_CURRENCIES_ERROR`: Failed to fetch currencies
+- `FETCH_ANALYTICS_ERROR`: Failed to fetch analytics
+- `FETCH_DASHBOARD_STATS_ERROR`: Failed to fetch dashboard statistics
 
 ---
 
@@ -1013,23 +1079,27 @@ Get all income transactions for the authenticated user.
 
 **Response:**
 ```json
-[
-  {
-    "id": 1,
-    "user_id": 1,
-    "category_id": 9,
-    "category": {
-      "id": 9,
-      "name": "Salary",
-      "color": "#10B981",
-      "type": "income"
-    },
-    "amount": 3000.0,
-    "description": "Monthly salary",
-    "date": "2024-01-01",
-    "created_at": "2024-01-01T09:00:00Z"
-  }
-]
+{
+  "status": "success",
+  "data": [
+    {
+      "id": 1,
+      "user_id": 1,
+      "category_id": 9,
+      "category": {
+        "id": 9,
+        "name": "Salary",
+        "color": "#10B981",
+        "type": "income"
+      },
+      "amount": 3000.0,
+      "description": "Monthly salary",
+      "date": "2024-01-01",
+      "created_at": "2024-01-01T09:00:00Z"
+    }
+  ],
+  "error": null
+}
 ```
 
 ### POST /api/v100/incomes
@@ -1049,16 +1119,19 @@ Create a new income transaction.
 **Response:**
 ```json
 {
-  "message": "Income created successfully",
-  "income": {
-    "id": 1,
-    "user_id": 1,
-    "category_id": 9,
-    "amount": 3000.0,
-    "description": "Monthly salary",
-    "date": "2024-01-01",
-    "created_at": "2024-01-01T09:00:00Z"
-  }
+  "status": "success",
+  "data": {
+    "income": {
+      "id": 1,
+      "user_id": 1,
+      "category_id": 9,
+      "amount": 3000.0,
+      "description": "Monthly salary",
+      "date": "2024-01-01",
+      "created_at": "2024-01-01T09:00:00Z"
+    }
+  },
+  "error": null
 }
 ```
 
@@ -1079,17 +1152,20 @@ Update an existing income transaction.
 **Response:**
 ```json
 {
-  "message": "Income updated successfully",
-  "income": {
-    "id": 1,
-    "user_id": 1,
-    "category_id": 9,
-    "currency_id": 1,
-    "amount": 3500.0,
-    "description": "Updated monthly salary",
-    "date": "2024-01-01",
-    "type": "income"
-  }
+  "status": "success",
+  "data": {
+    "income": {
+      "id": 1,
+      "user_id": 1,
+      "category_id": 9,
+      "currency_id": 1,
+      "amount": 3500.0,
+      "description": "Updated monthly salary",
+      "date": "2024-01-01",
+      "type": "income"
+    }
+  },
+  "error": null
 }
 ```
 
@@ -1101,14 +1177,24 @@ The "access denied" error can occur in the following scenarios:
 1. **Transaction Ownership**: The transaction with the given ID does not belong to the authenticated user.
    ```json
    {
-     "error": "access denied"
+     "status": "error",
+     "data": null,
+     "error": {
+       "error_code": "ACCESS_DENIED",
+       "error_message": "access denied"
+     }
    }
    ```
 
 2. **Transaction Type Mismatch**: The transaction ID exists but is of a different type (e.g., trying to update an income but the ID points to an expense, or vice versa).
    ```json
    {
-     "error": "transaction type mismatch"
+     "status": "error",
+     "data": null,
+     "error": {
+       "error_code": "TRANSACTION_TYPE_MISMATCH",
+       "error_message": "transaction type mismatch"
+     }
    }
    ```
    **Note**: This can happen if an expense and income share the same ID in their respective tables. The system now validates that the transaction type matches the endpoint being used.
@@ -1116,7 +1202,12 @@ The "access denied" error can occur in the following scenarios:
 3. **Category Access**: The `category_id` provided is not a default category and does not belong to the authenticated user.
    ```json
    {
-     "error": "access denied to category"
+     "status": "error",
+     "data": null,
+     "error": {
+       "error_code": "CATEGORY_ACCESS_DENIED",
+       "error_message": "access denied to category"
+     }
    }
    ```
    **Solution**: Ensure you're using either:
@@ -1126,7 +1217,12 @@ The "access denied" error can occur in the following scenarios:
 4. **Currency Access**: The currency being used is not a default currency and does not belong to the authenticated user.
    ```json
    {
-     "error": "access denied to currency"
+     "status": "error",
+     "data": null,
+     "error": {
+       "error_code": "CURRENCY_ACCESS_DENIED",
+       "error_message": "access denied to currency"
+     }
    }
    ```
    **Note**: Currently, the handler uses currency ID `1` (default USD). If this currency doesn't exist or isn't accessible, you'll get this error.
@@ -1134,21 +1230,36 @@ The "access denied" error can occur in the following scenarios:
 **400 Bad Request - Transaction Not Found:**
 ```json
 {
-  "error": "transaction not found"
+  "status": "error",
+  "data": null,
+  "error": {
+    "error_code": "TRANSACTION_NOT_FOUND",
+    "error_message": "transaction not found"
+  }
 }
 ```
 
 **400 Bad Request - Category Not Found:**
 ```json
 {
-  "error": "category not found"
+  "status": "error",
+  "data": null,
+  "error": {
+    "error_code": "CATEGORY_NOT_FOUND",
+    "error_message": "category not found"
+  }
 }
 ```
 
 **400 Bad Request - Currency Not Found:**
 ```json
 {
-  "error": "currency not found"
+  "status": "error",
+  "data": null,
+  "error": {
+    "error_code": "CURRENCY_NOT_FOUND",
+    "error_message": "currency not found"
+  }
 }
 ```
 
@@ -1159,7 +1270,11 @@ Delete an income transaction.
 **Response:**
 ```json
 {
-  "message": "Income deleted successfully"
+  "status": "success",
+  "data": {
+    "message": "Income deleted successfully"
+  },
+  "error": null
 }
 ```
 
@@ -1226,18 +1341,20 @@ Get all transactions (both income and expense) for the authenticated user with a
         "type": "income"
       }
     }
-  ],
-  "total": 2,
-  "page": 1,
-  "limit": 20,
-  "total_pages": 1,
-  "filters": {
-    "type": "expense",
-    "start_date": "2024-01-01",
-    "end_date": "2024-12-31",
+    ],
+    "total": 2,
     "page": 1,
-    "limit": 20
-  }
+    "limit": 20,
+    "total_pages": 1,
+    "filters": {
+      "type": "expense",
+      "start_date": "2024-01-01",
+      "end_date": "2024-12-31",
+      "page": 1,
+      "limit": 20
+    }
+  },
+  "error": null
 }
 ```
 
@@ -1270,23 +1387,27 @@ Get all budgets for the authenticated user.
 
 **Response:**
 ```json
-[
-  {
-    "id": 8,
-    "user_id": 1,
-    "amount": 500,
-    "period": "monthly",
-    "start_date": "2024-01-01",
-    "end_date": "2024-02-01",
-    "created_at": "2025-09-30T09:51:35+07:00",
-    "category": {
-      "id": 1,
-      "name": "Food",
-      "color": "#EF4444",
-      "type": "expense"
+{
+  "status": "success",
+  "data": [
+    {
+      "id": 8,
+      "user_id": 1,
+      "amount": 500,
+      "period": "monthly",
+      "start_date": "2024-01-01",
+      "end_date": "2024-02-01",
+      "created_at": "2025-09-30T09:51:35+07:00",
+      "category": {
+        "id": 1,
+        "name": "Food",
+        "color": "#EF4444",
+        "type": "expense"
+      }
     }
-  }
-]
+  ],
+  "error": null
+}
 ```
 
 **Response Fields:**
@@ -1321,16 +1442,20 @@ Create a new budget.
 **Response:**
 ```json
 {
-  "amount": 500,
-  "period": "monthly",
-  "start_date": "2024-01-01",
-  "end_date": "2024-02-01",
-  "category": {
-    "id": 1,
-    "name": "Food",
-    "color": "#EF4444",
-    "type": "expense"
-  }
+  "status": "success",
+  "data": {
+    "amount": 500,
+    "period": "monthly",
+    "start_date": "2024-01-01",
+    "end_date": "2024-02-01",
+    "category": {
+      "id": 1,
+      "name": "Food",
+      "color": "#EF4444",
+      "type": "expense"
+    }
+  },
+  "error": null
 }
 ```
 
@@ -1372,7 +1497,11 @@ Delete a budget.
 **Response:**
 ```json
 {
-  "message": "Budget deleted successfully"
+  "status": "success",
+  "data": {
+    "message": "Budget deleted successfully"
+  },
+  "error": null
 }
 ```
 
@@ -1386,22 +1515,26 @@ Get all currencies available in the system.
 
 **Response:**
 ```json
-[
-  {
-    "id": 1,
-    "code": "USD",
-    "name": "US Dollar",
-    "symbol": "$",
-    "is_default": true
-  },
-  {
-    "id": 2,
-    "code": "EUR",
-    "name": "Euro",
-    "symbol": "€",
-    "is_default": false
-  }
-]
+{
+  "status": "success",
+  "data": [
+    {
+      "id": 1,
+      "code": "USD",
+      "name": "US Dollar",
+      "symbol": "$",
+      "is_default": true
+    },
+    {
+      "id": 2,
+      "code": "EUR",
+      "name": "Euro",
+      "symbol": "€",
+      "is_default": false
+    }
+  ],
+  "error": null
+}
 ```
 
 ### POST /api/v100/currencies
@@ -1421,14 +1554,17 @@ Create a new currency.
 **Response:**
 ```json
 {
-  "message": "Currency created successfully",
-  "currency": {
-    "id": 0,
-    "code": "GBP",
-    "name": "British Pound",
-    "symbol": "£",
-    "is_default": false
-  }
+  "status": "success",
+  "data": {
+    "currency": {
+      "id": 0,
+      "code": "GBP",
+      "name": "British Pound",
+      "symbol": "£",
+      "is_default": false
+    }
+  },
+  "error": null
 }
 ```
 
@@ -1449,14 +1585,17 @@ Update an existing currency.
 **Response:**
 ```json
 {
-  "message": "Currency updated successfully",
-  "currency": {
-    "id": 1,
-    "code": "GBP",
-    "name": "British Pound Sterling",
-    "symbol": "£",
-    "is_default": false
-  }
+  "status": "success",
+  "data": {
+    "currency": {
+      "id": 1,
+      "code": "GBP",
+      "name": "British Pound Sterling",
+      "symbol": "£",
+      "is_default": false
+    }
+  },
+  "error": null
 }
 ```
 
@@ -1467,7 +1606,11 @@ Delete a currency.
 **Response:**
 ```json
 {
-  "message": "Currency deleted successfully"
+  "status": "success",
+  "data": {
+    "message": "Currency deleted successfully"
+  },
+  "error": null
 }
 ```
 
@@ -1478,7 +1621,11 @@ Set a currency as the user's default currency.
 **Response:**
 ```json
 {
-  "message": "Default currency set successfully"
+  "status": "success",
+  "data": {
+    "message": "Default currency set successfully"
+  },
+  "error": null
 }
 ```
 
@@ -1489,12 +1636,16 @@ Get the user's default currency.
 **Response:**
 ```json
 {
-  "id": 3,
-  "code": "GBP",
-  "name": "British Pound",
-  "symbol": "£",
-  "is_default": true,
-  "created_at": "2025-09-23T16:20:51.976667+07:00"
+  "status": "success",
+  "data": {
+    "id": 3,
+    "code": "GBP",
+    "name": "British Pound",
+    "symbol": "£",
+    "is_default": true,
+    "created_at": "2025-09-23T16:20:51.976667+07:00"
+  },
+  "error": null
 }
 ```
 
@@ -1514,30 +1665,34 @@ Get spending analytics and reports.
 **Response:**
 ```json
 {
-  "total_expenses": 1250.50,
-  "total_incomes": 3000.00,
-  "net_balance": 1749.50,
-  "expenses_by_category": [
-    {
-      "category_id": 1,
-      "category_name": "Food",
-      "amount": 450.00,
-      "percentage": 36.0
-    },
-    {
-      "category_id": 2,
-      "category_name": "Transport",
-      "amount": 200.50,
-      "percentage": 16.0
-    }
-  ],
-  "monthly_trends": [
-    {
-      "month": "2024-01",
-      "expenses": 1250.50,
-      "incomes": 3000.00
-    }
-  ]
+  "status": "success",
+  "data": {
+    "total_expenses": 1250.50,
+    "total_incomes": 3000.00,
+    "net_balance": 1749.50,
+    "expenses_by_category": [
+      {
+        "category_id": 1,
+        "category_name": "Food",
+        "amount": 450.00,
+        "percentage": 36.0
+      },
+      {
+        "category_id": 2,
+        "category_name": "Transport",
+        "amount": 200.50,
+        "percentage": 16.0
+      }
+    ],
+    "monthly_trends": [
+      {
+        "month": "2024-01",
+        "expenses": 1250.50,
+        "incomes": 3000.00
+      }
+    ]
+  },
+  "error": null
 }
 ```
 
@@ -1550,35 +1705,60 @@ All endpoints may return the following error responses:
 ### 400 Bad Request
 ```json
 {
-  "error": "Invalid request data"
+  "status": "error",
+  "data": null,
+  "error": {
+    "error_code": "VALIDATION_ERROR",
+    "error_message": "Invalid request data"
+  }
 }
 ```
 
 ### 401 Unauthorized
 ```json
 {
-  "error": "Authorization header required"
+  "status": "error",
+  "data": null,
+  "error": {
+    "error_code": "AUTHORIZATION_HEADER_REQUIRED",
+    "error_message": "Authorization header required"
+  }
 }
 ```
 
 ### 403 Forbidden
 ```json
 {
-  "error": "Access denied"
+  "status": "error",
+  "data": null,
+  "error": {
+    "error_code": "ACCESS_DENIED",
+    "error_message": "Access denied"
+  }
 }
 ```
 
 ### 404 Not Found
 ```json
 {
-  "error": "Resource not found"
+  "status": "error",
+  "data": null,
+  "error": {
+    "error_code": "RESOURCE_NOT_FOUND",
+    "error_message": "Resource not found"
+  }
 }
 ```
 
 ### 500 Internal Server Error
 ```json
 {
-  "error": "Internal server error"
+  "status": "error",
+  "data": null,
+  "error": {
+    "error_code": "INTERNAL_SERVER_ERROR",
+    "error_message": "Internal server error"
+  }
 }
 ```
 

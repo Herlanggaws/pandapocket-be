@@ -1,8 +1,8 @@
 package middleware
 
 import (
-	"net/http"
 	"panda-pocket/internal/application/identity"
+	"panda-pocket/internal/interfaces/http/handlers"
 
 	"github.com/gin-gonic/gin"
 )
@@ -24,7 +24,7 @@ func (m *AuthMiddleware) RequireAuth() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tokenString := c.GetHeader("Authorization")
 		if tokenString == "" {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization header required"})
+			handlers.UnauthorizedResponse(c, "AUTHORIZATION_HEADER_REQUIRED", "Authorization header required")
 			c.Abort()
 			return
 		}
@@ -36,7 +36,7 @@ func (m *AuthMiddleware) RequireAuth() gin.HandlerFunc {
 
 		claims, err := m.tokenService.ValidateToken(tokenString)
 		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+			handlers.UnauthorizedResponse(c, "INVALID_TOKEN", "Invalid token")
 			c.Abort()
 			return
 		}
@@ -54,21 +54,21 @@ func (m *AuthMiddleware) RequireRole(requiredRole string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userRole, exists := c.Get("role")
 		if !exists {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "User role not found"})
+			handlers.UnauthorizedResponse(c, "USER_ROLE_NOT_FOUND", "User role not found")
 			c.Abort()
 			return
 		}
 
 		role, ok := userRole.(string)
 		if !ok {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid role type"})
+			handlers.InternalServerErrorResponse(c, "INVALID_ROLE_TYPE", "Invalid role type")
 			c.Abort()
 			return
 		}
 
 		// Check if user has required role or higher
 		if !hasRequiredRole(role, requiredRole) {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Insufficient permissions"})
+			handlers.ForbiddenResponse(c, "INSUFFICIENT_PERMISSIONS", "Insufficient permissions")
 			c.Abort()
 			return
 		}

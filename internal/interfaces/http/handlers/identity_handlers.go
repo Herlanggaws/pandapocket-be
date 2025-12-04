@@ -59,19 +59,18 @@ func formatValidationError(err error) string {
 func (h *IdentityHandlers) Register(c *gin.Context) {
 	var req identity.RegisterUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": formatValidationError(err)})
+		ValidationErrorResponse(c, formatValidationError(err))
 		return
 	}
 
 	response, err := h.registerUserUseCase.Execute(c.Request.Context(), req)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		HandleError(c, err, http.StatusBadRequest)
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{
-		"message": "User registered successfully",
-		"token":   response.Token,
+	SuccessResponse(c, http.StatusCreated, gin.H{
+		"token": response.Token,
 		"user": gin.H{
 			"id":    response.UserID,
 			"email": response.Email,
@@ -83,20 +82,18 @@ func (h *IdentityHandlers) Register(c *gin.Context) {
 func (h *IdentityHandlers) Login(c *gin.Context) {
 	var req identity.LoginUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": formatValidationError(err)})
+		ValidationErrorResponse(c, formatValidationError(err))
 		return
 	}
 
 	response, err := h.loginUserUseCase.Execute(c.Request.Context(), req)
 	if err != nil {
-		// Use the error message from the use case, which is already user-friendly
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		HandleError(c, err, http.StatusUnauthorized)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"message": "Login successful",
-		"token":   response.Token,
+	SuccessResponse(c, http.StatusOK, gin.H{
+		"token": response.Token,
 		"user": gin.H{
 			"id":    response.UserID,
 			"email": response.Email,
@@ -108,19 +105,18 @@ func (h *IdentityHandlers) Login(c *gin.Context) {
 func (h *IdentityHandlers) GetUsers(c *gin.Context) {
 	response, err := h.getUsersUseCase.Execute(c.Request.Context())
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		HandleError(c, err, http.StatusInternalServerError)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"message": "Users retrieved successfully",
-		"data":    response,
-	})
+	SuccessResponse(c, http.StatusOK, response)
 }
 
 // Logout handles user logout
 func (h *IdentityHandlers) Logout(c *gin.Context) {
 	// In a real application, you might want to blacklist the token
 	// For this implementation, we'll just return a success response
-	c.JSON(http.StatusOK, gin.H{"message": "Logout successful"})
+	SuccessResponse(c, http.StatusOK, gin.H{
+		"message": "Logout successful",
+	})
 }

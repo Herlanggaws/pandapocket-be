@@ -23,12 +23,9 @@ func NewDashboardHandlers(getDashboardStatsUseCase *identity.GetDashboardStatsUs
 func (h *DashboardHandlers) GetDashboardStats(c *gin.Context) {
 	response, err := h.getDashboardStatsUseCase.Execute(c.Request.Context())
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "Internal Server Error",
-			"message": "Failed to fetch dashboard statistics",
-		})
+		InternalServerErrorResponse(c, "FETCH_DASHBOARD_STATS_ERROR", "Failed to fetch dashboard statistics")
 		return
 	}
 
-	c.JSON(http.StatusOK, response)
+	SuccessResponse(c, http.StatusOK, response)
 }

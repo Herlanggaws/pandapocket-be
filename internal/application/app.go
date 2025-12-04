@@ -126,7 +126,7 @@ func (app *App) SetupRoutes() *gin.Engine {
 		"http://localhost:3001",
 		"http://localhost:3002",
 		"http://localhost:3003",
-		"http://localhost:3004",      // Back office port
+		"http://localhost:3004",     // Back office port
 		"https://berbudget.com",     // Production frontend
 		"https://www.berbudget.com", // Production frontend with www
 	}
@@ -215,7 +215,7 @@ func (app *App) SetupRoutes() *gin.Engine {
 
 	// Health check
 	r.GET("/health", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+		handlers.SuccessResponse(c, http.StatusOK, gin.H{"status": "ok"})
 	})
 
 	return r
