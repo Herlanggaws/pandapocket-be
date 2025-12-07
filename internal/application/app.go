@@ -53,6 +53,7 @@ func NewApp(db *gorm.DB) *App {
 	loginUserUseCase := appIdentity.NewLoginUserUseCase(userService, tokenService)
 	getUsersUseCase := appIdentity.NewGetUsersUseCase(userService)
 	forgotPasswordUseCase := appIdentity.NewForgotPasswordUseCase(userRepo, tokenRepo, emailService)
+	resetPasswordUseCase := appIdentity.NewResetPasswordUseCase(userRepo, tokenRepo)
 	getDashboardStatsUseCase := appIdentity.NewGetDashboardStatsUseCase(userRepo, budgetRepo, transactionRepo)
 	createTransactionUseCase := appFinance.NewCreateTransactionUseCase(transactionService, currencyService)
 	getTransactionsUseCase := appFinance.NewGetTransactionsUseCase(transactionService, categoryService)
@@ -81,6 +82,7 @@ func NewApp(db *gorm.DB) *App {
 		loginUserUseCase,
 		getUsersUseCase,
 		forgotPasswordUseCase,
+		resetPasswordUseCase,
 	)
 	financeHandlers := handlers.NewFinanceHandlers(
 		createTransactionUseCase,
@@ -165,6 +167,7 @@ func (app *App) SetupRoutes() *gin.Engine {
 				auth.POST("/login", app.IdentityHandlers.Login)
 				auth.POST("/logout", app.IdentityHandlers.Logout)
 				auth.POST("/forgot", app.IdentityHandlers.ForgotPassword)
+				auth.POST("/reset-password", app.IdentityHandlers.ResetPassword)
 			}
 
 			// Protected routes

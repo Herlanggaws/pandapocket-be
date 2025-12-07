@@ -15,6 +15,7 @@ type IdentityHandlers struct {
 	loginUserUseCase      *identity.LoginUserUseCase
 	getUsersUseCase       *identity.GetUsersUseCase
 	forgotPasswordUseCase *identity.ForgotPasswordUseCase
+	resetPasswordUseCase  *identity.ResetPasswordUseCase
 }
 
 // NewIdentityHandlers creates a new identity handlers instance
@@ -23,12 +24,14 @@ func NewIdentityHandlers(
 	loginUserUseCase *identity.LoginUserUseCase,
 	getUsersUseCase *identity.GetUsersUseCase,
 	forgotPasswordUseCase *identity.ForgotPasswordUseCase,
+	resetPasswordUseCase *identity.ResetPasswordUseCase,
 ) *IdentityHandlers {
 	return &IdentityHandlers{
 		registerUserUseCase:   registerUserUseCase,
 		loginUserUseCase:      loginUserUseCase,
 		getUsersUseCase:       getUsersUseCase,
 		forgotPasswordUseCase: forgotPasswordUseCase,
+		resetPasswordUseCase:  resetPasswordUseCase,
 	}
 }
 
@@ -139,6 +142,23 @@ func (h *IdentityHandlers) ForgotPassword(c *gin.Context) {
 			return
 		}
 		HandleError(c, err, http.StatusInternalServerError)
+		return
+	}
+
+	SuccessResponse(c, http.StatusOK, response)
+}
+
+// ResetPassword handles password reset
+func (h *IdentityHandlers) ResetPassword(c *gin.Context) {
+	var req identity.ResetPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		ValidationErrorResponse(c, formatValidationError(err))
+		return
+	}
+
+	response, err := h.resetPasswordUseCase.Execute(c.Request.Context(), &req)
+	if err != nil {
+		HandleError(c, err, http.StatusBadRequest)
 		return
 	}
 

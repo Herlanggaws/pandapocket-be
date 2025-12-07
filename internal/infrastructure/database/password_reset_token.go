@@ -63,3 +63,8 @@ func (r *GormPasswordResetTokenRepository) FindByToken(ctx context.Context, toke
 
 	return domainToken, nil
 }
+
+// Delete deletes a password reset token by ID
+func (r *GormPasswordResetTokenRepository) Delete(ctx context.Context, id uuid.UUID) error {
+	return r.db.WithContext(ctx).Delete(&PasswordResetToken{}, "id = ?", id).Error
+}
