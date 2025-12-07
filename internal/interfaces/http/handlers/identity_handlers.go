@@ -11,9 +11,10 @@ import (
 
 // IdentityHandlers handles identity-related HTTP requests
 type IdentityHandlers struct {
-	registerUserUseCase *identity.RegisterUserUseCase
-	loginUserUseCase    *identity.LoginUserUseCase
-	getUsersUseCase     *identity.GetUsersUseCase
+	registerUserUseCase   *identity.RegisterUserUseCase
+	loginUserUseCase      *identity.LoginUserUseCase
+	getUsersUseCase       *identity.GetUsersUseCase
+	forgotPasswordUseCase *identity.ForgotPasswordUseCase
 }
 
 // NewIdentityHandlers creates a new identity handlers instance
@@ -21,11 +22,13 @@ func NewIdentityHandlers(
 	registerUserUseCase *identity.RegisterUserUseCase,
 	loginUserUseCase *identity.LoginUserUseCase,
 	getUsersUseCase *identity.GetUsersUseCase,
+	forgotPasswordUseCase *identity.ForgotPasswordUseCase,
 ) *IdentityHandlers {
 	return &IdentityHandlers{
-		registerUserUseCase: registerUserUseCase,
-		loginUserUseCase:    loginUserUseCase,
-		getUsersUseCase:     getUsersUseCase,
+		registerUserUseCase:   registerUserUseCase,
+		loginUserUseCase:      loginUserUseCase,
+		getUsersUseCase:       getUsersUseCase,
+		forgotPasswordUseCase: forgotPasswordUseCase,
 	}
 }
 
@@ -119,4 +122,25 @@ func (h *IdentityHandlers) Logout(c *gin.Context) {
 	SuccessResponse(c, http.StatusOK, gin.H{
 		"message": "Logout successful",
 	})
+}
+
+// ForgotPassword handles forgot password requests
+func (h *IdentityHandlers) ForgotPassword(c *gin.Context) {
+	var req identity.ForgotPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		ValidationErrorResponse(c, formatValidationError(err))
+		return
+	}
+
+	response, err := h.forgotPasswordUseCase.Execute(c.Request.Context(), req)
+	if err != nil {
+		if err.Error() == "email not found" {
+			HandleError(c, err, http.StatusBadRequest) // Or Not Found, but keeping consistent with "IF email was found"
+			return
+		}
+		HandleError(c, err, http.StatusInternalServerError)
+		return
+	}
+
+	SuccessResponse(c, http.StatusOK, response)
 }

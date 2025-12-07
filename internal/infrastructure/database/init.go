@@ -114,6 +114,21 @@ func getEnv(key, defaultValue string) string {
 
 // autoMigrate runs GORM auto-migration for all models
 func autoMigrate(db *gorm.DB) error {
+	// Drop password_reset_tokens table if exists to allow schema change (dev only)
+	// In production, this would be a proper migration script
+	if db.Migrator().HasTable("password_reset_tokens") {
+		// Check if ID column is integer
+		var columnType string
+		db.Raw("SELECT data_type FROM information_schema.columns WHERE table_name = 'password_reset_tokens' AND column_name = 'id'").Scan(&columnType)
+
+		if columnType == "bigint" || columnType == "integer" {
+			log.Println("Dropping password_reset_tokens table to migrate to UUID primary key")
+			if err := db.Migrator().DropTable("password_reset_tokens"); err != nil {
+				return err
+			}
+		}
+	}
+
 	return db.AutoMigrate(
 		&User{},
 		&Currency{},
@@ -123,7 +138,9 @@ func autoMigrate(db *gorm.DB) error {
 		&Budget{},
 		&RecurringTransaction{},
 		&UserPreferences{},
+		&UserPreferences{},
 		&Notification{},
+		&PasswordResetToken{},
 	)
 }
 
