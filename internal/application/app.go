@@ -7,6 +7,7 @@ import (
 	domainFinance "panda-pocket/internal/domain/finance"
 	domainIdentity "panda-pocket/internal/domain/identity"
 	"panda-pocket/internal/infrastructure/database"
+	"panda-pocket/internal/infrastructure/notification"
 	"panda-pocket/internal/interfaces/http/handlers"
 	"panda-pocket/internal/interfaces/http/middleware"
 	"panda-pocket/internal/interfaces/http/versioning"
@@ -36,6 +37,7 @@ func NewApp(db *gorm.DB) *App {
 	currencyRepo := database.NewGormCurrencyRepository(db)
 	transactionRepo := database.NewGormTransactionRepository(db)
 	budgetRepo := database.NewGormBudgetRepository(db)
+	tokenRepo := database.NewGormPasswordResetTokenRepository(db)
 
 	// Domain layer - services
 	userService := domainIdentity.NewUserService(userRepo)
@@ -46,9 +48,12 @@ func NewApp(db *gorm.DB) *App {
 
 	// Application layer - use cases
 	tokenService := appIdentity.NewTokenService()
+	emailService := notification.NewSMTPEmailService()
 	registerUserUseCase := appIdentity.NewRegisterUserUseCase(userService, tokenService)
 	loginUserUseCase := appIdentity.NewLoginUserUseCase(userService, tokenService)
 	getUsersUseCase := appIdentity.NewGetUsersUseCase(userService)
+	forgotPasswordUseCase := appIdentity.NewForgotPasswordUseCase(userRepo, tokenRepo, emailService)
+	resetPasswordUseCase := appIdentity.NewResetPasswordUseCase(userRepo, tokenRepo)
 	getDashboardStatsUseCase := appIdentity.NewGetDashboardStatsUseCase(userRepo, budgetRepo, transactionRepo)
 	createTransactionUseCase := appFinance.NewCreateTransactionUseCase(transactionService, currencyService)
 	getTransactionsUseCase := appFinance.NewGetTransactionsUseCase(transactionService, categoryService)
@@ -72,7 +77,13 @@ func NewApp(db *gorm.DB) *App {
 	getDefaultCurrencyUseCase := appFinance.NewGetDefaultCurrencyUseCase(currencyService)
 
 	// Interface layer - handlers and middleware
-	identityHandlers := handlers.NewIdentityHandlers(registerUserUseCase, loginUserUseCase, getUsersUseCase)
+	identityHandlers := handlers.NewIdentityHandlers(
+		registerUserUseCase,
+		loginUserUseCase,
+		getUsersUseCase,
+		forgotPasswordUseCase,
+		resetPasswordUseCase,
+	)
 	financeHandlers := handlers.NewFinanceHandlers(
 		createTransactionUseCase,
 		getTransactionsUseCase,
@@ -155,6 +166,8 @@ func (app *App) SetupRoutes() *gin.Engine {
 				auth.POST("/register", app.IdentityHandlers.Register)
 				auth.POST("/login", app.IdentityHandlers.Login)
 				auth.POST("/logout", app.IdentityHandlers.Logout)
+				auth.POST("/forgot", app.IdentityHandlers.ForgotPassword)
+				auth.POST("/reset-password", app.IdentityHandlers.ResetPassword)
 			}
 
 			// Protected routes
