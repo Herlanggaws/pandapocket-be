@@ -22,8 +22,9 @@ type ForgotPasswordRequest struct {
 
 // ForgotPasswordResponse represents the response for forgot password
 type ForgotPasswordResponse struct {
-	Message string `json:"message"`
-	Token   string `json:"token"`
+	Message   string `json:"message"`
+	Token     string `json:"token"`
+	ResetLink string `json:"reset_link"`
 }
 
 // ForgotPasswordUseCase handles forgot password logic
@@ -82,41 +83,43 @@ func (uc *ForgotPasswordUseCase) Execute(ctx context.Context, req ForgotPassword
 	appURL := os.Getenv("APP_URL")
 	resetLink := fmt.Sprintf("%s/reset-password?token=%s", appURL, tokenString)
 
-	// Read and parse template
-	// Assuming running from project root
-	tmpl, err := template.ParseFiles("internal/infrastructure/notification/templates/reset_password.html")
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse email template: %w", err)
-	}
+	go func() {
+		// Read and parse template
+		// Assuming running from project root
+		tmpl, err := template.ParseFiles("internal/infrastructure/notification/templates/reset_password.html")
+		if err != nil {
+			fmt.Println("Failed to parse email template: ", err)
+		}
 
-	var body bytes.Buffer
-	if err := tmpl.Execute(&body, struct{ ResetLink string }{ResetLink: resetLink}); err != nil {
-		return nil, fmt.Errorf("failed to render email template: %w", err)
-	}
+		var body bytes.Buffer
+		if err := tmpl.Execute(&body, struct{ ResetLink string }{ResetLink: resetLink}); err != nil {
+			fmt.Println("Failed to render email template with err: ", err)
+		}
 
-	emailMsg := notification.EmailMessage{
-		To:      user.Email().Value(),
-		Subject: "Reset Your Password - PandaPocket",
-		Body:    body.String(),
-	}
+		emailMsg := notification.EmailMessage{
+			To:      user.Email().Value(),
+			Subject: "Reset Your Password - PandaPocket",
+			Body:    body.String(),
+		}
 
-	// We don't return error if email fails, just log it (in a real app).
-	// Or we can return error depending on requirements.
-	// For now let's just log it if we had a logger, but since we don't have a logger injected,
-	// we will just try to send it. If it fails, maybe we should let the user know?
-	// The user requirement didn't specify error handling for email failure.
-	// But usually, if email fails, the process fails.
-	if err := uc.emailService.SendEmail(ctx, emailMsg); err != nil {
-		// Log error but generally we might not want to block execution if it's async,
-		// but here it is synchronous.
-		// For now, let's treat it as non-fatal but note it, or just return error.
-		// Returning error is safer to let user retry.
-		fmt.Println("Failed to send reset email with err: ", err)
-		return nil, errors.New("failed to send reset email")
-	}
+		// We don't return error if email fails, just log it (in a real app).
+		// Or we can return error depending on requirements.
+		// For now let's just log it if we had a logger, but since we don't have a logger injected,
+		// we will just try to send it. If it fails, maybe we should let the user know?
+		// The user requirement didn't specify error handling for email failure.
+		// But usually, if email fails, the process fails.
+		if err := uc.emailService.SendEmail(ctx, emailMsg); err != nil {
+			// Log error but generally we might not want to block execution if it's async,
+			// but here it is synchronous.
+			// For now, let's treat it as non-fatal but note it, or just return error.
+			// Returning error is safer to let user retry.
+			fmt.Println("Failed to send reset email with err: ", err)
+		}
+	}()
 
 	return &ForgotPasswordResponse{
-		Message: "Forgot password successful",
-		Token:   tokenString,
+		Message:   "Forgot password successful",
+		Token:     tokenString,
+		ResetLink: resetLink,
 	}, nil
 }
