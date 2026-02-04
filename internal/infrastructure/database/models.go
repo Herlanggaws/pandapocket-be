@@ -2,6 +2,8 @@ package database
 
 import (
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // User represents a user in the database
@@ -167,6 +169,21 @@ type Notification struct {
 	User *User `gorm:"foreignKey:UserID" json:"user,omitempty"`
 }
 
+// Token represents a JWT token in the database for revocation
+type Token struct {
+	ID           uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
+	UserID       uint      `gorm:"not null;index" json:"user_id"`
+	AccessToken  string    `gorm:"not null" json:"-"` // Storing for potential reference, though we assume stateless access tokens usually
+	RefreshToken string    `gorm:"uniqueIndex;not null" json:"-"`
+	ExpiresAt    time.Time `gorm:"not null;index" json:"expires_at"`
+	Revoked      bool      `gorm:"default:false;index" json:"revoked"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+
+	// Relationships
+	User *User `gorm:"foreignKey:UserID" json:"user,omitempty"`
+}
+
 // TableName methods for custom table names (optional)
 func (User) TableName() string {
 	return "users"
@@ -202,4 +219,8 @@ func (UserPreferences) TableName() string {
 
 func (Notification) TableName() string {
 	return "notifications"
+}
+
+func (Token) TableName() string {
+	return "tokens"
 }

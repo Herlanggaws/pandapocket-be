@@ -38,6 +38,7 @@ func NewApp(db *gorm.DB) *App {
 	transactionRepo := database.NewGormTransactionRepository(db)
 	budgetRepo := database.NewGormBudgetRepository(db)
 	tokenRepo := database.NewGormPasswordResetTokenRepository(db)
+	authTokenRepo := database.NewGormTokenRepository(db)
 
 	// Domain layer - services
 	userService := domainIdentity.NewUserService(userRepo)
@@ -47,13 +48,14 @@ func NewApp(db *gorm.DB) *App {
 	budgetService := domainFinance.NewBudgetService(budgetRepo, categoryRepo)
 
 	// Application layer - use cases
-	tokenService := appIdentity.NewTokenService()
+	tokenService := appIdentity.NewTokenService(authTokenRepo)
 	emailService := notification.NewSMTPEmailService()
 	registerUserUseCase := appIdentity.NewRegisterUserUseCase(userService, tokenService)
 	loginUserUseCase := appIdentity.NewLoginUserUseCase(userService, tokenService)
 	getUsersUseCase := appIdentity.NewGetUsersUseCase(userService)
 	forgotPasswordUseCase := appIdentity.NewForgotPasswordUseCase(userRepo, tokenRepo, emailService)
 	resetPasswordUseCase := appIdentity.NewResetPasswordUseCase(userRepo, tokenRepo)
+	refreshTokenUseCase := appIdentity.NewRefreshTokenUseCase(userService, tokenService)
 	getDashboardStatsUseCase := appIdentity.NewGetDashboardStatsUseCase(userRepo, budgetRepo, transactionRepo)
 	createTransactionUseCase := appFinance.NewCreateTransactionUseCase(transactionService, currencyService)
 	getTransactionsUseCase := appFinance.NewGetTransactionsUseCase(transactionService, categoryService)
@@ -83,6 +85,8 @@ func NewApp(db *gorm.DB) *App {
 		getUsersUseCase,
 		forgotPasswordUseCase,
 		resetPasswordUseCase,
+		refreshTokenUseCase,
+		tokenService,
 	)
 	financeHandlers := handlers.NewFinanceHandlers(
 		createTransactionUseCase,
@@ -159,6 +163,7 @@ func (app *App) SetupRoutes() *gin.Engine {
 			{
 				auth.POST("/register", app.IdentityHandlers.Register)
 				auth.POST("/login", app.IdentityHandlers.Login)
+				auth.POST("/refresh", app.IdentityHandlers.RefreshToken)
 				auth.POST("/logout", app.IdentityHandlers.Logout)
 				auth.POST("/forgot", app.IdentityHandlers.ForgotPassword)
 				auth.POST("/reset-password", app.IdentityHandlers.ResetPassword)

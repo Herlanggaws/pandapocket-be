@@ -16,6 +16,8 @@ type IdentityHandlers struct {
 	getUsersUseCase       *identity.GetUsersUseCase
 	forgotPasswordUseCase *identity.ForgotPasswordUseCase
 	resetPasswordUseCase  *identity.ResetPasswordUseCase
+	refreshTokenUseCase   *identity.RefreshTokenUseCase
+	tokenService          identity.TokenService
 }
 
 // NewIdentityHandlers creates a new identity handlers instance
@@ -25,6 +27,8 @@ func NewIdentityHandlers(
 	getUsersUseCase *identity.GetUsersUseCase,
 	forgotPasswordUseCase *identity.ForgotPasswordUseCase,
 	resetPasswordUseCase *identity.ResetPasswordUseCase,
+	refreshTokenUseCase *identity.RefreshTokenUseCase,
+	tokenService identity.TokenService,
 ) *IdentityHandlers {
 	return &IdentityHandlers{
 		registerUserUseCase:   registerUserUseCase,
@@ -32,6 +36,8 @@ func NewIdentityHandlers(
 		getUsersUseCase:       getUsersUseCase,
 		forgotPasswordUseCase: forgotPasswordUseCase,
 		resetPasswordUseCase:  resetPasswordUseCase,
+		refreshTokenUseCase:   refreshTokenUseCase,
+		tokenService:          tokenService,
 	}
 }
 
@@ -76,7 +82,8 @@ func (h *IdentityHandlers) Register(c *gin.Context) {
 	}
 
 	SuccessResponse(c, http.StatusCreated, gin.H{
-		"token": response.Token,
+		"token":         response.Token,
+		"refresh_token": response.RefreshToken,
 		"user": gin.H{
 			"id":    response.UserID,
 			"email": response.Email,
@@ -99,7 +106,8 @@ func (h *IdentityHandlers) Login(c *gin.Context) {
 	}
 
 	SuccessResponse(c, http.StatusOK, gin.H{
-		"token": response.Token,
+		"token":         response.Token,
+		"refresh_token": response.RefreshToken,
 		"user": gin.H{
 			"id":    response.UserID,
 			"email": response.Email,
@@ -120,10 +128,43 @@ func (h *IdentityHandlers) GetUsers(c *gin.Context) {
 
 // Logout handles user logout
 func (h *IdentityHandlers) Logout(c *gin.Context) {
-	// In a real application, you might want to blacklist the token
-	// For this implementation, we'll just return a success response
+	var req struct {
+		RefreshToken string `json:"refresh_token" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		ValidationErrorResponse(c, formatValidationError(err))
+		return
+	}
+
+	err := h.tokenService.RevokeToken(c.Request.Context(), req.RefreshToken)
+	if err != nil {
+		// Even if revocation fails (e.g. token not found), we don't want to block logout
+		// But in strict mode we might want to log it
+	}
+
 	SuccessResponse(c, http.StatusOK, gin.H{
 		"message": "Logout successful",
+	})
+}
+
+// RefreshToken handles token refresh
+func (h *IdentityHandlers) RefreshToken(c *gin.Context) {
+	var req identity.RefreshTokenRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		ValidationErrorResponse(c, formatValidationError(err))
+		return
+	}
+
+	response, err := h.refreshTokenUseCase.Execute(c.Request.Context(), req)
+	if err != nil {
+		HandleError(c, err, http.StatusUnauthorized)
+		return
+	}
+
+	SuccessResponse(c, http.StatusOK, gin.H{
+		"token":         response.Token,
+		"refresh_token": response.RefreshToken,
 	})
 }
 
