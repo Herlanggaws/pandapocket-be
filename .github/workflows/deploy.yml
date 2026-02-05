@@ -10,7 +10,6 @@ jobs:
   deploy:
     name: Trigger build and release on VM
     runs-on: ubuntu-latest
-    environment: Berbudget Env
     steps:
       - name: Deploy Staging via SSH
         uses: appleboy/ssh-action@v1.0.3
