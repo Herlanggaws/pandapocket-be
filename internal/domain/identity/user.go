@@ -3,6 +3,8 @@ package identity
 import (
 	"errors"
 	"time"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 // User represents a user in the identity domain
@@ -49,12 +51,25 @@ type PasswordHash struct {
 	value string
 }
 
-func NewPasswordHash(hash string) PasswordHash {
-	return PasswordHash{value: hash}
+func NewPasswordHash(value string) PasswordHash {
+	return PasswordHash{value: value}
+}
+
+func NewPasswordHashFromPlain(plain string) (PasswordHash, error) {
+	hashedBytes, err := bcrypt.GenerateFromPassword([]byte(plain), bcrypt.DefaultCost)
+	if err != nil {
+		return PasswordHash{}, err
+	}
+	return PasswordHash{value: string(hashedBytes)}, nil
 }
 
 func (p PasswordHash) Value() string {
 	return p.value
+}
+
+func (p PasswordHash) Matches(plain string) bool {
+	err := bcrypt.CompareHashAndPassword([]byte(p.value), []byte(plain))
+	return err == nil
 }
 
 // Role is a value object representing a user role
@@ -120,10 +135,19 @@ func (u *User) Role() Role {
 	return u.role
 }
 
+func (u *User) UpdatePassword(passwordHash PasswordHash) {
+	u.password = passwordHash
+}
+
 // ChangeEmail changes the user's email
 func (u *User) ChangeEmail(newEmail Email) error {
 	u.email = newEmail
 	return nil
+}
+
+// CheckPassword checks if the provided password matches the user's password
+func (u *User) CheckPassword(plain string) bool {
+	return u.password.Matches(plain)
 }
 
 // ChangePassword changes the user's password

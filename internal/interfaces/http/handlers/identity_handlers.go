@@ -11,9 +11,14 @@ import (
 
 // IdentityHandlers handles identity-related HTTP requests
 type IdentityHandlers struct {
-	registerUserUseCase *identity.RegisterUserUseCase
-	loginUserUseCase    *identity.LoginUserUseCase
-	getUsersUseCase     *identity.GetUsersUseCase
+	registerUserUseCase   *identity.RegisterUserUseCase
+	loginUserUseCase      *identity.LoginUserUseCase
+	getUsersUseCase       *identity.GetUsersUseCase
+	forgotPasswordUseCase *identity.ForgotPasswordUseCase
+	resetPasswordUseCase  *identity.ResetPasswordUseCase
+	refreshTokenUseCase   *identity.RefreshTokenUseCase
+	tokenService          identity.TokenService
+	changePasswordUseCase *identity.ChangePasswordUseCase
 }
 
 // NewIdentityHandlers creates a new identity handlers instance
@@ -21,11 +26,21 @@ func NewIdentityHandlers(
 	registerUserUseCase *identity.RegisterUserUseCase,
 	loginUserUseCase *identity.LoginUserUseCase,
 	getUsersUseCase *identity.GetUsersUseCase,
+	forgotPasswordUseCase *identity.ForgotPasswordUseCase,
+	resetPasswordUseCase *identity.ResetPasswordUseCase,
+	refreshTokenUseCase *identity.RefreshTokenUseCase,
+	tokenService identity.TokenService,
+	changePasswordUseCase *identity.ChangePasswordUseCase,
 ) *IdentityHandlers {
 	return &IdentityHandlers{
-		registerUserUseCase: registerUserUseCase,
-		loginUserUseCase:    loginUserUseCase,
-		getUsersUseCase:     getUsersUseCase,
+		registerUserUseCase:   registerUserUseCase,
+		loginUserUseCase:      loginUserUseCase,
+		getUsersUseCase:       getUsersUseCase,
+		forgotPasswordUseCase: forgotPasswordUseCase,
+		resetPasswordUseCase:  resetPasswordUseCase,
+		refreshTokenUseCase:   refreshTokenUseCase,
+		tokenService:          tokenService,
+		changePasswordUseCase: changePasswordUseCase,
 	}
 }
 
@@ -70,7 +85,8 @@ func (h *IdentityHandlers) Register(c *gin.Context) {
 	}
 
 	SuccessResponse(c, http.StatusCreated, gin.H{
-		"token": response.Token,
+		"token":         response.Token,
+		"refresh_token": response.RefreshToken,
 		"user": gin.H{
 			"id":    response.UserID,
 			"email": response.Email,
@@ -93,7 +109,8 @@ func (h *IdentityHandlers) Login(c *gin.Context) {
 	}
 
 	SuccessResponse(c, http.StatusOK, gin.H{
-		"token": response.Token,
+		"token":         response.Token,
+		"refresh_token": response.RefreshToken,
 		"user": gin.H{
 			"id":    response.UserID,
 			"email": response.Email,
@@ -114,9 +131,114 @@ func (h *IdentityHandlers) GetUsers(c *gin.Context) {
 
 // Logout handles user logout
 func (h *IdentityHandlers) Logout(c *gin.Context) {
-	// In a real application, you might want to blacklist the token
-	// For this implementation, we'll just return a success response
+	var req struct {
+		RefreshToken string `json:"refresh_token" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		ValidationErrorResponse(c, formatValidationError(err))
+		return
+	}
+
+	err := h.tokenService.RevokeToken(c.Request.Context(), req.RefreshToken)
+	if err != nil {
+		// Even if revocation fails (e.g. token not found), we don't want to block logout
+		// But in strict mode we might want to log it
+	}
+
 	SuccessResponse(c, http.StatusOK, gin.H{
 		"message": "Logout successful",
+	})
+}
+
+// RefreshToken handles token refresh
+func (h *IdentityHandlers) RefreshToken(c *gin.Context) {
+	var req identity.RefreshTokenRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		ValidationErrorResponse(c, formatValidationError(err))
+		return
+	}
+
+	response, err := h.refreshTokenUseCase.Execute(c.Request.Context(), req)
+	if err != nil {
+		HandleError(c, err, http.StatusUnauthorized)
+		return
+	}
+
+	SuccessResponse(c, http.StatusOK, gin.H{
+		"token":         response.Token,
+		"refresh_token": response.RefreshToken,
+	})
+}
+
+// ForgotPassword handles forgot password requests
+func (h *IdentityHandlers) ForgotPassword(c *gin.Context) {
+	var req identity.ForgotPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		ValidationErrorResponse(c, formatValidationError(err))
+		return
+	}
+
+	response, err := h.forgotPasswordUseCase.Execute(c.Request.Context(), req)
+	if err != nil {
+		if err.Error() == "email not found" {
+			HandleError(c, err, http.StatusBadRequest) // Or Not Found, but keeping consistent with "IF email was found"
+			return
+		}
+		HandleError(c, err, http.StatusInternalServerError)
+		return
+	}
+
+	SuccessResponse(c, http.StatusOK, response)
+}
+
+// ResetPassword handles password reset
+func (h *IdentityHandlers) ResetPassword(c *gin.Context) {
+	var req identity.ResetPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		ValidationErrorResponse(c, formatValidationError(err))
+		return
+	}
+
+	response, err := h.resetPasswordUseCase.Execute(c.Request.Context(), &req)
+	if err != nil {
+		HandleError(c, err, http.StatusBadRequest)
+		return
+	}
+
+	SuccessResponse(c, http.StatusOK, response)
+}
+
+// ChangePassword handles password change
+func (h *IdentityHandlers) ChangePassword(c *gin.Context) {
+	var req identity.ChangePasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		ValidationErrorResponse(c, formatValidationError(err))
+		return
+	}
+
+	// Get user ID from context
+	userID, exists := c.Get("user_id")
+	if !exists {
+		UnauthorizedResponse(c, "USER_ID_NOT_FOUND", "User ID not found in context")
+		return
+	}
+	req.UserID = userID.(int)
+
+	if err := h.changePasswordUseCase.Execute(c.Request.Context(), req); err != nil {
+		if err.Error() == "invalid old password" {
+			HandleError(c, err, http.StatusBadRequest) // Could be 401, but keeping simple
+			return
+		}
+		if err.Error() == "new password and confirm new password do not match" {
+			HandleError(c, err, http.StatusBadRequest)
+			return
+		}
+		HandleError(c, err, http.StatusInternalServerError)
+		return
+	}
+
+	SuccessResponse(c, http.StatusOK, gin.H{
+		"message": "Password changed successfully",
 	})
 }

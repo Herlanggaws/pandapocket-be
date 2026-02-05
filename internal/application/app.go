@@ -7,6 +7,7 @@ import (
 	domainFinance "panda-pocket/internal/domain/finance"
 	domainIdentity "panda-pocket/internal/domain/identity"
 	"panda-pocket/internal/infrastructure/database"
+	"panda-pocket/internal/infrastructure/notification"
 	"panda-pocket/internal/interfaces/http/handlers"
 	"panda-pocket/internal/interfaces/http/middleware"
 	"panda-pocket/internal/interfaces/http/versioning"
@@ -36,6 +37,8 @@ func NewApp(db *gorm.DB) *App {
 	currencyRepo := database.NewGormCurrencyRepository(db)
 	transactionRepo := database.NewGormTransactionRepository(db)
 	budgetRepo := database.NewGormBudgetRepository(db)
+	tokenRepo := database.NewGormPasswordResetTokenRepository(db)
+	authTokenRepo := database.NewGormTokenRepository(db)
 
 	// Domain layer - services
 	userService := domainIdentity.NewUserService(userRepo)
@@ -45,10 +48,15 @@ func NewApp(db *gorm.DB) *App {
 	budgetService := domainFinance.NewBudgetService(budgetRepo, categoryRepo)
 
 	// Application layer - use cases
-	tokenService := appIdentity.NewTokenService()
+	tokenService := appIdentity.NewTokenService(authTokenRepo)
+	emailService := notification.NewSMTPEmailService()
 	registerUserUseCase := appIdentity.NewRegisterUserUseCase(userService, tokenService)
 	loginUserUseCase := appIdentity.NewLoginUserUseCase(userService, tokenService)
 	getUsersUseCase := appIdentity.NewGetUsersUseCase(userService)
+	forgotPasswordUseCase := appIdentity.NewForgotPasswordUseCase(userRepo, tokenRepo, emailService)
+	resetPasswordUseCase := appIdentity.NewResetPasswordUseCase(userRepo, tokenRepo)
+	refreshTokenUseCase := appIdentity.NewRefreshTokenUseCase(userService, tokenService)
+	changePasswordUseCase := appIdentity.NewChangePasswordUseCase(userRepo)
 	getDashboardStatsUseCase := appIdentity.NewGetDashboardStatsUseCase(userRepo, budgetRepo, transactionRepo)
 	createTransactionUseCase := appFinance.NewCreateTransactionUseCase(transactionService, currencyService)
 	getTransactionsUseCase := appFinance.NewGetTransactionsUseCase(transactionService, categoryService)
@@ -72,7 +80,16 @@ func NewApp(db *gorm.DB) *App {
 	getDefaultCurrencyUseCase := appFinance.NewGetDefaultCurrencyUseCase(currencyService)
 
 	// Interface layer - handlers and middleware
-	identityHandlers := handlers.NewIdentityHandlers(registerUserUseCase, loginUserUseCase, getUsersUseCase)
+	identityHandlers := handlers.NewIdentityHandlers(
+		registerUserUseCase,
+		loginUserUseCase,
+		getUsersUseCase,
+		forgotPasswordUseCase,
+		resetPasswordUseCase,
+		refreshTokenUseCase,
+		tokenService,
+		changePasswordUseCase,
+	)
 	financeHandlers := handlers.NewFinanceHandlers(
 		createTransactionUseCase,
 		getTransactionsUseCase,
@@ -122,13 +139,7 @@ func (app *App) SetupRoutes() *gin.Engine {
 	// CORS configuration
 	config := cors.DefaultConfig()
 	config.AllowOrigins = []string{
-		"http://localhost:3000",
-		"http://localhost:3001",
-		"http://localhost:3002",
-		"http://localhost:3003",
-		"http://localhost:3004",     // Back office port
-		"https://berbudget.com",     // Production frontend
-		"https://www.berbudget.com", // Production frontend with www
+		"*",
 	}
 	config.AllowMethods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}
 	config.AllowHeaders = []string{"Origin", "Content-Type", "Accept", "Authorization", "X-API-Version"}
@@ -154,7 +165,13 @@ func (app *App) SetupRoutes() *gin.Engine {
 			{
 				auth.POST("/register", app.IdentityHandlers.Register)
 				auth.POST("/login", app.IdentityHandlers.Login)
+				auth.POST("/refresh", app.IdentityHandlers.RefreshToken)
 				auth.POST("/logout", app.IdentityHandlers.Logout)
+				auth.POST("/forgot", app.IdentityHandlers.ForgotPassword)
+				auth.POST("/reset-password", app.IdentityHandlers.ResetPassword)
+
+				// Authenticated password change
+				auth.POST("/change-password", app.AuthMiddleware.RequireAuth(), app.IdentityHandlers.ChangePassword)
 			}
 
 			// Protected routes

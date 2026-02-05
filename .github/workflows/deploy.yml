@@ -1,0 +1,20 @@
+name: Deploy Berbudget Backend
+
+on:
+  push:
+    branches:
+      - staging
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Trigger build and release on VM
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy Staging via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          password: ${{ secrets.PASSWORD }}
+          script: ./build-be.sh staging
