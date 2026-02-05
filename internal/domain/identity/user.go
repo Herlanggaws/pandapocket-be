@@ -67,6 +67,11 @@ func (p PasswordHash) Value() string {
 	return p.value
 }
 
+func (p PasswordHash) Matches(plain string) bool {
+	err := bcrypt.CompareHashAndPassword([]byte(p.value), []byte(plain))
+	return err == nil
+}
+
 // Role is a value object representing a user role
 type Role struct {
 	value string
@@ -138,6 +143,11 @@ func (u *User) UpdatePassword(passwordHash PasswordHash) {
 func (u *User) ChangeEmail(newEmail Email) error {
 	u.email = newEmail
 	return nil
+}
+
+// CheckPassword checks if the provided password matches the user's password
+func (u *User) CheckPassword(plain string) bool {
+	return u.password.Matches(plain)
 }
 
 // ChangePassword changes the user's password
