@@ -6,6 +6,7 @@ import (
 	"panda-pocket/internal/application/finance"
 	domainFinance "panda-pocket/internal/domain/finance"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -175,11 +176,29 @@ func (h *FinanceHandlers) GetIncomes(c *gin.Context) {
 func (h *FinanceHandlers) GetAllTransactions(c *gin.Context) {
 	userID := c.GetInt("user_id")
 
+	startDateStr := c.Query("start_date")
+	endDateStr := c.Query("end_date")
+
+	now := time.Now()
+
+	if startDateStr == "" && endDateStr == "" {
+		startDateStr = now.AddDate(0, 0, -30).Format("2006-01-02")
+		endDateStr = now.Format("2006-01-02")
+	} else if startDateStr != "" && endDateStr == "" {
+		endDateStr = now.Format("2006-01-02")
+	} else if startDateStr == "" && endDateStr != "" {
+		if endDate, err := time.Parse("2006-01-02", endDateStr); err == nil {
+			startDateStr = endDate.AddDate(0, 0, -30).Format("2006-01-02")
+		} else {
+			startDateStr = now.AddDate(0, 0, -30).Format("2006-01-02")
+		}
+	}
+
 	// Parse query parameters
 	req := finance.GetAllTransactionsRequest{
 		Type:      c.Query("type"),
-		StartDate: c.Query("start_date"),
-		EndDate:   c.Query("end_date"),
+		StartDate: startDateStr,
+		EndDate:   endDateStr,
 	}
 
 	// Parse category IDs from query parameter
