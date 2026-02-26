@@ -20,12 +20,14 @@ type GetAllTransactionsRequest struct {
 
 // GetAllTransactionsResponse represents the response for getting all transactions
 type GetAllTransactionsResponse struct {
-	Transactions []TransactionResponse     `json:"transactions"`
-	Total        int64                     `json:"total"`
-	Page         int                       `json:"page"`
-	Limit        int                       `json:"limit"`
-	TotalPages   int                       `json:"total_pages"`
-	Filters      GetAllTransactionsRequest `json:"filters"`
+	Transactions  []TransactionResponse     `json:"transactions"`
+	Total         int64                     `json:"total"`
+	Page          int                       `json:"page"`
+	Limit         int                       `json:"limit"`
+	TotalPages    int                       `json:"total_pages"`
+	TotalIncomes  float64                   `json:"total_incomes"`
+	TotalExpenses float64                   `json:"total_expenses"`
+	Filters       GetAllTransactionsRequest `json:"filters"`
 }
 
 // GetAllTransactionsUseCase handles getting all transactions for a user with filters
@@ -119,6 +121,8 @@ func (uc *GetAllTransactionsUseCase) Execute(ctx context.Context, userID int, re
 	}
 
 	// Convert to response format
+	var totalIncomes float64
+	var totalExpenses float64
 	transactionResponses := make([]TransactionResponse, len(transactions))
 	for i, transaction := range transactions {
 		// Fetch category details
@@ -126,6 +130,13 @@ func (uc *GetAllTransactionsUseCase) Execute(ctx context.Context, userID int, re
 		if err != nil {
 			// If category not found, create a default response
 			category = &finance.Category{}
+		}
+
+		amt := transaction.Amount().Amount()
+		if transaction.Type() == finance.TransactionTypeIncome {
+			totalIncomes += amt
+		} else if transaction.Type() == finance.TransactionTypeExpense {
+			totalExpenses += amt
 		}
 
 		transactionResponses[i] = TransactionResponse{
@@ -139,7 +150,7 @@ func (uc *GetAllTransactionsUseCase) Execute(ctx context.Context, userID int, re
 				IsDefault: category.IsDefault(),
 			},
 			CurrencyID:  transaction.CurrencyID().Value(),
-			Amount:      transaction.Amount().Amount(),
+			Amount:      amt,
 			Description: transaction.Description(),
 			Date:        transaction.Date().Format("2006-01-02"),
 			Type:        string(transaction.Type()),
@@ -154,11 +165,13 @@ func (uc *GetAllTransactionsUseCase) Execute(ctx context.Context, userID int, re
 	}
 
 	return &GetAllTransactionsResponse{
-		Transactions: transactionResponses,
-		Total:        totalCount,
-		Page:         page,
-		Limit:        limit,
-		TotalPages:   totalPages,
-		Filters:      req,
+		Transactions:  transactionResponses,
+		Total:         totalCount,
+		Page:          page,
+		Limit:         limit,
+		TotalPages:    totalPages,
+		TotalIncomes:  totalIncomes,
+		TotalExpenses: totalExpenses,
+		Filters:       req,
 	}, nil
 }
