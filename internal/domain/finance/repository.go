@@ -67,3 +67,13 @@ type RecurringTransactionRepository interface {
 	FindDueTransactions(ctx context.Context) ([]*RecurringTransaction, error)
 	Delete(ctx context.Context, id RecurringTransactionID) error
 }
+
+// WalletRepository defines the contract for wallet persistence
+type WalletRepository interface {
+	Save(ctx context.Context, wallet *Wallet) error
+	FindByID(ctx context.Context, id WalletID) (*Wallet, error)
+	FindByUserID(ctx context.Context, userID UserID) ([]*Wallet, error)
+	FindByUserIDWithFilters(ctx context.Context, userID UserID, search string, limit, offset int) ([]*Wallet, int64, error)
+	Update(ctx context.Context, wallet *Wallet) error
+	Delete(ctx context.Context, id WalletID) error
+}

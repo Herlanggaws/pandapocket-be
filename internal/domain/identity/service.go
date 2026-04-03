@@ -31,7 +31,7 @@ func (s *UserService) RegisterUser(ctx context.Context, email Email, password Pa
 
 	// Create new user with default role
 	defaultRole, _ := NewRole("user") // Default role is "user"
-	user := NewUser(UserID{}, email, password, defaultRole)
+	user := NewUser(UserID{}, email, password, defaultRole, true)
 
 	// Save user
 	if err := s.userRepo.Save(ctx, user); err != nil {
