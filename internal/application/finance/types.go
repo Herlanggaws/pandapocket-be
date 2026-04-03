@@ -12,3 +12,13 @@ type TransactionResponse struct {
 	Type        string           `json:"type"`
 	CreatedAt   string           `json:"created_at"`
 }
+
+// WalletResponse represents a wallet in the response
+type WalletResponse struct {
+	ID        int     `json:"id"`
+	UserID    int     `json:"user_id"`
+	Name      string  `json:"name"`
+	Amount    float64 `json:"amount"`
+	CreatedAt string  `json:"created_at"`
+	UpdatedAt string  `json:"updated_at"`
+}

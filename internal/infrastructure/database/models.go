@@ -25,6 +25,7 @@ type User struct {
 	RecurringTransactions []RecurringTransaction `gorm:"foreignKey:UserID" json:"recurring_transactions,omitempty"`
 	UserPreferences       *UserPreferences       `gorm:"foreignKey:UserID" json:"user_preferences,omitempty"`
 	Notifications         []Notification         `gorm:"foreignKey:UserID" json:"notifications,omitempty"`
+	Wallets               []Wallet               `gorm:"foreignKey:UserID" json:"wallets,omitempty"`
 }
 
 // Currency represents a currency in the database
@@ -224,3 +225,21 @@ func (Notification) TableName() string {
 func (Token) TableName() string {
 	return "tokens"
 }
+
+// Wallet represents a wallet in the database
+type Wallet struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	UserID    uint      `gorm:"not null;index" json:"user_id"`
+	Name      string    `gorm:"type:text;not null" json:"name"`
+	Amount    float64   `gorm:"type:decimal(20,2);not null;default:0" json:"amount"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+
+	// Relationships
+	User *User `gorm:"foreignKey:UserID" json:"user,omitempty"`
+}
+
+func (Wallet) TableName() string {
+	return "wallets"
+}
+
