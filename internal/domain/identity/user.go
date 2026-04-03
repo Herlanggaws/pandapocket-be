@@ -9,11 +9,12 @@ import (
 
 // User represents a user in the identity domain
 type User struct {
-	id        UserID
-	email     Email
-	password  PasswordHash
-	role      Role
-	createdAt time.Time
+	id          UserID
+	email       Email
+	password    PasswordHash
+	role        Role
+	limitWallet bool
+	createdAt   time.Time
 }
 
 // UserID is a value object representing a user identifier
@@ -104,13 +105,14 @@ func (r Role) IsSuperAdmin() bool {
 }
 
 // NewUser creates a new user entity
-func NewUser(id UserID, email Email, password PasswordHash, role Role) *User {
+func NewUser(id UserID, email Email, password PasswordHash, role Role, limitWallet bool) *User {
 	return &User{
-		id:        id,
-		email:     email,
-		password:  password,
-		role:      role,
-		createdAt: time.Now(),
+		id:          id,
+		email:       email,
+		password:    password,
+		role:        role,
+		limitWallet: limitWallet,
+		createdAt:   time.Now(),
 	}
 }
 
@@ -133,6 +135,10 @@ func (u *User) CreatedAt() time.Time {
 
 func (u *User) Role() Role {
 	return u.role
+}
+
+func (u *User) LimitWallet() bool {
+	return u.limitWallet
 }
 
 func (u *User) UpdatePassword(passwordHash PasswordHash) {
