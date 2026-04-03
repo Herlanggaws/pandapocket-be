@@ -22,6 +22,7 @@ type App struct {
 	DB                 *gorm.DB
 	IdentityHandlers   *handlers.IdentityHandlers
 	FinanceHandlers    *handlers.FinanceHandlers
+	WalletHandlers     *handlers.WalletHandlers
 	DashboardHandlers  *handlers.DashboardHandlers
 	DeprecationHandler *handlers.DeprecationHandler
 	AuthMiddleware     *middleware.AuthMiddleware
@@ -37,6 +38,7 @@ func NewApp(db *gorm.DB) *App {
 	currencyRepo := database.NewGormCurrencyRepository(db)
 	transactionRepo := database.NewGormTransactionRepository(db)
 	budgetRepo := database.NewGormBudgetRepository(db)
+	walletRepo := database.NewGormWalletRepository(db)
 	tokenRepo := database.NewGormPasswordResetTokenRepository(db)
 	authTokenRepo := database.NewGormTokenRepository(db)
 
@@ -46,6 +48,7 @@ func NewApp(db *gorm.DB) *App {
 	categoryService := domainFinance.NewCategoryService(categoryRepo)
 	currencyService := domainFinance.NewCurrencyService(currencyRepo)
 	budgetService := domainFinance.NewBudgetService(budgetRepo, categoryRepo)
+	walletService := domainFinance.NewWalletService(walletRepo)
 
 	// Application layer - use cases
 	tokenService := appIdentity.NewTokenService(authTokenRepo)
@@ -78,6 +81,10 @@ func NewApp(db *gorm.DB) *App {
 	deleteCurrencyUseCase := appFinance.NewDeleteCurrencyUseCase(currencyService)
 	setDefaultCurrencyUseCase := appFinance.NewSetDefaultCurrencyUseCase(currencyService)
 	getDefaultCurrencyUseCase := appFinance.NewGetDefaultCurrencyUseCase(currencyService)
+	createWalletUseCase := appFinance.NewCreateWalletUseCase(walletService, userRepo)
+	updateWalletUseCase := appFinance.NewUpdateWalletUseCase(walletService)
+	getWalletsUseCase := appFinance.NewGetWalletsUseCase(walletService)
+	deleteWalletUseCase := appFinance.NewDeleteWalletUseCase(walletService)
 
 	// Interface layer - handlers and middleware
 	identityHandlers := handlers.NewIdentityHandlers(
@@ -113,6 +120,12 @@ func NewApp(db *gorm.DB) *App {
 		getDefaultCurrencyUseCase,
 	)
 	dashboardHandlers := handlers.NewDashboardHandlers(getDashboardStatsUseCase)
+	walletHandlers := handlers.NewWalletHandlers(
+		createWalletUseCase,
+		updateWalletUseCase,
+		getWalletsUseCase,
+		deleteWalletUseCase,
+	)
 
 	// Version management
 	versionManager := versioning.NewVersionManager()
@@ -124,6 +137,7 @@ func NewApp(db *gorm.DB) *App {
 		DB:                 db,
 		IdentityHandlers:   identityHandlers,
 		FinanceHandlers:    financeHandlers,
+		WalletHandlers:     walletHandlers,
 		DashboardHandlers:  dashboardHandlers,
 		DeprecationHandler: deprecationHandler,
 		AuthMiddleware:     authMiddleware,
@@ -226,6 +240,12 @@ func (app *App) SetupRoutes() *gin.Engine {
 
 				// Analytics
 				protected.GET("/analytics", app.FinanceHandlers.GetAnalytics)
+
+				// Wallets
+				protected.GET("/wallets", app.WalletHandlers.GetWallets)
+				protected.POST("/wallets", app.WalletHandlers.CreateWallet)
+				protected.PUT("/wallets/:id", app.WalletHandlers.UpdateWallet)
+				protected.DELETE("/wallets/:id", app.WalletHandlers.DeleteWallet)
 			}
 		}
 	}

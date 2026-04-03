@@ -24,6 +24,7 @@ func (r *GormUserRepository) Save(ctx context.Context, user *identity.User) erro
 		Email:        user.Email().Value(),
 		PasswordHash: user.PasswordHash().Value(),
 		Role:         user.Role().Value(),
+		LimitWallet:  user.LimitWallet(),
 	}
 
 	if user.ID().Value() != 0 {
@@ -72,7 +73,7 @@ func (r *GormUserRepository) FindByID(ctx context.Context, id identity.UserID) (
 	}
 	userID := identity.NewUserID(int(userModel.ID))
 
-	user := identity.NewUser(userID, emailVO, passwordHashVO, roleVO)
+	user := identity.NewUser(userID, emailVO, passwordHashVO, roleVO, userModel.LimitWallet)
 
 	return user, nil
 }
@@ -97,7 +98,7 @@ func (r *GormUserRepository) FindByEmail(ctx context.Context, email identity.Ema
 	}
 	userID := identity.NewUserID(int(userModel.ID))
 
-	user := identity.NewUser(userID, email, passwordHashVO, roleVO)
+	user := identity.NewUser(userID, email, passwordHashVO, roleVO, userModel.LimitWallet)
 
 	return user, nil
 }
@@ -131,7 +132,7 @@ func (r *GormUserRepository) FindAll(ctx context.Context) ([]*identity.User, err
 		}
 		userID := identity.NewUserID(int(userModel.ID))
 
-		users[i] = identity.NewUser(userID, emailVO, passwordHashVO, roleVO)
+		users[i] = identity.NewUser(userID, emailVO, passwordHashVO, roleVO, userModel.LimitWallet)
 	}
 
 	return users, nil

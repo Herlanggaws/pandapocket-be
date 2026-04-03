@@ -138,10 +138,10 @@ func autoMigrate(db *gorm.DB) error {
 		&Budget{},
 		&RecurringTransaction{},
 		&UserPreferences{},
-		&UserPreferences{},
 		&Notification{},
 		&PasswordResetToken{},
 		&Token{},
+		&Wallet{},
 	)
 }
 
