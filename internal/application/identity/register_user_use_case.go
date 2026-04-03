@@ -16,9 +16,10 @@ type RegisterUserRequest struct {
 
 // RegisterUserResponse represents the response after registering a user
 type RegisterUserResponse struct {
-	UserID int    `json:"user_id"`
-	Email  string `json:"email"`
-	Token  string `json:"token"`
+	UserID       int    `json:"user_id"`
+	Email        string `json:"email"`
+	Token        string `json:"token"`
+	RefreshToken string `json:"refresh_token"`
 }
 
 // RegisterUserUseCase handles user registration
@@ -58,14 +59,15 @@ func (uc *RegisterUserUseCase) Execute(ctx context.Context, req RegisterUserRequ
 	}
 
 	// Generate token
-	token, err := uc.tokenService.GenerateToken(user.ID().Value(), user.Email().Value(), user.Role().Value())
+	token, refreshToken, err := uc.tokenService.GenerateToken(ctx, user.ID().Value(), user.Email().Value(), user.Role().Value())
 	if err != nil {
 		return nil, errors.New("failed to generate token")
 	}
 
 	return &RegisterUserResponse{
-		UserID: user.ID().Value(),
-		Email:  user.Email().Value(),
-		Token:  token,
+		UserID:       user.ID().Value(),
+		Email:        user.Email().Value(),
+		Token:        token,
+		RefreshToken: refreshToken,
 	}, nil
 }

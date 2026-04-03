@@ -42,6 +42,11 @@ func (r *GormUserRepository) Save(ctx context.Context, user *identity.User) erro
 	return nil
 }
 
+// Update updates a user in the database
+func (r *GormUserRepository) Update(ctx context.Context, user *identity.User) error {
+	return r.Save(ctx, user)
+}
+
 // FindByID finds a user by ID
 func (r *GormUserRepository) FindByID(ctx context.Context, id identity.UserID) (*identity.User, error) {
 	var userModel User

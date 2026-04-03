@@ -2,6 +2,8 @@ package database
 
 import (
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // User represents a user in the database
@@ -66,13 +68,13 @@ type Category struct {
 // Expense represents an expense transaction in the database
 type Expense struct {
 	ID          uint      `gorm:"primaryKey" json:"id"`
-	UserID      uint      `gorm:"not null;index" json:"user_id"`
+	UserID      uint      `gorm:"not null;index;index:idx_expense_user_date_created,priority:1" json:"user_id"`
 	CategoryID  uint      `gorm:"not null;index" json:"category_id"`
 	CurrencyID  uint      `gorm:"not null;index" json:"currency_id"`
 	Amount      float64   `gorm:"type:decimal(10,2);not null" json:"amount"`
 	Description string    `gorm:"type:text" json:"description"`
-	Date        time.Time `gorm:"type:date;not null" json:"date"`
-	CreatedAt   time.Time `json:"created_at"`
+	Date        time.Time `gorm:"type:date;not null;index:idx_expense_user_date_created,priority:2" json:"date"`
+	CreatedAt   time.Time `gorm:"index:idx_expense_user_date_created,priority:3" json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 
 	// Relationships
@@ -84,13 +86,13 @@ type Expense struct {
 // Income represents an income transaction in the database
 type Income struct {
 	ID          uint      `gorm:"primaryKey" json:"id"`
-	UserID      uint      `gorm:"not null;index" json:"user_id"`
+	UserID      uint      `gorm:"not null;index;index:idx_income_user_date_created,priority:1" json:"user_id"`
 	CategoryID  uint      `gorm:"not null;index" json:"category_id"`
 	CurrencyID  uint      `gorm:"not null;index" json:"currency_id"`
 	Amount      float64   `gorm:"type:decimal(10,2);not null" json:"amount"`
 	Description string    `gorm:"type:text" json:"description"`
-	Date        time.Time `gorm:"type:date;not null" json:"date"`
-	CreatedAt   time.Time `json:"created_at"`
+	Date        time.Time `gorm:"type:date;not null;index:idx_income_user_date_created,priority:2" json:"date"`
+	CreatedAt   time.Time `gorm:"index:idx_income_user_date_created,priority:3" json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 
 	// Relationships
@@ -167,6 +169,21 @@ type Notification struct {
 	User *User `gorm:"foreignKey:UserID" json:"user,omitempty"`
 }
 
+// Token represents a JWT token in the database for revocation
+type Token struct {
+	ID           uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
+	UserID       uint      `gorm:"not null;index" json:"user_id"`
+	AccessToken  string    `gorm:"not null" json:"-"` // Storing for potential reference, though we assume stateless access tokens usually
+	RefreshToken string    `gorm:"uniqueIndex;not null" json:"-"`
+	ExpiresAt    time.Time `gorm:"not null;index" json:"expires_at"`
+	Revoked      bool      `gorm:"default:false;index" json:"revoked"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+
+	// Relationships
+	User *User `gorm:"foreignKey:UserID" json:"user,omitempty"`
+}
+
 // TableName methods for custom table names (optional)
 func (User) TableName() string {
 	return "users"
@@ -202,4 +219,8 @@ func (UserPreferences) TableName() string {
 
 func (Notification) TableName() string {
 	return "notifications"
+}
+
+func (Token) TableName() string {
+	return "tokens"
 }
