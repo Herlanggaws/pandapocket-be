@@ -2,8 +2,11 @@ package main
 
 import (
 	"log"
+	"os"
 	"panda-pocket/internal/application"
 	"panda-pocket/internal/infrastructure/database"
+
+	"github.com/joho/godotenv"
 )
 
 func main() {
@@ -26,6 +29,18 @@ func main() {
 	// Setup routes
 	router := app.SetupRoutes()
 
-	log.Println("Server starting on :8080")
-	router.Run(":8080")
+	// Load .env (optional; continue if missing)
+	if err := godotenv.Load(); err != nil {
+		log.Println("No .env file found, using system environment")
+	}
+
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+
+	log.Printf("Server starting on :%s", port)
+	if err := router.Run(":" + port); err != nil {
+		log.Fatal("Failed to start server:", err)
+	}
 }
