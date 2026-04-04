@@ -41,6 +41,7 @@ func NewApp(db *gorm.DB) *App {
 	walletRepo := database.NewGormWalletRepository(db)
 	tokenRepo := database.NewGormPasswordResetTokenRepository(db)
 	authTokenRepo := database.NewGormTokenRepository(db)
+	transactionManager := database.NewGormTransactionManager(db)
 
 	// Domain layer - services
 	userService := domainIdentity.NewUserService(userRepo)
@@ -81,7 +82,7 @@ func NewApp(db *gorm.DB) *App {
 	deleteCurrencyUseCase := appFinance.NewDeleteCurrencyUseCase(currencyService)
 	setDefaultCurrencyUseCase := appFinance.NewSetDefaultCurrencyUseCase(currencyService)
 	getDefaultCurrencyUseCase := appFinance.NewGetDefaultCurrencyUseCase(currencyService)
-	createWalletUseCase := appFinance.NewCreateWalletUseCase(walletService, userRepo)
+	createWalletUseCase := appFinance.NewCreateWalletUseCase(walletService, transactionService, currencyService, categoryService, transactionManager, userRepo)
 	updateWalletUseCase := appFinance.NewUpdateWalletUseCase(walletService)
 	getWalletsUseCase := appFinance.NewGetWalletsUseCase(walletService)
 	deleteWalletUseCase := appFinance.NewDeleteWalletUseCase(walletService)

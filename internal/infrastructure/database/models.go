@@ -73,7 +73,8 @@ type Expense struct {
 	UserID      uint      `gorm:"not null;index;index:idx_expense_user_date_created,priority:1" json:"user_id"`
 	CategoryID  uint      `gorm:"not null;index" json:"category_id"`
 	CurrencyID  uint      `gorm:"not null;index" json:"currency_id"`
-	Amount      float64   `gorm:"type:decimal(10,2);not null" json:"amount"`
+	Amount      float64   `gorm:"type:decimal(20,2);not null" json:"amount"`
+	IsApproved  bool      `gorm:"not null;default:true" json:"is_approved"`
 	Description string    `gorm:"type:text" json:"description"`
 	Date        time.Time `gorm:"type:date;not null;index:idx_expense_user_date_created,priority:2" json:"date"`
 	CreatedAt   time.Time `gorm:"index:idx_expense_user_date_created,priority:3" json:"created_at"`
@@ -91,7 +92,8 @@ type Income struct {
 	UserID      uint      `gorm:"not null;index;index:idx_income_user_date_created,priority:1" json:"user_id"`
 	CategoryID  uint      `gorm:"not null;index" json:"category_id"`
 	CurrencyID  uint      `gorm:"not null;index" json:"currency_id"`
-	Amount      float64   `gorm:"type:decimal(10,2);not null" json:"amount"`
+	Amount      float64   `gorm:"type:decimal(20,2);not null" json:"amount"`
+	IsApproved  bool      `gorm:"not null;default:true" json:"is_approved"`
 	Description string    `gorm:"type:text" json:"description"`
 	Date        time.Time `gorm:"type:date;not null;index:idx_income_user_date_created,priority:2" json:"date"`
 	CreatedAt   time.Time `gorm:"index:idx_income_user_date_created,priority:3" json:"created_at"`
@@ -243,4 +245,3 @@ type Wallet struct {
 func (Wallet) TableName() string {
 	return "wallets"
 }
-

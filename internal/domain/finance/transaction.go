@@ -31,6 +31,7 @@ type Transaction struct {
 	categoryID      CategoryID
 	currencyID      CurrencyID
 	amount          Money
+	isApproved      bool
 	description     string
 	date            time.Time
 	transactionType TransactionType
@@ -127,6 +128,7 @@ func NewTransaction(
 	categoryID CategoryID,
 	currencyID CurrencyID,
 	amount Money,
+	isApproved bool,
 	description string,
 	date time.Time,
 	transactionType TransactionType,
@@ -137,6 +139,7 @@ func NewTransaction(
 		categoryID:      categoryID,
 		currencyID:      currencyID,
 		amount:          amount,
+		isApproved:      isApproved,
 		description:     description,
 		date:            date,
 		transactionType: transactionType,
@@ -163,6 +166,10 @@ func (t *Transaction) CurrencyID() CurrencyID {
 
 func (t *Transaction) Amount() Money {
 	return t.amount
+}
+
+func (t *Transaction) IsApproved() bool {
+	return t.isApproved
 }
 
 func (t *Transaction) Description() string {

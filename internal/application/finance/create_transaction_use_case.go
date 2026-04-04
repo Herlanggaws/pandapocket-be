@@ -73,6 +73,7 @@ func (uc *CreateTransactionUseCase) Execute(ctx context.Context, userID int, req
 		finance.NewCategoryID(req.CategoryID),
 		primaryCurrency.ID(),
 		money,
+		true,
 		req.Description,
 		date,
 		finance.TransactionType(req.Type),

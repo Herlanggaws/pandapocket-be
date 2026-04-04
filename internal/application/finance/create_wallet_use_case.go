@@ -5,25 +5,45 @@ import (
 	"errors"
 	"os"
 	"strconv"
-	
+
 	"panda-pocket/internal/domain/finance"
 	domainIdentity "panda-pocket/internal/domain/identity"
 )
 
+type TransactionManager interface {
+	WithinTransaction(ctx context.Context, fn func(context.Context) error) error
+}
+
 type CreateWalletRequest struct {
-	Name   string  `json:"name" binding:"required"`
-	Amount float64 `json:"amount"`
+	Name       string  `json:"name" binding:"required"`
+	Amount     float64 `json:"amount"`
+	IsApproved *bool   `json:"is_approved"`
 }
 
 type CreateWalletUseCase struct {
-	walletService *finance.WalletService
-	userRepo      domainIdentity.UserRepository
+	walletService      *finance.WalletService
+	transactionService *finance.TransactionService
+	currencyService    *finance.CurrencyService
+	categoryService    *finance.CategoryService
+	transactionManager TransactionManager
+	userRepo           domainIdentity.UserRepository
 }
 
-func NewCreateWalletUseCase(walletService *finance.WalletService, userRepo domainIdentity.UserRepository) *CreateWalletUseCase {
+func NewCreateWalletUseCase(
+	walletService *finance.WalletService,
+	transactionService *finance.TransactionService,
+	currencyService *finance.CurrencyService,
+	categoryService *finance.CategoryService,
+	transactionManager TransactionManager,
+	userRepo domainIdentity.UserRepository,
+) *CreateWalletUseCase {
 	return &CreateWalletUseCase{
-		walletService: walletService,
-		userRepo:      userRepo,
+		walletService:      walletService,
+		transactionService: transactionService,
+		currencyService:    currencyService,
+		categoryService:    categoryService,
+		transactionManager: transactionManager,
+		userRepo:           userRepo,
 	}
 }
 
@@ -53,7 +73,68 @@ func (uc *CreateWalletUseCase) Execute(ctx context.Context, userID int, req Crea
 		}
 	}
 
-	wallet, err := uc.walletService.CreateWallet(ctx, userID, req.Name, req.Amount)
+	isApproved := true
+	if req.IsApproved != nil {
+		isApproved = *req.IsApproved
+	}
+
+	var primaryCurrency finance.CurrencyID
+	var incomeCategoryID finance.CategoryID
+	if req.Amount > 0 {
+		primaryCurrencyModel, err := uc.currencyService.GetPrimaryCurrency(ctx, finance.NewUserID(userID))
+		if err != nil {
+			return nil, errors.New("failed to get primary currency")
+		}
+		primaryCurrency = primaryCurrencyModel.ID()
+
+		incomeCategories, err := uc.categoryService.GetCategoriesByUserAndType(ctx, finance.NewUserID(userID), finance.CategoryTypeIncome)
+		if err != nil || len(incomeCategories) == 0 {
+			return nil, errors.New("no income category available")
+		}
+
+		for _, cat := range incomeCategories {
+			if cat.IsDefault() {
+				incomeCategoryID = cat.ID()
+				break
+			}
+		}
+		if incomeCategoryID.Value() == 0 {
+			incomeCategoryID = incomeCategories[0].ID()
+		}
+	}
+
+	var wallet *finance.Wallet
+	err = uc.transactionManager.WithinTransaction(ctx, func(txCtx context.Context) error {
+		createdWallet, err := uc.walletService.CreateWallet(txCtx, userID, req.Name, req.Amount)
+		if err != nil {
+			return err
+		}
+		wallet = createdWallet
+
+		if req.Amount > 0 {
+			money, err := finance.NewMoney(req.Amount, primaryCurrency)
+			if err != nil {
+				return err
+			}
+
+			_, err = uc.transactionService.CreateTransaction(
+				txCtx,
+				finance.NewUserID(userID),
+				incomeCategoryID,
+				primaryCurrency,
+				money,
+				isApproved,
+				"Income from wallet initialization: "+req.Name,
+				createdWallet.CreatedAt(),
+				finance.TransactionTypeIncome,
+			)
+			if err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
