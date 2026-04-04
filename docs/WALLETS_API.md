@@ -17,10 +17,12 @@ Creates a new wallet for the authenticated user.
 ```json
 {
   "name": "My Primary Wallet",
-  "amount": 100.50
+  "amount": 100.50,
+  "is_approved": true
 }
 ```
 *Note: `amount` is optional and defaults to `0.0` if not provided.*
+*Note: `is_approved` is optional and defaults to `true` if not provided.*
 
 ### Success Response (201 Created)
 ```json

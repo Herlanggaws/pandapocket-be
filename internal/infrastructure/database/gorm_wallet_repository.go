@@ -17,8 +17,9 @@ func NewGormWalletRepository(db *gorm.DB) finance.WalletRepository {
 }
 
 func (r *GormWalletRepository) Save(ctx context.Context, wallet *finance.Wallet) error {
+	db := dbFromContext(ctx, r.db)
 	dbWallet := toDBWallet(wallet)
-	if err := r.db.WithContext(ctx).Create(dbWallet).Error; err != nil {
+	if err := db.WithContext(ctx).Create(dbWallet).Error; err != nil {
 		return err
 	}
 
