@@ -660,6 +660,7 @@ type CreateTransactionRequest struct {
     Amount      float64 `json:"amount" binding:"required,gt=0"`
     Description string  `json:"description" binding:"required,min=1,max=255"`
     Date        string  `json:"date" binding:"required,datetime=2006-01-02"`
+    IsApproved  *bool   `json:"is_approved"`
 }
 
 func (h *FinanceHandlers) CreateTransaction(c *gin.Context) {

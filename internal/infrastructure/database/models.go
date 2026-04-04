@@ -73,7 +73,9 @@ type Expense struct {
 	UserID      uint      `gorm:"not null;index;index:idx_expense_user_date_created,priority:1" json:"user_id"`
 	CategoryID  uint      `gorm:"not null;index" json:"category_id"`
 	CurrencyID  uint      `gorm:"not null;index" json:"currency_id"`
-	Amount      float64   `gorm:"type:decimal(10,2);not null" json:"amount"`
+	WalletID    *uint     `gorm:"index" json:"wallet_id,omitempty"`
+	Amount      float64   `gorm:"type:decimal(20,2);not null" json:"amount"`
+	IsApproved  bool      `gorm:"not null;default:true" json:"is_approved"`
 	Description string    `gorm:"type:text" json:"description"`
 	Date        time.Time `gorm:"type:date;not null;index:idx_expense_user_date_created,priority:2" json:"date"`
 	CreatedAt   time.Time `gorm:"index:idx_expense_user_date_created,priority:3" json:"created_at"`
@@ -83,6 +85,7 @@ type Expense struct {
 	User     *User     `gorm:"foreignKey:UserID" json:"user,omitempty"`
 	Category *Category `gorm:"foreignKey:CategoryID" json:"category,omitempty"`
 	Currency *Currency `gorm:"foreignKey:CurrencyID" json:"currency,omitempty"`
+	Wallet   *Wallet   `gorm:"foreignKey:WalletID" json:"wallet,omitempty"`
 }
 
 // Income represents an income transaction in the database
@@ -91,7 +94,9 @@ type Income struct {
 	UserID      uint      `gorm:"not null;index;index:idx_income_user_date_created,priority:1" json:"user_id"`
 	CategoryID  uint      `gorm:"not null;index" json:"category_id"`
 	CurrencyID  uint      `gorm:"not null;index" json:"currency_id"`
-	Amount      float64   `gorm:"type:decimal(10,2);not null" json:"amount"`
+	WalletID    *uint     `gorm:"index" json:"wallet_id,omitempty"`
+	Amount      float64   `gorm:"type:decimal(20,2);not null" json:"amount"`
+	IsApproved  bool      `gorm:"not null;default:true" json:"is_approved"`
 	Description string    `gorm:"type:text" json:"description"`
 	Date        time.Time `gorm:"type:date;not null;index:idx_income_user_date_created,priority:2" json:"date"`
 	CreatedAt   time.Time `gorm:"index:idx_income_user_date_created,priority:3" json:"created_at"`
@@ -101,6 +106,7 @@ type Income struct {
 	User     *User     `gorm:"foreignKey:UserID" json:"user,omitempty"`
 	Category *Category `gorm:"foreignKey:CategoryID" json:"category,omitempty"`
 	Currency *Currency `gorm:"foreignKey:CurrencyID" json:"currency,omitempty"`
+	Wallet   *Wallet   `gorm:"foreignKey:WalletID" json:"wallet,omitempty"`
 }
 
 // Budget represents a budget in the database
@@ -243,4 +249,3 @@ type Wallet struct {
 func (Wallet) TableName() string {
 	return "wallets"
 }
-
