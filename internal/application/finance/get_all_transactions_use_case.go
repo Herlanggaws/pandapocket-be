@@ -151,6 +151,7 @@ func (uc *GetAllTransactionsUseCase) Execute(ctx context.Context, userID int, re
 			},
 			CurrencyID:  transaction.CurrencyID().Value(),
 			Amount:      amt,
+			IsApproved:  transaction.IsApproved(),
 			Description: transaction.Description(),
 			Date:        transaction.Date().Format("2006-01-02"),
 			Type:        string(transaction.Type()),

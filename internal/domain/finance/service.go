@@ -8,9 +8,11 @@ import (
 
 // TransactionService handles transaction-related domain operations
 type TransactionService struct {
-	transactionRepo TransactionRepository
-	categoryRepo    CategoryRepository
-	currencyRepo    CurrencyRepository
+	transactionRepo    TransactionRepository
+	categoryRepo       CategoryRepository
+	currencyRepo       CurrencyRepository
+	walletRepo         WalletRepository
+	transactionManager TransactionManager
 }
 
 // NewTransactionService creates a new transaction service
@@ -18,11 +20,15 @@ func NewTransactionService(
 	transactionRepo TransactionRepository,
 	categoryRepo CategoryRepository,
 	currencyRepo CurrencyRepository,
+	walletRepo WalletRepository,
+	transactionManager TransactionManager,
 ) *TransactionService {
 	return &TransactionService{
-		transactionRepo: transactionRepo,
-		categoryRepo:    categoryRepo,
-		currencyRepo:    currencyRepo,
+		transactionRepo:    transactionRepo,
+		categoryRepo:       categoryRepo,
+		currencyRepo:       currencyRepo,
+		walletRepo:         walletRepo,
+		transactionManager: transactionManager,
 	}
 }
 
@@ -37,6 +43,7 @@ func (s *TransactionService) CreateTransaction(
 	description string,
 	date time.Time,
 	transactionType TransactionType,
+	walletID *WalletID,
 ) (*Transaction, error) {
 	// Validate category exists and user has access
 	category, err := s.categoryRepo.FindByID(ctx, categoryID)
@@ -65,6 +72,21 @@ func (s *TransactionService) CreateTransaction(
 		return nil, errors.New("access denied to currency")
 	}
 
+	// Validate wallet if provided
+	var wallet *Wallet
+	if walletID != nil {
+		var err error
+		wallet, err = s.walletRepo.FindByID(ctx, *walletID)
+		if err != nil {
+			return nil, errors.New("wallet not found")
+		}
+
+		// Check if wallet belongs to user
+		if wallet.UserID().Value() != userID.Value() {
+			return nil, errors.New("access denied to wallet")
+		}
+	}
+
 	// Create transaction
 	transaction := NewTransaction(
 		TransactionID{}, // Will be set by repository
@@ -76,11 +98,39 @@ func (s *TransactionService) CreateTransaction(
 		description,
 		date,
 		transactionType,
+		walletID,
 	)
 
-	// Save transaction
-	if err := s.transactionRepo.Save(ctx, transaction); err != nil {
-		return nil, err
+	// If wallet is provided, wrap both transaction save and wallet update in atomic transaction
+	if wallet != nil {
+		err := s.transactionManager.WithinTransaction(ctx, func(txCtx context.Context) error {
+			// Save transaction within transaction
+			if err := s.transactionRepo.Save(txCtx, transaction); err != nil {
+				return err
+			}
+
+			// Update wallet balance based on transaction type
+			if transactionType == TransactionTypeIncome {
+				wallet.UpdateAmount(wallet.Amount() + amount.Amount())
+			} else if transactionType == TransactionTypeExpense {
+				wallet.UpdateAmount(wallet.Amount() - amount.Amount())
+			}
+
+			// Update wallet within transaction
+			if err := s.walletRepo.Update(txCtx, wallet); err != nil {
+				return err
+			}
+
+			return nil
+		})
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		// No wallet update needed, just save transaction
+		if err := s.transactionRepo.Save(ctx, transaction); err != nil {
+			return nil, err
+		}
 	}
 
 	return transaction, nil

@@ -13,6 +13,8 @@ type CreateTransactionRequest struct {
 	Amount      float64 `json:"amount" binding:"required,gt=0"`
 	Description string  `json:"description"`
 	Date        string  `json:"date" binding:"required"`
+	IsApproved  *bool   `json:"is_approved"`
+	WalletID    *int    `json:"wallet_id"`
 	Type        string  `json:"type"`
 }
 
@@ -22,7 +24,9 @@ type CreateTransactionResponse struct {
 	UserID      int     `json:"user_id"`
 	CategoryID  int     `json:"category_id"`
 	CurrencyID  int     `json:"currency_id"`
+	WalletID    *int    `json:"wallet_id,omitempty"`
 	Amount      float64 `json:"amount"`
+	IsApproved  bool    `json:"is_approved"`
 	Description string  `json:"description"`
 	Date        string  `json:"date"`
 	Type        string  `json:"type"`
@@ -66,6 +70,17 @@ func (uc *CreateTransactionUseCase) Execute(ctx context.Context, userID int, req
 		return nil, err
 	}
 
+	isApproved := true
+	if req.IsApproved != nil {
+		isApproved = *req.IsApproved
+	}
+
+	var walletID *finance.WalletID
+	if req.WalletID != nil {
+		id := finance.NewWalletID(*req.WalletID)
+		walletID = &id
+	}
+
 	// Create transaction
 	transaction, err := uc.transactionService.CreateTransaction(
 		ctx,
@@ -73,13 +88,20 @@ func (uc *CreateTransactionUseCase) Execute(ctx context.Context, userID int, req
 		finance.NewCategoryID(req.CategoryID),
 		primaryCurrency.ID(),
 		money,
-		true,
+		isApproved,
 		req.Description,
 		date,
 		finance.TransactionType(req.Type),
+		walletID,
 	)
 	if err != nil {
 		return nil, err
+	}
+
+	walletIDResp := (*int)(nil)
+	if transaction.WalletID() != nil {
+		wID := transaction.WalletID().Value()
+		walletIDResp = &wID
 	}
 
 	return &CreateTransactionResponse{
@@ -87,7 +109,9 @@ func (uc *CreateTransactionUseCase) Execute(ctx context.Context, userID int, req
 		UserID:      transaction.UserID().Value(),
 		CategoryID:  transaction.CategoryID().Value(),
 		CurrencyID:  transaction.CurrencyID().Value(),
+		WalletID:    walletIDResp,
 		Amount:      transaction.Amount().Amount(),
+		IsApproved:  transaction.IsApproved(),
 		Description: transaction.Description(),
 		Date:        transaction.Date().Format("2006-01-02"),
 		Type:        string(transaction.Type()),

@@ -460,6 +460,7 @@ func TestFinanceHandlers_CreateExpense(t *testing.T) {
         Amount:      50.0,
         Description: "Test expense",
         Date:        "2024-01-15",
+        IsApproved:  true,
     }
     
     req, _ := http.NewRequest("POST", "/api/expenses", 

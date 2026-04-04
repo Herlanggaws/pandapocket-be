@@ -5,6 +5,11 @@ import (
 	"time"
 )
 
+// TransactionManager defines the contract for managing database transactions
+type TransactionManager interface {
+	WithinTransaction(ctx context.Context, fn func(context.Context) error) error
+}
+
 // TransactionRepository defines the contract for transaction persistence
 type TransactionRepository interface {
 	Save(ctx context.Context, transaction *Transaction) error

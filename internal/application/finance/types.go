@@ -7,6 +7,7 @@ type TransactionResponse struct {
 	Category    CategoryResponse `json:"category"`
 	CurrencyID  int              `json:"currency_id"`
 	Amount      float64          `json:"amount"`
+	IsApproved  bool             `json:"is_approved"`
 	Description string           `json:"description"`
 	Date        string           `json:"date"`
 	Type        string           `json:"type"`

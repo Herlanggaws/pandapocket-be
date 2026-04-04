@@ -45,7 +45,7 @@ func NewApp(db *gorm.DB) *App {
 
 	// Domain layer - services
 	userService := domainIdentity.NewUserService(userRepo)
-	transactionService := domainFinance.NewTransactionService(transactionRepo, categoryRepo, currencyRepo)
+	transactionService := domainFinance.NewTransactionService(transactionRepo, categoryRepo, currencyRepo, walletRepo, transactionManager)
 	categoryService := domainFinance.NewCategoryService(categoryRepo)
 	currencyService := domainFinance.NewCurrencyService(currencyRepo)
 	budgetService := domainFinance.NewBudgetService(budgetRepo, categoryRepo)

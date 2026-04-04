@@ -10,10 +10,6 @@ import (
 	domainIdentity "panda-pocket/internal/domain/identity"
 )
 
-type TransactionManager interface {
-	WithinTransaction(ctx context.Context, fn func(context.Context) error) error
-}
-
 type CreateWalletRequest struct {
 	Name       string  `json:"name" binding:"required"`
 	Amount     float64 `json:"amount"`
@@ -25,7 +21,7 @@ type CreateWalletUseCase struct {
 	transactionService *finance.TransactionService
 	currencyService    *finance.CurrencyService
 	categoryService    *finance.CategoryService
-	transactionManager TransactionManager
+	transactionManager finance.TransactionManager
 	userRepo           domainIdentity.UserRepository
 }
 
@@ -34,7 +30,7 @@ func NewCreateWalletUseCase(
 	transactionService *finance.TransactionService,
 	currencyService *finance.CurrencyService,
 	categoryService *finance.CategoryService,
-	transactionManager TransactionManager,
+	transactionManager finance.TransactionManager,
 	userRepo domainIdentity.UserRepository,
 ) *CreateWalletUseCase {
 	return &CreateWalletUseCase{
@@ -117,6 +113,7 @@ func (uc *CreateWalletUseCase) Execute(ctx context.Context, userID int, req Crea
 				return err
 			}
 
+			walletID := createdWallet.ID()
 			_, err = uc.transactionService.CreateTransaction(
 				txCtx,
 				finance.NewUserID(userID),
@@ -127,6 +124,7 @@ func (uc *CreateWalletUseCase) Execute(ctx context.Context, userID int, req Crea
 				"Income from wallet initialization: "+req.Name,
 				createdWallet.CreatedAt(),
 				finance.TransactionTypeIncome,
+				&walletID,
 			)
 			if err != nil {
 				return err
