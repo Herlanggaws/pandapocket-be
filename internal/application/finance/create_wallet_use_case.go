@@ -11,9 +11,8 @@ import (
 )
 
 type CreateWalletRequest struct {
-	Name       string  `json:"name" binding:"required"`
-	Amount     float64 `json:"amount"`
-	IsApproved *bool   `json:"is_approved"`
+	Name   string  `json:"name" binding:"required"`
+	Amount float64 `json:"amount"`
 }
 
 type CreateWalletUseCase struct {
@@ -70,9 +69,6 @@ func (uc *CreateWalletUseCase) Execute(ctx context.Context, userID int, req Crea
 	}
 
 	isApproved := true
-	if req.IsApproved != nil {
-		isApproved = *req.IsApproved
-	}
 
 	var primaryCurrency finance.CurrencyID
 	var incomeCategoryID finance.CategoryID
