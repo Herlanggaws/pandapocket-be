@@ -178,6 +178,7 @@ func (h *FinanceHandlers) GetAllTransactions(c *gin.Context) {
 
 	startDateStr := c.Query("start_date")
 	endDateStr := c.Query("end_date")
+	isApprovedStr := c.Query("is_approved")
 
 	now := time.Now()
 
@@ -195,10 +196,21 @@ func (h *FinanceHandlers) GetAllTransactions(c *gin.Context) {
 	}
 
 	// Parse query parameters
+	var isApproved *bool
+	if isApprovedStr != "" {
+		parsed, err := strconv.ParseBool(isApprovedStr)
+		if err != nil {
+			BadRequestResponse(c, "INVALID_IS_APPROVED", "Invalid is_approved value. Expected true or false")
+			return
+		}
+		isApproved = &parsed
+	}
+
 	req := finance.GetAllTransactionsRequest{
-		Type:      c.Query("type"),
-		StartDate: startDateStr,
-		EndDate:   endDateStr,
+		Type:       c.Query("type"),
+		IsApproved: isApproved,
+		StartDate:  startDateStr,
+		EndDate:    endDateStr,
 	}
 
 	// Parse category IDs from query parameter
