@@ -239,6 +239,7 @@ type Wallet struct {
 	UserID    uint      `gorm:"not null;index" json:"user_id"`
 	Name      string    `gorm:"type:text;not null" json:"name"`
 	Amount    float64   `gorm:"type:decimal(20,2);not null;default:0" json:"amount"`
+	IsPrimary bool      `gorm:"not null;default:false" json:"is_primary"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 

@@ -278,6 +278,12 @@ func (r *GormTransactionRepository) FindByUserIDWithFilters(ctx context.Context,
 		args = append(args, *filters.EndDate)
 	}
 
+	// Apply approval filter
+	if filters.IsApproved != nil {
+		baseConditions += " AND is_approved = ?"
+		args = append(args, *filters.IsApproved)
+	}
+
 	// Apply category filter
 	if len(filters.CategoryIDs) > 0 {
 		categoryIDs := make([]uint, len(filters.CategoryIDs))

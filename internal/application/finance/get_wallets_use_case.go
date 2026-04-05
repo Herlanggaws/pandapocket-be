@@ -57,6 +57,7 @@ func (uc *GetWalletsUseCase) Execute(ctx context.Context, userID int, req GetWal
 			UserID:    wallet.UserID().Value(),
 			Name:      wallet.Name(),
 			Amount:    wallet.Amount(),
+			IsPrimary: wallet.IsPrimary(),
 			CreatedAt: wallet.CreatedAt().Format("2006-01-02T15:04:05Z07:00"),
 			UpdatedAt: wallet.UpdatedAt().Format("2006-01-02T15:04:05Z07:00"),
 		})

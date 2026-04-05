@@ -241,6 +241,7 @@ Get transactions with advanced analytics and enhanced filtering.
 
 **Query Parameters:**
 - `type` (optional): Filter by transaction type (`expense` or `income`)
+- `is_approved` (optional): Filter by approval status (`true` or `false`)
 - `category_ids` (optional): Filter by category IDs (comma-separated)
 - `start_date` (optional): Filter transactions from this date (YYYY-MM-DD)
 - `end_date` (optional): Filter transactions until this date (YYYY-MM-DD)
@@ -1300,6 +1301,8 @@ Get all transactions (both income and expense) for the authenticated user with a
 - Get transactions from specific date range: `GET /api/v100/transactions?start_date=2024-01-01&end_date=2024-12-31`
 - Get transactions from specific categories: `GET /api/v100/transactions?category_ids=1,2,3`
 - Combined filters: `GET /api/v100/transactions?type=expense&start_date=2024-01-01&end_date=2024-12-31&category_ids=1,2`
+- Filter only approved transactions: `GET /api/v100/transactions?is_approved=true`
+- Filter only unapproved transactions: `GET /api/v100/transactions?is_approved=false`
 - Paginated results: `GET /api/v100/transactions?page=2&limit=10`
 - Paginated with filters: `GET /api/v100/transactions?type=expense&page=1&limit=5`
 

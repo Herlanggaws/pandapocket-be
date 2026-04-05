@@ -22,22 +22,14 @@ func (r *GormWalletRepository) Save(ctx context.Context, wallet *finance.Wallet)
 	if err := db.WithContext(ctx).Create(dbWallet).Error; err != nil {
 		return err
 	}
-
-	// Update domain entity ID since it's zero initially
-	if wallet.ID().Value() == 0 {
-		// Reflection or recreating is needed, but in this context
-		// It's usually fine to recreate or assume it uses standard assignment
-		// Let's set it via pointer if possible. Wait, id is unexported.
-		// A common hack in DDD is not having unexported IDs or setting them via reflection.
-		// But let's check how gorm_category_repository.go handles it... Wait, I will just recreate or skip if not strictly needed now.
-		// Actually, let's look at how Category or Transaction does it. The service usually re-fetches or the DB layer does not mutate the domain directly.
-	}
+	wallet.SetID(finance.NewWalletID(int(dbWallet.ID)))
 	return nil
 }
 
 func (r *GormWalletRepository) FindByID(ctx context.Context, id finance.WalletID) (*finance.Wallet, error) {
+	db := dbFromContext(ctx, r.db)
 	var dbWallet Wallet
-	if err := r.db.WithContext(ctx).First(&dbWallet, id.Value()).Error; err != nil {
+	if err := db.WithContext(ctx).First(&dbWallet, id.Value()).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, errors.New("wallet not found")
 		}
@@ -47,8 +39,9 @@ func (r *GormWalletRepository) FindByID(ctx context.Context, id finance.WalletID
 }
 
 func (r *GormWalletRepository) FindByUserID(ctx context.Context, userID finance.UserID) ([]*finance.Wallet, error) {
+	db := dbFromContext(ctx, r.db)
 	var dbWallets []Wallet
-	if err := r.db.WithContext(ctx).Where("user_id = ?", userID.Value()).Find(&dbWallets).Error; err != nil {
+	if err := db.WithContext(ctx).Where("user_id = ?", userID.Value()).Find(&dbWallets).Error; err != nil {
 		return nil, err
 	}
 
@@ -64,10 +57,11 @@ func (r *GormWalletRepository) FindByUserID(ctx context.Context, userID finance.
 }
 
 func (r *GormWalletRepository) FindByUserIDWithFilters(ctx context.Context, userID finance.UserID, search string, limit, offset int) ([]*finance.Wallet, int64, error) {
+	db := dbFromContext(ctx, r.db)
 	var dbWallets []Wallet
 	var totalCount int64
 
-	query := r.db.WithContext(ctx).Model(&Wallet{}).Where("user_id = ?", userID.Value()).Order("created_at ASC")
+	query := db.WithContext(ctx).Model(&Wallet{}).Where("user_id = ?", userID.Value()).Order("created_at ASC")
 
 	if search != "" {
 		query = query.Where("name LIKE ?", "%"+search+"%")
@@ -93,12 +87,21 @@ func (r *GormWalletRepository) FindByUserIDWithFilters(ctx context.Context, user
 	return wallets, totalCount, nil
 }
 
+func (r *GormWalletRepository) UnsetPrimaryByUserIDExcept(ctx context.Context, userID finance.UserID, walletID finance.WalletID) error {
+	db := dbFromContext(ctx, r.db)
+	return db.WithContext(ctx).Model(&Wallet{}).
+		Where("user_id = ? AND id <> ?", userID.Value(), walletID.Value()).
+		Update("is_primary", false).Error
+}
+
 func (r *GormWalletRepository) Update(ctx context.Context, wallet *finance.Wallet) error {
+	db := dbFromContext(ctx, r.db)
 	dbWallet := toDBWallet(wallet)
 	// We use Updates to only update non-zero fields, or Save to update everything
-	if err := r.db.WithContext(ctx).Model(&Wallet{}).Where("id = ?", dbWallet.ID).Updates(map[string]interface{}{
+	if err := db.WithContext(ctx).Model(&Wallet{}).Where("id = ?", dbWallet.ID).Updates(map[string]interface{}{
 		"name":       dbWallet.Name,
 		"amount":     dbWallet.Amount,
+		"is_primary": dbWallet.IsPrimary,
 		"updated_at": dbWallet.UpdatedAt,
 	}).Error; err != nil {
 		return err
@@ -107,7 +110,8 @@ func (r *GormWalletRepository) Update(ctx context.Context, wallet *finance.Walle
 }
 
 func (r *GormWalletRepository) Delete(ctx context.Context, id finance.WalletID) error {
-	result := r.db.WithContext(ctx).Delete(&Wallet{}, id.Value())
+	db := dbFromContext(ctx, r.db)
+	result := db.WithContext(ctx).Delete(&Wallet{}, id.Value())
 	if result.Error != nil {
 		return result.Error
 	}
@@ -124,6 +128,7 @@ func toDBWallet(w *finance.Wallet) *Wallet {
 		UserID:    uint(w.UserID().Value()),
 		Name:      w.Name(),
 		Amount:    w.Amount(),
+		IsPrimary: w.IsPrimary(),
 		CreatedAt: w.CreatedAt(),
 		UpdatedAt: w.UpdatedAt(),
 	}
@@ -137,6 +142,7 @@ func toDomainWallet(w *Wallet) (*finance.Wallet, error) {
 		finance.NewUserID(int(w.UserID)),
 		w.Name,
 		w.Amount,
+		w.IsPrimary,
 		w.CreatedAt,
 		w.UpdatedAt,
 	)
