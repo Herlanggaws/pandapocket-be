@@ -18,11 +18,11 @@ Creates a new wallet for the authenticated user.
 {
   "name": "My Primary Wallet",
   "amount": 100.50,
-  "is_approved": true
+  "is_primary": true
 }
 ```
 *Note: `amount` is optional and defaults to `0.0` if not provided.*
-*Note: `is_approved` is optional and defaults to `true` if not provided.*
+*Note: `is_primary` is optional and defaults to `false` if not provided.*
 
 ### Success Response (201 Created)
 ```json
@@ -34,6 +34,7 @@ Creates a new wallet for the authenticated user.
       "user_id": 42,
       "name": "My Primary Wallet",
       "amount": 100.50,
+      "is_primary": true,
       "created_at": "2024-01-01T12:00:00Z",
       "updated_at": "2024-01-01T12:00:00Z"
     }
@@ -69,6 +70,7 @@ Retrieves all wallets belonging to the authenticated user.
         "user_id": 42,
         "name": "My Primary Wallet",
         "amount": 100.50,
+        "is_primary": true,
         "created_at": "2024-01-01T12:00:00Z",
         "updated_at": "2024-01-01T12:00:00Z"
       },
@@ -77,6 +79,7 @@ Retrieves all wallets belonging to the authenticated user.
         "user_id": 42,
         "name": "Savings",
         "amount": 5000.00,
+        "is_primary": false,
         "created_at": "2024-01-02T08:30:00Z",
         "updated_at": "2024-01-02T08:30:00Z"
       }
@@ -94,14 +97,15 @@ Retrieves all wallets belonging to the authenticated user.
 
 ## 3. Update a Wallet
 
-Updates the properties of an existing wallet. Only the `name` property can be modified via this endpoint.
+Updates the properties of an existing wallet (`name` and optional `is_primary`).
 
 **Endpoint:** `PUT /api/v100/wallets/:id`
 
 ### Request Body
 ```json
 {
-  "name": "Updated Wallet Name"
+  "name": "Updated Wallet Name",
+  "is_primary": false
 }
 ```
 
@@ -115,6 +119,7 @@ Updates the properties of an existing wallet. Only the `name` property can be mo
       "user_id": 42,
       "name": "Updated Wallet Name",
       "amount": 100.50,
+      "is_primary": false,
       "created_at": "2024-01-01T12:00:00Z",
       "updated_at": "2024-01-05T09:15:00Z"
     }

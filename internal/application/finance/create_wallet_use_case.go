@@ -11,8 +11,9 @@ import (
 )
 
 type CreateWalletRequest struct {
-	Name   string  `json:"name" binding:"required"`
-	Amount float64 `json:"amount"`
+	Name      string  `json:"name" binding:"required"`
+	Amount    float64 `json:"amount"`
+	IsPrimary *bool   `json:"is_primary"`
 }
 
 type CreateWalletUseCase struct {
@@ -97,7 +98,12 @@ func (uc *CreateWalletUseCase) Execute(ctx context.Context, userID int, req Crea
 
 	var wallet *finance.Wallet
 	err = uc.transactionManager.WithinTransaction(ctx, func(txCtx context.Context) error {
-		createdWallet, err := uc.walletService.CreateWallet(txCtx, userID, req.Name, req.Amount)
+		isPrimary := false
+		if req.IsPrimary != nil {
+			isPrimary = *req.IsPrimary
+		}
+
+		createdWallet, err := uc.walletService.CreateWallet(txCtx, userID, req.Name, req.Amount, isPrimary)
 		if err != nil {
 			return err
 		}
@@ -138,6 +144,7 @@ func (uc *CreateWalletUseCase) Execute(ctx context.Context, userID int, req Crea
 		UserID:    wallet.UserID().Value(),
 		Name:      wallet.Name(),
 		Amount:    wallet.Amount(),
+		IsPrimary: wallet.IsPrimary(),
 		CreatedAt: wallet.CreatedAt().Format("2006-01-02T15:04:05Z07:00"),
 		UpdatedAt: wallet.UpdatedAt().Format("2006-01-02T15:04:05Z07:00"),
 	}, nil

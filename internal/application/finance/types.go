@@ -20,6 +20,7 @@ type WalletResponse struct {
 	UserID    int     `json:"user_id"`
 	Name      string  `json:"name"`
 	Amount    float64 `json:"amount"`
+	IsPrimary bool    `json:"is_primary"`
 	CreatedAt string  `json:"created_at"`
 	UpdatedAt string  `json:"updated_at"`
 }
