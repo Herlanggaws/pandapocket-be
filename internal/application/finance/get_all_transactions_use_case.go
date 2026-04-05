@@ -11,6 +11,7 @@ import (
 // GetAllTransactionsRequest represents the request for getting all transactions with filters
 type GetAllTransactionsRequest struct {
 	Type        string   `json:"type,omitempty"`         // "income", "expense", or empty for both
+	IsApproved  *bool    `json:"is_approved,omitempty"`  // true, false, or empty for both
 	CategoryIDs []string `json:"category_ids,omitempty"` // Comma-separated category IDs
 	StartDate   string   `json:"start_date,omitempty"`   // Date in YYYY-MM-DD format
 	EndDate     string   `json:"end_date,omitempty"`     // Date in YYYY-MM-DD format
@@ -57,6 +58,10 @@ func (uc *GetAllTransactionsUseCase) Execute(ctx context.Context, userID int, re
 		case "expense":
 			filters.TransactionType = &[]finance.TransactionType{finance.TransactionTypeExpense}[0]
 		}
+	}
+
+	if req.IsApproved != nil {
+		filters.IsApproved = req.IsApproved
 	}
 
 	// Parse category IDs

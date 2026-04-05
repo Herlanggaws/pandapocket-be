@@ -17,6 +17,7 @@ const (
 // TransactionFilters represents filters for querying transactions
 type TransactionFilters struct {
 	TransactionType *TransactionType
+	IsApproved      *bool
 	CategoryIDs     []CategoryID
 	StartDate       *time.Time
 	EndDate         *time.Time

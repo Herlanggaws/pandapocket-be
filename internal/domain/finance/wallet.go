@@ -24,6 +24,7 @@ type Wallet struct {
 	userID    UserID
 	name      string
 	amount    float64
+	isPrimary bool
 	createdAt time.Time
 	updatedAt time.Time
 }
@@ -34,6 +35,7 @@ func NewWallet(
 	userID UserID,
 	name string,
 	amount float64,
+	isPrimary bool,
 ) (*Wallet, error) {
 	if name == "" {
 		return nil, errors.New("wallet name cannot be empty")
@@ -44,6 +46,7 @@ func NewWallet(
 		userID:    userID,
 		name:      name,
 		amount:    amount,
+		isPrimary: isPrimary,
 		createdAt: time.Now(),
 		updatedAt: time.Now(),
 	}, nil
@@ -55,6 +58,7 @@ func ReconstructWallet(
 	userID UserID,
 	name string,
 	amount float64,
+	isPrimary bool,
 	createdAt time.Time,
 	updatedAt time.Time,
 ) (*Wallet, error) {
@@ -67,6 +71,7 @@ func ReconstructWallet(
 		userID:    userID,
 		name:      name,
 		amount:    amount,
+		isPrimary: isPrimary,
 		createdAt: createdAt,
 		updatedAt: updatedAt,
 	}, nil
@@ -75,6 +80,10 @@ func ReconstructWallet(
 // Getters
 func (w *Wallet) ID() WalletID {
 	return w.id
+}
+
+func (w *Wallet) SetID(id WalletID) {
+	w.id = id
 }
 
 func (w *Wallet) UserID() UserID {
@@ -87,6 +96,10 @@ func (w *Wallet) Name() string {
 
 func (w *Wallet) Amount() float64 {
 	return w.amount
+}
+
+func (w *Wallet) IsPrimary() bool {
+	return w.isPrimary
 }
 
 func (w *Wallet) CreatedAt() time.Time {
@@ -110,5 +123,11 @@ func (w *Wallet) UpdateName(name string) error {
 // UpdateAmount updates the wallet amount
 func (w *Wallet) UpdateAmount(amount float64) {
 	w.amount = amount
+	w.updatedAt = time.Now()
+}
+
+// UpdatePrimary updates the wallet primary flag
+func (w *Wallet) UpdatePrimary(isPrimary bool) {
+	w.isPrimary = isPrimary
 	w.updatedAt = time.Now()
 }

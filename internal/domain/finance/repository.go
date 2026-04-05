@@ -79,6 +79,7 @@ type WalletRepository interface {
 	FindByID(ctx context.Context, id WalletID) (*Wallet, error)
 	FindByUserID(ctx context.Context, userID UserID) ([]*Wallet, error)
 	FindByUserIDWithFilters(ctx context.Context, userID UserID, search string, limit, offset int) ([]*Wallet, int64, error)
+	UnsetPrimaryByUserIDExcept(ctx context.Context, userID UserID, walletID WalletID) error
 	Update(ctx context.Context, wallet *Wallet) error
 	Delete(ctx context.Context, id WalletID) error
 }

@@ -15,9 +15,9 @@ func NewWalletService(walletRepo WalletRepository) *WalletService {
 	}
 }
 
-func (s *WalletService) CreateWallet(ctx context.Context, userID int, name string, amount float64) (*Wallet, error) {
+func (s *WalletService) CreateWallet(ctx context.Context, userID int, name string, amount float64, isPrimary bool) (*Wallet, error) {
 	uID := NewUserID(userID)
-	wallet, err := NewWallet(NewWalletID(0), uID, name, amount)
+	wallet, err := NewWallet(NewWalletID(0), uID, name, amount, isPrimary)
 	if err != nil {
 		return nil, err
 	}
@@ -26,10 +26,16 @@ func (s *WalletService) CreateWallet(ctx context.Context, userID int, name strin
 		return nil, err
 	}
 
+	if isPrimary {
+		if err := s.walletRepo.UnsetPrimaryByUserIDExcept(ctx, uID, wallet.ID()); err != nil {
+			return nil, err
+		}
+	}
+
 	return wallet, nil
 }
 
-func (s *WalletService) UpdateWalletName(ctx context.Context, userID int, walletID int, name string) (*Wallet, error) {
+func (s *WalletService) UpdateWallet(ctx context.Context, userID int, walletID int, name string, isPrimary *bool) (*Wallet, error) {
 	wID := NewWalletID(walletID)
 	wallet, err := s.walletRepo.FindByID(ctx, wID)
 	if err != nil {
@@ -45,8 +51,18 @@ func (s *WalletService) UpdateWalletName(ctx context.Context, userID int, wallet
 		return nil, err
 	}
 
+	if isPrimary != nil {
+		wallet.UpdatePrimary(*isPrimary)
+	}
+
 	if err := s.walletRepo.Update(ctx, wallet); err != nil {
 		return nil, err
+	}
+
+	if isPrimary != nil && *isPrimary {
+		if err := s.walletRepo.UnsetPrimaryByUserIDExcept(ctx, wallet.UserID(), wallet.ID()); err != nil {
+			return nil, err
+		}
 	}
 
 	return wallet, nil
