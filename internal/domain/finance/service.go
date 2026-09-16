@@ -193,12 +193,14 @@ func (s *TransactionService) DeleteTransaction(ctx context.Context, transactionI
 // CategoryService handles category-related domain operations
 type CategoryService struct {
 	categoryRepo CategoryRepository
+	budgetRepo   BudgetRepository
 }
 
 // NewCategoryService creates a new category service
-func NewCategoryService(categoryRepo CategoryRepository) *CategoryService {
+func NewCategoryService(categoryRepo CategoryRepository, budgetRepo BudgetRepository) *CategoryService {
 	return &CategoryService{
 		categoryRepo: categoryRepo,
+		budgetRepo:   budgetRepo,
 	}
 }
 
@@ -316,6 +318,14 @@ func (s *CategoryService) DeleteCategory(ctx context.Context, categoryID Categor
 		return errors.New("access denied")
 	}
 
+	existingBudgets, err := s.budgetRepo.FindByUserIDAndCategory(ctx, userID, categoryID)
+	if err != nil {
+		return err
+	}
+	if len(existingBudgets) > 0 {
+		return errors.New("cannot delete category with existing budgets")
+	}
+
 	return s.categoryRepo.Delete(ctx, categoryID)
 }
 
@@ -347,20 +357,21 @@ func (s *BudgetService) CreateBudget(
 	period BudgetPeriod,
 	startDate time.Time,
 ) (*Budget, error) {
-	// Validate category exists and user has access
 	category, err := s.categoryRepo.FindByID(ctx, categoryID)
 	if err != nil {
 		return nil, errors.New("category not found")
 	}
 
-	// Check if user has access to category (default or user's own)
 	if !category.IsDefault() && (category.UserID() == nil || category.UserID().Value() != userID.Value()) {
 		return nil, errors.New("access denied to category")
 	}
 
-	// Create budget
+	if category.Type() != CategoryTypeExpense {
+		return nil, errors.New("budget category must be expense type")
+	}
+
 	budget, err := NewBudget(
-		BudgetID{}, // Will be set by repository
+		BudgetID{},
 		userID,
 		categoryID,
 		amount,
@@ -371,7 +382,10 @@ func (s *BudgetService) CreateBudget(
 		return nil, err
 	}
 
-	// Save budget
+	if err := s.ensureNoOverlap(ctx, userID, categoryID, budget.StartDate(), budget.EndDate(), BudgetID{}); err != nil {
+		return nil, err
+	}
+
 	if err := s.budgetRepo.Save(ctx, budget); err != nil {
 		return nil, err
 	}
@@ -389,6 +403,30 @@ func (s *BudgetService) GetActiveBudgetsByUser(ctx context.Context, userID UserI
 	return s.budgetRepo.FindActiveByUserID(ctx, userID)
 }
 
+func (s *BudgetService) ensureNoOverlap(
+	ctx context.Context,
+	userID UserID,
+	categoryID CategoryID,
+	startDate, endDate time.Time,
+	excludeID BudgetID,
+) error {
+	existing, err := s.budgetRepo.FindByUserIDAndCategory(ctx, userID, categoryID)
+	if err != nil {
+		return err
+	}
+
+	for _, candidate := range existing {
+		if excludeID.Value() != 0 && candidate.ID().Value() == excludeID.Value() {
+			continue
+		}
+		if candidate.OverlapsWith(startDate, endDate) {
+			return errors.New("overlapping budget already exists for this category")
+		}
+	}
+
+	return nil
+}
+
 // UpdateBudget updates a budget
 func (s *BudgetService) UpdateBudget(
 	ctx context.Context,
@@ -400,18 +438,16 @@ func (s *BudgetService) UpdateBudget(
 	startDate time.Time,
 	endDate time.Time,
 ) (*Budget, error) {
-	// Get budget
 	budget, err := s.budgetRepo.FindByID(ctx, budgetID)
 	if err != nil {
 		return nil, errors.New("budget not found")
 	}
 
-	// Check if user can update this budget
 	if budget.UserID().Value() != userID.Value() {
-		return nil, errors.New("access denied")
+		return nil, errors.New("budget not found")
 	}
 
-	// Validate category exists and user has access (when changing category)
+	targetCategoryID := budget.CategoryID()
 	if categoryID.Value() != 0 {
 		category, err := s.categoryRepo.FindByID(ctx, categoryID)
 		if err != nil {
@@ -420,11 +456,13 @@ func (s *BudgetService) UpdateBudget(
 		if !category.IsDefault() && (category.UserID() == nil || category.UserID().Value() != userID.Value()) {
 			return nil, errors.New("access denied to category")
 		}
-		// Update the category ID directly on the aggregate
+		if category.Type() != CategoryTypeExpense {
+			return nil, errors.New("budget category must be expense type")
+		}
 		budget.categoryID = categoryID
+		targetCategoryID = categoryID
 	}
 
-	// Update budget
 	if err := budget.UpdateAmount(amount); err != nil {
 		return nil, err
 	}
@@ -433,10 +471,18 @@ func (s *BudgetService) UpdateBudget(
 		return nil, err
 	}
 
-	budget.UpdateStartDate(startDate)
-	budget.UpdateEndDate(endDate)
+	if err := budget.UpdateStartDate(startDate); err != nil {
+		return nil, err
+	}
 
-	// Save updated budget
+	if err := budget.UpdateEndDate(endDate); err != nil {
+		return nil, err
+	}
+
+	if err := s.ensureNoOverlap(ctx, userID, targetCategoryID, budget.StartDate(), budget.EndDate(), budget.ID()); err != nil {
+		return nil, err
+	}
+
 	if err := s.budgetRepo.Save(ctx, budget); err != nil {
 		return nil, err
 	}
@@ -446,15 +492,18 @@ func (s *BudgetService) UpdateBudget(
 
 // DeleteBudget deletes a budget
 func (s *BudgetService) DeleteBudget(ctx context.Context, budgetID BudgetID, userID UserID) error {
-	// Get budget to verify ownership
 	budget, err := s.budgetRepo.FindByID(ctx, budgetID)
 	if err != nil {
 		return errors.New("budget not found")
 	}
 
 	if budget.UserID().Value() != userID.Value() {
-		return errors.New("access denied")
+		return errors.New("budget not found")
 	}
 
-	return s.budgetRepo.Delete(ctx, budgetID)
+	if err := s.budgetRepo.DeleteByIDAndUserID(ctx, budgetID, userID); err != nil {
+		return errors.New("budget not found")
+	}
+
+	return nil
 }

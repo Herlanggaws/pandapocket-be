@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"errors"
 	"panda-pocket/internal/domain/finance"
 	"time"
 
@@ -18,12 +19,30 @@ func NewGormBudgetRepository(db *gorm.DB) *GormBudgetRepository {
 	return &GormBudgetRepository{db: db}
 }
 
+func (r *GormBudgetRepository) toDomain(budgetModel Budget) (*finance.Budget, error) {
+	amount, err := finance.NewMoney(budgetModel.Amount, finance.NewCurrencyID(int(budgetModel.CurrencyID)))
+	if err != nil {
+		return nil, err
+	}
+
+	return finance.ReconstituteBudget(
+		finance.NewBudgetID(int(budgetModel.ID)),
+		finance.NewUserID(int(budgetModel.UserID)),
+		finance.NewCategoryID(int(budgetModel.CategoryID)),
+		amount,
+		finance.BudgetPeriod(budgetModel.Period),
+		budgetModel.StartDate,
+		budgetModel.EndDate,
+		budgetModel.CreatedAt,
+	)
+}
+
 // Save saves a budget to the database
 func (r *GormBudgetRepository) Save(ctx context.Context, budget *finance.Budget) error {
-	// Convert domain budget to GORM model
 	budgetModel := &Budget{
 		UserID:     uint(budget.UserID().Value()),
 		CategoryID: uint(budget.CategoryID().Value()),
+		CurrencyID: uint(budget.Amount().Currency().Value()),
 		Amount:     budget.Amount().Amount(),
 		Period:     string(budget.Period()),
 		StartDate:  budget.StartDate(),
@@ -32,13 +51,23 @@ func (r *GormBudgetRepository) Save(ctx context.Context, budget *finance.Budget)
 
 	if budget.ID().Value() != 0 {
 		budgetModel.ID = uint(budget.ID().Value())
+		updates := map[string]interface{}{
+			"category_id": budgetModel.CategoryID,
+			"currency_id": budgetModel.CurrencyID,
+			"amount":      budgetModel.Amount,
+			"period":      budgetModel.Period,
+			"start_date":  budgetModel.StartDate,
+			"end_date":    budgetModel.EndDate,
+			"updated_at":  time.Now(),
+		}
+		return r.db.WithContext(ctx).Model(&Budget{}).Where("id = ?", budgetModel.ID).Updates(updates).Error
 	}
 
-	// Save using GORM
-	if err := r.db.WithContext(ctx).Save(budgetModel).Error; err != nil {
+	if err := r.db.WithContext(ctx).Create(budgetModel).Error; err != nil {
 		return err
 	}
 
+	budget.AssignID(finance.NewBudgetID(int(budgetModel.ID)))
 	return nil
 }
 
@@ -48,31 +77,13 @@ func (r *GormBudgetRepository) FindByID(ctx context.Context, id finance.BudgetID
 
 	err := r.db.WithContext(ctx).First(&budgetModel, id.Value()).Error
 	if err != nil {
-		if err == gorm.ErrRecordNotFound {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, err
 		}
 		return nil, err
 	}
 
-	// Convert GORM model to domain budget
-	budgetID := finance.NewBudgetID(int(budgetModel.ID))
-	userID := finance.NewUserID(int(budgetModel.UserID))
-	categoryID := finance.NewCategoryID(int(budgetModel.CategoryID))
-	amount, _ := finance.NewMoney(budgetModel.Amount, finance.NewCurrencyID(1)) // Default currency ID
-	period := finance.BudgetPeriod(budgetModel.Period)
-
-	budget, _ := finance.NewBudget(
-		budgetID,
-		userID,
-		categoryID,
-		amount,
-		period,
-		budgetModel.StartDate,
-	)
-	// Set the actual end date from database instead of calculated one
-	budget.UpdateEndDate(budgetModel.EndDate)
-
-	return budget, nil
+	return r.toDomain(budgetModel)
 }
 
 // FindByUserID finds all budgets for a user
@@ -84,25 +95,12 @@ func (r *GormBudgetRepository) FindByUserID(ctx context.Context, userID finance.
 		return nil, err
 	}
 
-	// Convert GORM models to domain budgets
-	var budgets []*finance.Budget
+	budgets := make([]*finance.Budget, 0, len(budgetModels))
 	for _, model := range budgetModels {
-		budgetID := finance.NewBudgetID(int(model.ID))
-		userIDVO := finance.NewUserID(int(model.UserID))
-		categoryID := finance.NewCategoryID(int(model.CategoryID))
-		amount, _ := finance.NewMoney(model.Amount, finance.NewCurrencyID(1)) // Default currency ID
-		period := finance.BudgetPeriod(model.Period)
-
-		budget, _ := finance.NewBudget(
-			budgetID,
-			userIDVO,
-			categoryID,
-			amount,
-			period,
-			model.StartDate,
-		)
-		// Set the actual end date from database instead of calculated one
-		budget.UpdateEndDate(model.EndDate)
+		budget, err := r.toDomain(model)
+		if err != nil {
+			return nil, err
+		}
 		budgets = append(budgets, budget)
 	}
 
@@ -118,25 +116,12 @@ func (r *GormBudgetRepository) FindByUserIDAndCategory(ctx context.Context, user
 		return nil, err
 	}
 
-	// Convert GORM models to domain budgets
-	var budgets []*finance.Budget
+	budgets := make([]*finance.Budget, 0, len(budgetModels))
 	for _, model := range budgetModels {
-		budgetID := finance.NewBudgetID(int(model.ID))
-		userIDVO := finance.NewUserID(int(model.UserID))
-		categoryIDVO := finance.NewCategoryID(int(model.CategoryID))
-		amount, _ := finance.NewMoney(model.Amount, finance.NewCurrencyID(1)) // Default currency ID
-		period := finance.BudgetPeriod(model.Period)
-
-		budget, _ := finance.NewBudget(
-			budgetID,
-			userIDVO,
-			categoryIDVO,
-			amount,
-			period,
-			model.StartDate,
-		)
-		// Set the actual end date from database instead of calculated one
-		budget.UpdateEndDate(model.EndDate)
+		budget, err := r.toDomain(model)
+		if err != nil {
+			return nil, err
+		}
 		budgets = append(budgets, budget)
 	}
 
@@ -153,34 +138,33 @@ func (r *GormBudgetRepository) FindActiveByUserID(ctx context.Context, userID fi
 		return nil, err
 	}
 
-	// Convert GORM models to domain budgets
-	var budgets []*finance.Budget
+	budgets := make([]*finance.Budget, 0, len(budgetModels))
 	for _, model := range budgetModels {
-		budgetID := finance.NewBudgetID(int(model.ID))
-		userIDVO := finance.NewUserID(int(model.UserID))
-		categoryID := finance.NewCategoryID(int(model.CategoryID))
-		amount, _ := finance.NewMoney(model.Amount, finance.NewCurrencyID(1)) // Default currency ID
-		period := finance.BudgetPeriod(model.Period)
-
-		budget, _ := finance.NewBudget(
-			budgetID,
-			userIDVO,
-			categoryID,
-			amount,
-			period,
-			model.StartDate,
-		)
-		// Set the actual end date from database instead of calculated one
-		budget.UpdateEndDate(model.EndDate)
+		budget, err := r.toDomain(model)
+		if err != nil {
+			return nil, err
+		}
 		budgets = append(budgets, budget)
 	}
 
 	return budgets, nil
 }
 
-// Delete deletes a budget by ID
+// Delete deletes a budget by ID and user ID
 func (r *GormBudgetRepository) Delete(ctx context.Context, id finance.BudgetID) error {
 	return r.db.WithContext(ctx).Delete(&Budget{}, id.Value()).Error
+}
+
+// DeleteByIDAndUserID deletes a budget scoped to the owning user
+func (r *GormBudgetRepository) DeleteByIDAndUserID(ctx context.Context, id finance.BudgetID, userID finance.UserID) error {
+	result := r.db.WithContext(ctx).Where("id = ? AND user_id = ?", id.Value(), userID.Value()).Delete(&Budget{})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }
 
 // ExistsByID checks if a budget exists with the given ID

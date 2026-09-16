@@ -17,20 +17,9 @@ func NewCurrencyService(currencyRepo CurrencyRepository) *CurrencyService {
 	}
 }
 
-// GetPrimaryCurrency gets the primary currency for a user
+// GetPrimaryCurrency gets the primary currency for a user (user default, then system default)
 func (s *CurrencyService) GetPrimaryCurrency(ctx context.Context, userID UserID) (*Currency, error) {
-	// For now, we'll return the first default currency
-	// In a real implementation, you'd get this from user preferences
-	defaultCurrencies, err := s.currencyRepo.FindDefaultCurrencies(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(defaultCurrencies) == 0 {
-		return nil, errors.New("no default currency found")
-	}
-
-	return defaultCurrencies[0], nil
+	return s.GetDefaultCurrency(ctx, userID)
 }
 
 // GetCurrenciesByUser retrieves all currencies accessible to a user

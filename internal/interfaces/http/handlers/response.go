@@ -76,6 +76,14 @@ func getErrorCodeFromMessage(errorMessage string) string {
 	errorMessageLower := strings.ToLower(errorMessage)
 
 	switch {
+	case strings.Contains(errorMessageLower, "overlapping budget"):
+		return "BUDGET_OVERLAP"
+	case strings.Contains(errorMessageLower, "budget category must be expense"):
+		return "INVALID_BUDGET_CATEGORY"
+	case strings.Contains(errorMessageLower, "cannot delete category with existing budgets"):
+		return "CATEGORY_HAS_BUDGETS"
+	case strings.Contains(errorMessageLower, "end date must be on or after"):
+		return "INVALID_DATE_RANGE"
 	case strings.Contains(errorMessageLower, "access denied"):
 		if strings.Contains(errorMessageLower, "category") {
 			return "CATEGORY_ACCESS_DENIED"
@@ -127,7 +135,7 @@ func HandleError(c *gin.Context, err error, defaultStatusCode int) {
 		statusCode = http.StatusForbidden
 	case "TRANSACTION_NOT_FOUND", "CATEGORY_NOT_FOUND", "CURRENCY_NOT_FOUND", "BUDGET_NOT_FOUND", "RESOURCE_NOT_FOUND":
 		statusCode = http.StatusNotFound
-	case "VALIDATION_ERROR", "INVALID_REQUEST", "INVALID_EMAIL", "TRANSACTION_TYPE_MISMATCH":
+	case "VALIDATION_ERROR", "INVALID_REQUEST", "INVALID_EMAIL", "TRANSACTION_TYPE_MISMATCH", "BUDGET_OVERLAP", "INVALID_BUDGET_CATEGORY", "CATEGORY_HAS_BUDGETS", "INVALID_DATE_RANGE":
 		statusCode = http.StatusBadRequest
 	default:
 		statusCode = defaultStatusCode

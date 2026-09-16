@@ -144,6 +144,10 @@ All API endpoints follow a standardized response structure:
 - `CATEGORY_NOT_FOUND`: Category not found
 - `CURRENCY_NOT_FOUND`: Currency not found
 - `BUDGET_NOT_FOUND`: Budget not found
+- `BUDGET_OVERLAP`: Overlapping budget already exists for this category
+- `INVALID_BUDGET_CATEGORY`: Budget category must be expense type
+- `CATEGORY_HAS_BUDGETS`: Category cannot be deleted while budgets reference it
+- `INVALID_DATE_RANGE`: End date must be on or after start date
 - `TRANSACTION_TYPE_MISMATCH`: Transaction type doesn't match the endpoint
 - `INVALID_CATEGORY_ID`: Invalid category ID format
 - `INVALID_CURRENCY_ID`: Invalid currency ID format
@@ -951,6 +955,8 @@ Get all transactions (both income and expense) for the authenticated user with a
 
 ## Budgets
 
+Budgets are limited to **expense** categories. Date windows are inclusive. Create auto-calculates `end_date` from `period` + `start_date` (weekly = 7 days, monthly/yearly = calendar period minus one day). Overlapping budgets for the same user and category are rejected. Spending reports only sum expenses in the budget's currency.
+
 ### GET /api/budgets
 
 Get all budgets for the authenticated user.
@@ -966,13 +972,19 @@ Get all budgets for the authenticated user.
       "amount": 500,
       "period": "monthly",
       "start_date": "2024-01-01",
-      "end_date": "2024-02-01",
+      "end_date": "2024-01-31",
       "created_at": "2025-09-30T09:51:35+07:00",
       "category": {
         "id": 1,
         "name": "Food",
         "color": "#EF4444",
         "type": "expense"
+      },
+      "report": {
+        "is_on_track": true,
+        "total_spent": 120.5,
+        "remaining": 379.5,
+        "percentage_used": 24.1
       }
     }
   ],
@@ -984,19 +996,24 @@ Get all budgets for the authenticated user.
 - `id` (integer): Budget ID
 - `user_id` (integer): User ID who owns the budget
 - `amount` (number): Budget amount
-- `period` (string): Budget period (weekly, monthly, yearly)
+- `period` (string): Budget period (`weekly`, `monthly`, `yearly`)
 - `start_date` (string): Budget start date (YYYY-MM-DD)
-- `end_date` (string): Budget end date (YYYY-MM-DD)
+- `end_date` (string): Budget end date (YYYY-MM-DD), inclusive
 - `created_at` (string): Budget creation timestamp (ISO 8601)
 - `category` (object, optional): Category information
   - `id` (integer): Category ID
   - `name` (string): Category name
   - `color` (string): Category color (hex code)
-  - `type` (string): Category type (expense or income)
+  - `type` (string): Category type (`expense`)
+- `report` (object, optional): Spending vs budget for the window
+  - `is_on_track` (boolean): `true` when spent ≤ amount
+  - `total_spent` (number): Expense total in the same currency
+  - `remaining` (number): Amount minus total spent
+  - `percentage_used` (number): Percent of budget used
 
 ### POST /api/budgets
 
-Create a new budget.
+Create a new budget. `end_date` is computed server-side from `period` and `start_date` (client-sent `end_date` is ignored if present).
 
 **Request Body:**
 ```json
@@ -1004,8 +1021,7 @@ Create a new budget.
   "category_id": 1,
   "amount": 500.00,
   "period": "monthly",
-  "start_date": "2024-01-01",
-  "end_date": "2024-01-31"
+  "start_date": "2024-01-01"
 }
 ```
 
@@ -1014,15 +1030,24 @@ Create a new budget.
 {
   "status": "success",
   "data": {
+    "id": 8,
+    "user_id": 1,
     "amount": 500,
     "period": "monthly",
     "start_date": "2024-01-01",
-    "end_date": "2024-02-01",
+    "end_date": "2024-01-31",
+    "created_at": "2025-09-30T09:51:35+07:00",
     "category": {
       "id": 1,
       "name": "Food",
       "color": "#EF4444",
       "type": "expense"
+    },
+    "report": {
+      "is_on_track": true,
+      "total_spent": 0,
+      "remaining": 500,
+      "percentage_used": 0
     }
   },
   "error": null
@@ -1031,7 +1056,7 @@ Create a new budget.
 
 ### PUT /api/budgets/:id
 
-Update an existing budget.
+Update an existing budget. `end_date` must be on or after `start_date`.
 
 **Request Body:**
 ```json
@@ -1047,16 +1072,29 @@ Update an existing budget.
 **Response:**
 ```json
 {
-  "amount": 750,
-  "period": "monthly",
-  "start_date": "2024-01-01",
-  "end_date": "2024-01-31",
-  "category": {
-    "id": 1,
-    "name": "Food",
-    "color": "#EF4444",
-    "type": "expense"
-  }
+  "status": "success",
+  "data": {
+    "id": 8,
+    "user_id": 1,
+    "amount": 750,
+    "period": "monthly",
+    "start_date": "2024-01-01",
+    "end_date": "2024-01-31",
+    "created_at": "2025-09-30T09:51:35+07:00",
+    "category": {
+      "id": 1,
+      "name": "Food",
+      "color": "#EF4444",
+      "type": "expense"
+    },
+    "report": {
+      "is_on_track": true,
+      "total_spent": 120.5,
+      "remaining": 629.5,
+      "percentage_used": 16.07
+    }
+  },
+  "error": null
 }
 ```
 
@@ -1345,8 +1383,7 @@ All endpoints may return the following error responses:
 - `income`: For income transactions
 
 ### Budget Periods
-- `daily`: Daily budget
-- `weekly`: Weekly budget
+- `weekly`: Weekly budget (inclusive 7-day window)
 - `monthly`: Monthly budget
 - `yearly`: Yearly budget
 
@@ -1371,6 +1408,12 @@ Keep this file in sync with the running API. When routes, request/response shape
 ---
 
 ## Version History
+
+- **v2.5.1**: **Budgets correctness**
+  - Create/update responses include `id`, `created_at`, and `report`
+  - Budgets persist `currency_id`; reports sum same-currency expenses only
+  - Reject overlapping budgets and non-expense categories
+  - Create auto-calculates inclusive `end_date` from period
 
 - **v2.5.0**: **Removed API Versioning** - Endpoints live under unversioned `/api/*` paths
   - Dropped `/api/v100` URL prefix and version middleware

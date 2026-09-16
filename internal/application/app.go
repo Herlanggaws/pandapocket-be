@@ -39,7 +39,7 @@ func NewApp(db *gorm.DB) *App {
 	// Domain layer - services
 	userService := domainIdentity.NewUserService(userRepo)
 	transactionService := domainFinance.NewTransactionService(transactionRepo, categoryRepo, currencyRepo)
-	categoryService := domainFinance.NewCategoryService(categoryRepo)
+	categoryService := domainFinance.NewCategoryService(categoryRepo, budgetRepo)
 	currencyService := domainFinance.NewCurrencyService(currencyRepo)
 	budgetService := domainFinance.NewBudgetService(budgetRepo, categoryRepo)
 
@@ -64,9 +64,9 @@ func NewApp(db *gorm.DB) *App {
 	deleteCategoryUseCase := appFinance.NewDeleteCategoryUseCase(categoryService)
 	getCategoriesUseCase := appFinance.NewGetCategoriesUseCase(categoryService)
 	getAnalyticsUseCase := appFinance.NewGetAnalyticsUseCase(transactionService)
-	createBudgetUseCase := appFinance.NewCreateBudgetUseCase(budgetService, currencyService, categoryService)
+	createBudgetUseCase := appFinance.NewCreateBudgetUseCase(budgetService, currencyService, categoryService, transactionService)
 	getBudgetsUseCase := appFinance.NewGetBudgetsUseCase(budgetService, categoryService, transactionService)
-	updateBudgetUseCase := appFinance.NewUpdateBudgetUseCase(budgetService, categoryService)
+	updateBudgetUseCase := appFinance.NewUpdateBudgetUseCase(budgetService, categoryService, transactionService)
 	deleteBudgetUseCase := appFinance.NewDeleteBudgetUseCase(budgetService)
 	createCurrencyUseCase := appFinance.NewCreateCurrencyUseCase(currencyService)
 	getCurrenciesUseCase := appFinance.NewGetCurrenciesUseCase(currencyService)

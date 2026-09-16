@@ -53,6 +53,7 @@ type BudgetRepository interface {
 	FindByUserIDAndCategory(ctx context.Context, userID UserID, categoryID CategoryID) ([]*Budget, error)
 	FindActiveByUserID(ctx context.Context, userID UserID) ([]*Budget, error)
 	Delete(ctx context.Context, id BudgetID) error
+	DeleteByIDAndUserID(ctx context.Context, id BudgetID, userID UserID) error
 	// Dashboard stats methods
 	GetTotalCount(ctx context.Context) (int, error)
 	GetCountByDateRange(ctx context.Context, startDate, endDate time.Time) (int, error)

@@ -499,29 +499,17 @@ func (h *FinanceHandlers) UpdateBudget(c *gin.Context) {
 	userID := c.GetInt("user_id")
 	budgetID := c.Param("id")
 
-	var req struct {
-		CategoryID int     `json:"category_id" binding:"required"`
-		Amount     float64 `json:"amount" binding:"required"`
-		Period     string  `json:"period" binding:"required"`
-		StartDate  string  `json:"start_date" binding:"required"`
-		EndDate    string  `json:"end_date" binding:"required"`
-	}
-
+	var req finance.UpdateBudgetRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		ValidationErrorResponse(c, err.Error())
 		return
 	}
 
-	// Update the budget
 	response, err := h.updateBudgetUseCase.Execute(
 		c.Request.Context(),
 		budgetID,
 		userID,
-		strconv.Itoa(req.CategoryID),
-		req.Amount,
-		req.Period,
-		req.StartDate,
-		req.EndDate,
+		req,
 	)
 	if err != nil {
 		HandleError(c, err, http.StatusBadRequest)

@@ -2,31 +2,38 @@ package finance
 
 import (
 	"context"
+	"errors"
 	"panda-pocket/internal/domain/finance"
 	"strconv"
 	"time"
 )
 
-// UpdateBudgetResponse represents the response for updating a budget
-type UpdateBudgetResponse struct {
-	Amount    float64          `json:"amount"`
-	Period    string           `json:"period"`
-	StartDate string           `json:"start_date"`
-	EndDate   string           `json:"end_date"`
-	Category  *CategoryResponse `json:"category"`
+// UpdateBudgetRequest represents the request for updating a budget
+type UpdateBudgetRequest struct {
+	CategoryID int     `json:"category_id" binding:"required"`
+	Amount     float64 `json:"amount" binding:"required,gt=0"`
+	Period     string  `json:"period" binding:"required,oneof=weekly monthly yearly"`
+	StartDate  string  `json:"start_date" binding:"required"`
+	EndDate    string  `json:"end_date" binding:"required"`
 }
 
 // UpdateBudgetUseCase handles budget updates
 type UpdateBudgetUseCase struct {
-	budgetService   *finance.BudgetService
-	categoryService *finance.CategoryService
+	budgetService      *finance.BudgetService
+	categoryService    *finance.CategoryService
+	transactionService *finance.TransactionService
 }
 
 // NewUpdateBudgetUseCase creates a new update budget use case
-func NewUpdateBudgetUseCase(budgetService *finance.BudgetService, categoryService *finance.CategoryService) *UpdateBudgetUseCase {
+func NewUpdateBudgetUseCase(
+	budgetService *finance.BudgetService,
+	categoryService *finance.CategoryService,
+	transactionService *finance.TransactionService,
+) *UpdateBudgetUseCase {
 	return &UpdateBudgetUseCase{
-		budgetService:   budgetService,
-		categoryService: categoryService,
+		budgetService:      budgetService,
+		categoryService:    categoryService,
+		transactionService: transactionService,
 	}
 }
 
@@ -35,60 +42,50 @@ func (uc *UpdateBudgetUseCase) Execute(
 	ctx context.Context,
 	budgetIDStr string,
 	userID int,
-	categoryIDStr string,
-	amount float64,
-	periodStr string,
-	startDateStr string,
-	endDateStr string,
-) (*UpdateBudgetResponse, error) {
-	// Parse budget ID
+	req UpdateBudgetRequest,
+) (*BudgetResponse, error) {
 	budgetIDInt, err := strconv.Atoi(budgetIDStr)
 	if err != nil {
 		return nil, err
 	}
 
-	// Parse category ID
-	categoryIDInt, err := strconv.Atoi(categoryIDStr)
+	startDate, err := time.Parse("2006-01-02", req.StartDate)
 	if err != nil {
 		return nil, err
 	}
 
-	// Parse start date
-	startDate, err := time.Parse("2006-01-02", startDateStr)
+	endDate, err := time.Parse("2006-01-02", req.EndDate)
 	if err != nil {
 		return nil, err
 	}
 
-	// Parse end date
-	endDate, err := time.Parse("2006-01-02", endDateStr)
-	if err != nil {
-		return nil, err
+	if endDate.Before(startDate) {
+		return nil, errors.New("end date must be on or after start date")
 	}
 
-	// Convert to domain types
 	budgetID := finance.NewBudgetID(budgetIDInt)
 	userIDDomain := finance.NewUserID(userID)
 
-	// Load existing budget to preserve its currency when updating amount
 	existingBudget, err := uc.budgetService.GetBudgetByID(ctx, budgetID)
 	if err != nil {
-		return nil, err
+		return nil, errors.New("budget not found")
+	}
+	if existingBudget.UserID().Value() != userID {
+		return nil, errors.New("budget not found")
 	}
 
-	amountDomain, err := finance.NewMoney(amount, existingBudget.Amount().Currency())
+	amountDomain, err := finance.NewMoney(req.Amount, existingBudget.Amount().Currency())
 	if err != nil {
 		return nil, err
 	}
-	period := finance.BudgetPeriod(periodStr)
 
-	// Update budget
 	updatedBudget, err := uc.budgetService.UpdateBudget(
 		ctx,
 		budgetID,
 		userIDDomain,
-		finance.NewCategoryID(categoryIDInt),
+		finance.NewCategoryID(req.CategoryID),
 		amountDomain,
-		period,
+		finance.BudgetPeriod(req.Period),
 		startDate,
 		endDate,
 	)
@@ -96,24 +93,6 @@ func (uc *UpdateBudgetUseCase) Execute(
 		return nil, err
 	}
 
-	// Fetch category information
-	category, err := uc.categoryService.GetCategoryByID(ctx, updatedBudget.CategoryID())
-	var categoryResponse *CategoryResponse
-	if err == nil {
-		categoryResponse = &CategoryResponse{
-			ID:    category.ID().Value(),
-			Name:  category.Name(),
-			Color: category.Color(),
-			Type:  string(category.Type()),
-		}
-	}
-
-	// Convert to response format
-	return &UpdateBudgetResponse{
-		Amount:    updatedBudget.Amount().Amount(),
-		Period:    string(updatedBudget.Period()),
-		StartDate: updatedBudget.StartDate().Format("2006-01-02"),
-		EndDate:   updatedBudget.EndDate().Format("2006-01-02"),
-		Category:  categoryResponse,
-	}, nil
+	response := toBudgetResponse(ctx, updatedBudget, uc.categoryService, uc.transactionService)
+	return &response, nil
 }

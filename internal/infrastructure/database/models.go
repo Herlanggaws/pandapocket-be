@@ -106,6 +106,7 @@ type Budget struct {
 	ID         uint      `gorm:"primaryKey" json:"id"`
 	UserID     uint      `gorm:"not null;index" json:"user_id"`
 	CategoryID uint      `gorm:"not null;index" json:"category_id"`
+	CurrencyID uint      `gorm:"not null;index;default:1" json:"currency_id"`
 	Amount     float64   `gorm:"type:decimal(10,2);not null" json:"amount"`
 	Period     string    `gorm:"not null;check:period IN ('weekly', 'monthly', 'yearly')" json:"period"`
 	StartDate  time.Time `gorm:"type:date;not null" json:"start_date"`
@@ -116,6 +117,7 @@ type Budget struct {
 	// Relationships
 	User     *User     `gorm:"foreignKey:UserID" json:"user,omitempty"`
 	Category *Category `gorm:"foreignKey:CategoryID" json:"category,omitempty"`
+	Currency *Currency `gorm:"foreignKey:CurrencyID" json:"currency,omitempty"`
 }
 
 // RecurringTransaction represents a recurring transaction in the database

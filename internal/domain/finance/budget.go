@@ -39,7 +39,20 @@ func (b BudgetID) Value() int {
 	return b.value
 }
 
-// NewBudget creates a new budget
+func calculateBudgetEndDate(period BudgetPeriod, startDate time.Time) (time.Time, error) {
+	switch period {
+	case BudgetPeriodWeekly:
+		return startDate.AddDate(0, 0, 6), nil
+	case BudgetPeriodMonthly:
+		return startDate.AddDate(0, 1, 0).AddDate(0, 0, -1), nil
+	case BudgetPeriodYearly:
+		return startDate.AddDate(1, 0, 0).AddDate(0, 0, -1), nil
+	default:
+		return time.Time{}, errors.New("invalid budget period")
+	}
+}
+
+// NewBudget creates a new budget with an auto-calculated inclusive end date
 func NewBudget(
 	id BudgetID,
 	userID UserID,
@@ -52,17 +65,9 @@ func NewBudget(
 		return nil, errors.New("budget amount must be positive")
 	}
 
-	// Calculate end date based on period
-	var endDate time.Time
-	switch period {
-	case BudgetPeriodWeekly:
-		endDate = startDate.AddDate(0, 0, 7)
-	case BudgetPeriodMonthly:
-		endDate = startDate.AddDate(0, 1, 0)
-	case BudgetPeriodYearly:
-		endDate = startDate.AddDate(1, 0, 0)
-	default:
-		return nil, errors.New("invalid budget period")
+	endDate, err := calculateBudgetEndDate(period, startDate)
+	if err != nil {
+		return nil, err
 	}
 
 	return &Budget{
@@ -75,6 +80,48 @@ func NewBudget(
 		endDate:    endDate,
 		createdAt:  time.Now(),
 	}, nil
+}
+
+// ReconstituteBudget rebuilds a budget from persisted state without recalculating dates
+func ReconstituteBudget(
+	id BudgetID,
+	userID UserID,
+	categoryID CategoryID,
+	amount Money,
+	period BudgetPeriod,
+	startDate time.Time,
+	endDate time.Time,
+	createdAt time.Time,
+) (*Budget, error) {
+	if amount.Amount() <= 0 {
+		return nil, errors.New("budget amount must be positive")
+	}
+
+	switch period {
+	case BudgetPeriodWeekly, BudgetPeriodMonthly, BudgetPeriodYearly:
+	default:
+		return nil, errors.New("invalid budget period")
+	}
+
+	if endDate.Before(startDate) {
+		return nil, errors.New("end date must be on or after start date")
+	}
+
+	return &Budget{
+		id:         id,
+		userID:     userID,
+		categoryID: categoryID,
+		amount:     amount,
+		period:     period,
+		startDate:  startDate,
+		endDate:    endDate,
+		createdAt:  createdAt,
+	}, nil
+}
+
+// AssignID sets the budget ID after persistence
+func (b *Budget) AssignID(id BudgetID) {
+	b.id = id
 }
 
 // Getters
@@ -124,16 +171,9 @@ func (b *Budget) UpdateAmount(newAmount Money) error {
 
 // UpdatePeriod updates the budget period and recalculates end date
 func (b *Budget) UpdatePeriod(newPeriod BudgetPeriod) error {
-	var endDate time.Time
-	switch newPeriod {
-	case BudgetPeriodWeekly:
-		endDate = b.startDate.AddDate(0, 0, 7)
-	case BudgetPeriodMonthly:
-		endDate = b.startDate.AddDate(0, 1, 0)
-	case BudgetPeriodYearly:
-		endDate = b.startDate.AddDate(1, 0, 0)
-	default:
-		return errors.New("invalid budget period")
+	endDate, err := calculateBudgetEndDate(newPeriod, b.startDate)
+	if err != nil {
+		return err
 	}
 
 	b.period = newPeriod
@@ -142,32 +182,44 @@ func (b *Budget) UpdatePeriod(newPeriod BudgetPeriod) error {
 }
 
 // UpdateStartDate updates the start date and recalculates end date
-func (b *Budget) UpdateStartDate(newStartDate time.Time) {
-	b.startDate = newStartDate
-
-	// Recalculate end date
-	switch b.period {
-	case BudgetPeriodWeekly:
-		b.endDate = newStartDate.AddDate(0, 0, 7)
-	case BudgetPeriodMonthly:
-		b.endDate = newStartDate.AddDate(0, 1, 0)
-	case BudgetPeriodYearly:
-		b.endDate = newStartDate.AddDate(1, 0, 0)
+func (b *Budget) UpdateStartDate(newStartDate time.Time) error {
+	endDate, err := calculateBudgetEndDate(b.period, newStartDate)
+	if err != nil {
+		return err
 	}
+
+	b.startDate = newStartDate
+	b.endDate = endDate
+	return nil
 }
 
 // UpdateEndDate updates the end date
-func (b *Budget) UpdateEndDate(newEndDate time.Time) {
+func (b *Budget) UpdateEndDate(newEndDate time.Time) error {
+	if newEndDate.Before(b.startDate) {
+		return errors.New("end date must be on or after start date")
+	}
 	b.endDate = newEndDate
+	return nil
 }
 
-// IsActive checks if the budget is currently active
+// OverlapsWith reports whether this budget's date range overlaps another inclusive range
+func (b *Budget) OverlapsWith(startDate, endDate time.Time) bool {
+	return !b.endDate.Before(startDate) && !endDate.Before(b.startDate)
+}
+
+// IsActive checks if the budget is currently active (inclusive date window)
 func (b *Budget) IsActive() bool {
 	now := time.Now()
-	return now.After(b.startDate) && now.Before(b.endDate)
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	start := time.Date(b.startDate.Year(), b.startDate.Month(), b.startDate.Day(), 0, 0, 0, 0, b.startDate.Location())
+	end := time.Date(b.endDate.Year(), b.endDate.Month(), b.endDate.Day(), 0, 0, 0, 0, b.endDate.Location())
+	return !today.Before(start) && !today.After(end)
 }
 
 // IsExpired checks if the budget has expired
 func (b *Budget) IsExpired() bool {
-	return time.Now().After(b.endDate)
+	now := time.Now()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	end := time.Date(b.endDate.Year(), b.endDate.Month(), b.endDate.Day(), 0, 0, 0, 0, b.endDate.Location())
+	return today.After(end)
 }
