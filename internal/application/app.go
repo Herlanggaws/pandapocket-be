@@ -4,6 +4,7 @@ import (
 	"net/http"
 	appFinance "panda-pocket/internal/application/finance"
 	appIdentity "panda-pocket/internal/application/identity"
+	appNotification "panda-pocket/internal/application/notification"
 	domainFinance "panda-pocket/internal/domain/finance"
 	domainIdentity "panda-pocket/internal/domain/identity"
 	"panda-pocket/internal/infrastructure/database"
@@ -18,11 +19,12 @@ import (
 
 // App represents the application with all its dependencies
 type App struct {
-	DB                *gorm.DB
-	IdentityHandlers  *handlers.IdentityHandlers
-	FinanceHandlers   *handlers.FinanceHandlers
-	DashboardHandlers *handlers.DashboardHandlers
-	AuthMiddleware    *middleware.AuthMiddleware
+	DB                   *gorm.DB
+	IdentityHandlers     *handlers.IdentityHandlers
+	FinanceHandlers      *handlers.FinanceHandlers
+	DashboardHandlers    *handlers.DashboardHandlers
+	NotificationHandlers *handlers.NotificationHandlers
+	AuthMiddleware       *middleware.AuthMiddleware
 }
 
 // NewApp creates a new application instance with all dependencies wired up
@@ -35,6 +37,9 @@ func NewApp(db *gorm.DB) *App {
 	budgetRepo := database.NewGormBudgetRepository(db)
 	tokenRepo := database.NewGormPasswordResetTokenRepository(db)
 	authTokenRepo := database.NewGormTokenRepository(db)
+	prefsRepo := database.NewGormPreferencesRepository(db)
+	notificationRepo := database.NewGormNotificationRepository(db)
+	recurringRepo := database.NewGormRecurringTransactionRepository(db)
 
 	// Domain layer - services
 	userService := domainIdentity.NewUserService(userRepo)
@@ -46,6 +51,7 @@ func NewApp(db *gorm.DB) *App {
 	// Application layer - use cases
 	tokenService := appIdentity.NewTokenService(authTokenRepo)
 	emailService := notification.NewSMTPEmailService()
+	notificationHelper := appNotification.NewCreateNotificationHelper(notificationRepo)
 	registerUserUseCase := appIdentity.NewRegisterUserUseCase(userService, tokenService)
 	loginUserUseCase := appIdentity.NewLoginUserUseCase(userService, tokenService)
 	getUsersUseCase := appIdentity.NewGetUsersUseCase(userService)
@@ -53,6 +59,11 @@ func NewApp(db *gorm.DB) *App {
 	resetPasswordUseCase := appIdentity.NewResetPasswordUseCase(userRepo, tokenRepo)
 	refreshTokenUseCase := appIdentity.NewRefreshTokenUseCase(userService, tokenService)
 	changePasswordUseCase := appIdentity.NewChangePasswordUseCase(userRepo)
+	getPreferencesUseCase := appIdentity.NewGetPreferencesUseCase(prefsRepo, prefsRepo)
+	updatePreferencesUseCase := appIdentity.NewUpdatePreferencesUseCase(prefsRepo, prefsRepo)
+	getNotificationsUseCase := appNotification.NewGetNotificationsUseCase(notificationRepo)
+	markNotificationReadUseCase := appNotification.NewMarkNotificationReadUseCase(notificationRepo)
+	deleteNotificationUseCase := appNotification.NewDeleteNotificationUseCase(notificationRepo)
 	getDashboardStatsUseCase := appIdentity.NewGetDashboardStatsUseCase(userRepo, budgetRepo, transactionRepo)
 	createTransactionUseCase := appFinance.NewCreateTransactionUseCase(transactionService, currencyService)
 	getTransactionsUseCase := appFinance.NewGetTransactionsUseCase(transactionService, categoryService)
@@ -63,7 +74,7 @@ func NewApp(db *gorm.DB) *App {
 	updateCategoryUseCase := appFinance.NewUpdateCategoryUseCase(categoryService)
 	deleteCategoryUseCase := appFinance.NewDeleteCategoryUseCase(categoryService)
 	getCategoriesUseCase := appFinance.NewGetCategoriesUseCase(categoryService)
-	getAnalyticsUseCase := appFinance.NewGetAnalyticsUseCase(transactionService)
+	getAnalyticsUseCase := appFinance.NewGetAnalyticsUseCase(transactionService, categoryService)
 	createBudgetUseCase := appFinance.NewCreateBudgetUseCase(budgetService, currencyService, categoryService, transactionService)
 	getBudgetsUseCase := appFinance.NewGetBudgetsUseCase(budgetService, categoryService, transactionService)
 	updateBudgetUseCase := appFinance.NewUpdateBudgetUseCase(budgetService, categoryService, transactionService)
@@ -74,6 +85,22 @@ func NewApp(db *gorm.DB) *App {
 	deleteCurrencyUseCase := appFinance.NewDeleteCurrencyUseCase(currencyService)
 	setDefaultCurrencyUseCase := appFinance.NewSetDefaultCurrencyUseCase(currencyService)
 	getDefaultCurrencyUseCase := appFinance.NewGetDefaultCurrencyUseCase(currencyService)
+	checkBudgetAlertsUseCase := appFinance.NewCheckBudgetAlertsUseCase(
+		budgetService,
+		categoryService,
+		transactionService,
+		prefsRepo,
+		notificationHelper,
+	)
+	createRecurringUseCase := appFinance.NewCreateRecurringTransactionUseCase(recurringRepo, currencyService, categoryService)
+	getRecurringUseCase := appFinance.NewGetRecurringTransactionsUseCase(
+		recurringRepo,
+		transactionService,
+		categoryService,
+		prefsRepo,
+		notificationHelper,
+	)
+	deleteRecurringUseCase := appFinance.NewDeleteRecurringTransactionUseCase(recurringRepo)
 
 	// Interface layer - handlers and middleware
 	identityHandlers := handlers.NewIdentityHandlers(
@@ -85,6 +112,8 @@ func NewApp(db *gorm.DB) *App {
 		refreshTokenUseCase,
 		tokenService,
 		changePasswordUseCase,
+		getPreferencesUseCase,
+		updatePreferencesUseCase,
 	)
 	financeHandlers := handlers.NewFinanceHandlers(
 		createTransactionUseCase,
@@ -107,16 +136,26 @@ func NewApp(db *gorm.DB) *App {
 		deleteCurrencyUseCase,
 		setDefaultCurrencyUseCase,
 		getDefaultCurrencyUseCase,
+		checkBudgetAlertsUseCase,
+		createRecurringUseCase,
+		getRecurringUseCase,
+		deleteRecurringUseCase,
 	)
 	dashboardHandlers := handlers.NewDashboardHandlers(getDashboardStatsUseCase)
+	notificationHandlers := handlers.NewNotificationHandlers(
+		getNotificationsUseCase,
+		markNotificationReadUseCase,
+		deleteNotificationUseCase,
+	)
 	authMiddleware := middleware.NewAuthMiddleware(tokenService)
 
 	return &App{
-		DB:                db,
-		IdentityHandlers:  identityHandlers,
-		FinanceHandlers:   financeHandlers,
-		DashboardHandlers: dashboardHandlers,
-		AuthMiddleware:    authMiddleware,
+		DB:                   db,
+		IdentityHandlers:     identityHandlers,
+		FinanceHandlers:      financeHandlers,
+		DashboardHandlers:    dashboardHandlers,
+		NotificationHandlers: notificationHandlers,
+		AuthMiddleware:       authMiddleware,
 	}
 }
 
@@ -151,11 +190,10 @@ func (app *App) SetupRoutes() *gin.Engine {
 		protected := api.Group("")
 		protected.Use(app.AuthMiddleware.RequireAuth())
 		{
-			protected.GET("/users", app.IdentityHandlers.GetUsers)
-
 			adminOnly := protected.Group("")
 			adminOnly.Use(app.AuthMiddleware.RequireRole("admin"))
 			{
+				adminOnly.GET("/users", app.IdentityHandlers.GetUsers)
 				adminOnly.GET("/dashboard/stats", app.DashboardHandlers.GetDashboardStats)
 			}
 
@@ -189,6 +227,17 @@ func (app *App) SetupRoutes() *gin.Engine {
 			protected.DELETE("/currencies/:id", app.FinanceHandlers.DeleteCurrency)
 
 			protected.GET("/analytics", app.FinanceHandlers.GetAnalytics)
+
+			protected.GET("/preferences", app.IdentityHandlers.GetPreferences)
+			protected.PUT("/preferences", app.IdentityHandlers.UpdatePreferences)
+
+			protected.GET("/notifications", app.NotificationHandlers.GetNotifications)
+			protected.PUT("/notifications/:id/read", app.NotificationHandlers.MarkNotificationRead)
+			protected.DELETE("/notifications/:id", app.NotificationHandlers.DeleteNotification)
+
+			protected.GET("/recurring-transactions", app.FinanceHandlers.GetRecurringTransactions)
+			protected.POST("/recurring-transactions", app.FinanceHandlers.CreateRecurringTransaction)
+			protected.DELETE("/recurring-transactions/:id", app.FinanceHandlers.DeleteRecurringTransaction)
 		}
 	}
 

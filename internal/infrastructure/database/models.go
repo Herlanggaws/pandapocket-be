@@ -1,6 +1,7 @@
 package database
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -129,6 +130,7 @@ type RecurringTransaction struct {
 	Amount      float64   `gorm:"type:decimal(10,2);not null" json:"amount"`
 	Description string    `gorm:"type:text" json:"description"`
 	Frequency   string    `gorm:"not null;check:frequency IN ('daily', 'weekly', 'monthly', 'yearly')" json:"frequency"`
+	Type        string    `gorm:"not null;default:'expense';check:type IN ('expense', 'income')" json:"type"`
 	NextDueDate time.Time `gorm:"type:date;not null" json:"next_due_date"`
 	IsActive    bool      `gorm:"default:true" json:"is_active"`
 	CreatedAt   time.Time `json:"created_at"`
@@ -142,14 +144,15 @@ type RecurringTransaction struct {
 
 // UserPreferences represents user preferences in the database
 type UserPreferences struct {
-	ID                 uint      `gorm:"primaryKey" json:"id"`
-	UserID             uint      `gorm:"uniqueIndex;not null" json:"user_id"`
-	PrimaryCurrencyID  uint      `gorm:"not null" json:"primary_currency_id"`
-	EmailNotifications bool      `gorm:"default:true" json:"email_notifications"`
-	BudgetAlerts       bool      `gorm:"default:true" json:"budget_alerts"`
-	RecurringReminders bool      `gorm:"default:true" json:"recurring_reminders"`
-	CreatedAt          time.Time `json:"created_at"`
-	UpdatedAt          time.Time `json:"updated_at"`
+	ID                 uint            `gorm:"primaryKey" json:"id"`
+	UserID             uint            `gorm:"uniqueIndex;not null" json:"user_id"`
+	PrimaryCurrencyID  uint            `gorm:"not null" json:"primary_currency_id"`
+	EmailNotifications bool            `gorm:"default:true" json:"email_notifications"`
+	BudgetAlerts       bool            `gorm:"default:true" json:"budget_alerts"`
+	RecurringReminders bool            `gorm:"default:true" json:"recurring_reminders"`
+	Onboarding         json.RawMessage `gorm:"type:text;default:'{}'" json:"onboarding"`
+	CreatedAt          time.Time       `json:"created_at"`
+	UpdatedAt          time.Time       `json:"updated_at"`
 
 	// Relationships
 	User            *User     `gorm:"foreignKey:UserID" json:"user,omitempty"`

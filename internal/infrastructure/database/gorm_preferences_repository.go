@@ -1,0 +1,95 @@
+package database
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"panda-pocket/internal/domain/identity"
+
+	"gorm.io/gorm"
+)
+
+// GormPreferencesRepository implements PreferencesRepository
+type GormPreferencesRepository struct {
+	db *gorm.DB
+}
+
+func NewGormPreferencesRepository(db *gorm.DB) *GormPreferencesRepository {
+	return &GormPreferencesRepository{db: db}
+}
+
+func (r *GormPreferencesRepository) toDomain(model UserPreferences) *identity.UserPreferences {
+	onboarding := model.Onboarding
+	if len(onboarding) == 0 {
+		onboarding = json.RawMessage("{}")
+	}
+	return identity.ReconstituteUserPreferences(
+		identity.NewPreferencesID(int(model.ID)),
+		identity.NewUserID(int(model.UserID)),
+		int(model.PrimaryCurrencyID),
+		model.EmailNotifications,
+		model.BudgetAlerts,
+		model.RecurringReminders,
+		onboarding,
+		model.CreatedAt,
+		model.UpdatedAt,
+	)
+}
+
+func (r *GormPreferencesRepository) Save(ctx context.Context, prefs *identity.UserPreferences) error {
+	onboarding := prefs.Onboarding()
+	if len(onboarding) == 0 {
+		onboarding = json.RawMessage("{}")
+	}
+
+	model := &UserPreferences{
+		UserID:             uint(prefs.UserID().Value()),
+		PrimaryCurrencyID:  uint(prefs.PrimaryCurrencyID()),
+		EmailNotifications: prefs.EmailNotifications(),
+		BudgetAlerts:       prefs.BudgetAlerts(),
+		RecurringReminders: prefs.RecurringReminders(),
+		Onboarding:         onboarding,
+	}
+
+	if prefs.ID().Value() != 0 {
+		model.ID = uint(prefs.ID().Value())
+		return r.db.WithContext(ctx).Model(&UserPreferences{}).Where("id = ?", model.ID).Updates(map[string]interface{}{
+			"primary_currency_id": model.PrimaryCurrencyID,
+			"email_notifications": model.EmailNotifications,
+			"budget_alerts":       model.BudgetAlerts,
+			"recurring_reminders": model.RecurringReminders,
+			"onboarding":          string(onboarding),
+		}).Error
+	}
+
+	if err := r.db.WithContext(ctx).Create(model).Error; err != nil {
+		return err
+	}
+	prefs.AssignID(identity.NewPreferencesID(int(model.ID)))
+	return nil
+}
+
+func (r *GormPreferencesRepository) FindByUserID(ctx context.Context, userID identity.UserID) (*identity.UserPreferences, error) {
+	var model UserPreferences
+	err := r.db.WithContext(ctx).Where("user_id = ?", userID.Value()).First(&model).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, err
+		}
+		return nil, err
+	}
+	return r.toDomain(model), nil
+}
+
+// FindDefaultCurrencyID returns the first seeded/default currency ID for bootstrapping prefs
+func (r *GormPreferencesRepository) FindDefaultCurrencyID(ctx context.Context) (int, error) {
+	var currency Currency
+	err := r.db.WithContext(ctx).Where("is_default = ?", true).First(&currency).Error
+	if err != nil {
+		err = r.db.WithContext(ctx).First(&currency).Error
+		if err != nil {
+			return 0, err
+		}
+	}
+	return int(currency.ID), nil
+}

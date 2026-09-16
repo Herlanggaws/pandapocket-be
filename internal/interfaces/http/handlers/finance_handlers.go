@@ -33,6 +33,10 @@ type FinanceHandlers struct {
 	deleteCurrencyUseCase     *finance.DeleteCurrencyUseCase
 	setDefaultCurrencyUseCase *finance.SetDefaultCurrencyUseCase
 	getDefaultCurrencyUseCase *finance.GetDefaultCurrencyUseCase
+	checkBudgetAlertsUseCase  *finance.CheckBudgetAlertsUseCase
+	createRecurringUseCase    *finance.CreateRecurringTransactionUseCase
+	getRecurringUseCase       *finance.GetRecurringTransactionsUseCase
+	deleteRecurringUseCase    *finance.DeleteRecurringTransactionUseCase
 }
 
 // NewFinanceHandlers creates a new finance handlers instance
@@ -57,6 +61,10 @@ func NewFinanceHandlers(
 	deleteCurrencyUseCase *finance.DeleteCurrencyUseCase,
 	setDefaultCurrencyUseCase *finance.SetDefaultCurrencyUseCase,
 	getDefaultCurrencyUseCase *finance.GetDefaultCurrencyUseCase,
+	checkBudgetAlertsUseCase *finance.CheckBudgetAlertsUseCase,
+	createRecurringUseCase *finance.CreateRecurringTransactionUseCase,
+	getRecurringUseCase *finance.GetRecurringTransactionsUseCase,
+	deleteRecurringUseCase *finance.DeleteRecurringTransactionUseCase,
 ) *FinanceHandlers {
 	return &FinanceHandlers{
 		createTransactionUseCase:  createTransactionUseCase,
@@ -79,6 +87,10 @@ func NewFinanceHandlers(
 		deleteCurrencyUseCase:     deleteCurrencyUseCase,
 		setDefaultCurrencyUseCase: setDefaultCurrencyUseCase,
 		getDefaultCurrencyUseCase: getDefaultCurrencyUseCase,
+		checkBudgetAlertsUseCase:  checkBudgetAlertsUseCase,
+		createRecurringUseCase:    createRecurringUseCase,
+		getRecurringUseCase:       getRecurringUseCase,
+		deleteRecurringUseCase:    deleteRecurringUseCase,
 	}
 }
 
@@ -99,6 +111,10 @@ func (h *FinanceHandlers) CreateExpense(c *gin.Context) {
 	if err != nil {
 		HandleError(c, err, http.StatusBadRequest)
 		return
+	}
+
+	if h.checkBudgetAlertsUseCase != nil {
+		h.checkBudgetAlertsUseCase.Execute(c.Request.Context(), userID, req.CategoryID)
 	}
 
 	SuccessResponse(c, http.StatusCreated, gin.H{
@@ -382,6 +398,10 @@ func (h *FinanceHandlers) UpdateExpense(c *gin.Context) {
 		return
 	}
 
+	if h.checkBudgetAlertsUseCase != nil {
+		h.checkBudgetAlertsUseCase.Execute(c.Request.Context(), userID, req.CategoryID)
+	}
+
 	SuccessResponse(c, http.StatusOK, gin.H{
 		"expense": gin.H{
 			"id":          transaction.ID().Value(),
@@ -651,4 +671,49 @@ func (h *FinanceHandlers) GetDefaultCurrency(c *gin.Context) {
 	}
 
 	SuccessResponse(c, http.StatusOK, currency)
+}
+
+// GetRecurringTransactions lists recurring rules and posts any that are due
+func (h *FinanceHandlers) GetRecurringTransactions(c *gin.Context) {
+	userID := c.GetInt("user_id")
+	response, err := h.getRecurringUseCase.Execute(c.Request.Context(), userID)
+	if err != nil {
+		HandleError(c, err, http.StatusBadRequest)
+		return
+	}
+	SuccessResponse(c, http.StatusOK, response)
+}
+
+// CreateRecurringTransaction creates a recurring rule
+func (h *FinanceHandlers) CreateRecurringTransaction(c *gin.Context) {
+	userID := c.GetInt("user_id")
+	var req finance.CreateRecurringTransactionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		ValidationErrorResponse(c, err.Error())
+		return
+	}
+	response, err := h.createRecurringUseCase.Execute(c.Request.Context(), userID, req)
+	if err != nil {
+		HandleError(c, err, http.StatusBadRequest)
+		return
+	}
+	SuccessResponse(c, http.StatusCreated, gin.H{
+		"message":               "Recurring transaction created successfully",
+		"recurring_transaction": response,
+	})
+}
+
+// DeleteRecurringTransaction deletes a recurring rule
+func (h *FinanceHandlers) DeleteRecurringTransaction(c *gin.Context) {
+	userID := c.GetInt("user_id")
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		ValidationErrorResponse(c, "invalid recurring transaction id")
+		return
+	}
+	if err := h.deleteRecurringUseCase.Execute(c.Request.Context(), userID, id); err != nil {
+		HandleError(c, err, http.StatusBadRequest)
+		return
+	}
+	SuccessResponse(c, http.StatusOK, gin.H{"message": "Recurring transaction deleted"})
 }

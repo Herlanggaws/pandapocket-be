@@ -11,14 +11,16 @@ import (
 
 // IdentityHandlers handles identity-related HTTP requests
 type IdentityHandlers struct {
-	registerUserUseCase   *identity.RegisterUserUseCase
-	loginUserUseCase      *identity.LoginUserUseCase
-	getUsersUseCase       *identity.GetUsersUseCase
-	forgotPasswordUseCase *identity.ForgotPasswordUseCase
-	resetPasswordUseCase  *identity.ResetPasswordUseCase
-	refreshTokenUseCase   *identity.RefreshTokenUseCase
-	tokenService          identity.TokenService
-	changePasswordUseCase *identity.ChangePasswordUseCase
+	registerUserUseCase     *identity.RegisterUserUseCase
+	loginUserUseCase        *identity.LoginUserUseCase
+	getUsersUseCase         *identity.GetUsersUseCase
+	forgotPasswordUseCase   *identity.ForgotPasswordUseCase
+	resetPasswordUseCase    *identity.ResetPasswordUseCase
+	refreshTokenUseCase     *identity.RefreshTokenUseCase
+	tokenService            identity.TokenService
+	changePasswordUseCase   *identity.ChangePasswordUseCase
+	getPreferencesUseCase   *identity.GetPreferencesUseCase
+	updatePreferencesUseCase *identity.UpdatePreferencesUseCase
 }
 
 // NewIdentityHandlers creates a new identity handlers instance
@@ -31,16 +33,20 @@ func NewIdentityHandlers(
 	refreshTokenUseCase *identity.RefreshTokenUseCase,
 	tokenService identity.TokenService,
 	changePasswordUseCase *identity.ChangePasswordUseCase,
+	getPreferencesUseCase *identity.GetPreferencesUseCase,
+	updatePreferencesUseCase *identity.UpdatePreferencesUseCase,
 ) *IdentityHandlers {
 	return &IdentityHandlers{
-		registerUserUseCase:   registerUserUseCase,
-		loginUserUseCase:      loginUserUseCase,
-		getUsersUseCase:       getUsersUseCase,
-		forgotPasswordUseCase: forgotPasswordUseCase,
-		resetPasswordUseCase:  resetPasswordUseCase,
-		refreshTokenUseCase:   refreshTokenUseCase,
-		tokenService:          tokenService,
-		changePasswordUseCase: changePasswordUseCase,
+		registerUserUseCase:      registerUserUseCase,
+		loginUserUseCase:         loginUserUseCase,
+		getUsersUseCase:          getUsersUseCase,
+		forgotPasswordUseCase:    forgotPasswordUseCase,
+		resetPasswordUseCase:     resetPasswordUseCase,
+		refreshTokenUseCase:      refreshTokenUseCase,
+		tokenService:             tokenService,
+		changePasswordUseCase:    changePasswordUseCase,
+		getPreferencesUseCase:    getPreferencesUseCase,
+		updatePreferencesUseCase: updatePreferencesUseCase,
 	}
 }
 
@@ -241,4 +247,31 @@ func (h *IdentityHandlers) ChangePassword(c *gin.Context) {
 	SuccessResponse(c, http.StatusOK, gin.H{
 		"message": "Password changed successfully",
 	})
+}
+
+// GetPreferences returns the authenticated user's preferences
+func (h *IdentityHandlers) GetPreferences(c *gin.Context) {
+	userID := c.GetInt("user_id")
+	response, err := h.getPreferencesUseCase.Execute(c.Request.Context(), userID)
+	if err != nil {
+		HandleError(c, err, http.StatusBadRequest)
+		return
+	}
+	SuccessResponse(c, http.StatusOK, response)
+}
+
+// UpdatePreferences updates the authenticated user's preferences
+func (h *IdentityHandlers) UpdatePreferences(c *gin.Context) {
+	userID := c.GetInt("user_id")
+	var req identity.UpdatePreferencesRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		ValidationErrorResponse(c, formatValidationError(err))
+		return
+	}
+	response, err := h.updatePreferencesUseCase.Execute(c.Request.Context(), userID, req)
+	if err != nil {
+		HandleError(c, err, http.StatusBadRequest)
+		return
+	}
+	SuccessResponse(c, http.StatusOK, response)
 }

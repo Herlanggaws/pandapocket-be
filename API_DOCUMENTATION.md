@@ -2,7 +2,7 @@
 
 ## Overview
 
-PandaPocket is a personal finance management API built with Domain-Driven Design (DDD) architecture. The API allows users to track expenses, incomes, categories, budgets, and currencies with comprehensive analytics.
+PandaPocket (product brand: **Berbudget**) is a personal finance management API built with Domain-Driven Design (DDD) architecture. The API allows users to track expenses, incomes, categories, budgets, recurring rules, and preferences with analytics and in-app notifications.
 
 **Base URL:** `http://localhost:8080/api`  
 **Content-Type:** `application/json`  
@@ -19,8 +19,12 @@ PandaPocket is a personal finance management API built with Domain-Driven Design
 - **Transactions**: Get all transactions with advanced filtering and pagination
 - **Budgets**: Full CRUD operations
 - **Currencies**: Full CRUD operations
-- **Analytics**: Spending analytics and reports
+- **Preferences**: GET/PUT user preferences and onboarding
+- **Notifications**: In-app list, mark read, delete
+- **Recurring Transactions**: Create/list/delete with due posting on list
+- **Analytics**: Totals plus spending by category and period
 - **Dashboard**: Admin-only dashboard statistics
+- **Users**: Admin-only user list
 - **Health Check**: Server status (`GET /health`)
 
 ### 📊 Architecture Overview
@@ -60,7 +64,7 @@ CORS currently allows all origins (`*`). Allowed request headers: `Origin`, `Con
 | POST | `/api/auth/forgot` | No | Forgot password |
 | POST | `/api/auth/reset-password` | No | Reset with token from email |
 | POST | `/api/auth/change-password` | Yes | Authenticated password change |
-| GET | `/api/users` | Yes | List users |
+| GET | `/api/users` | Yes (admin) | List users |
 | GET | `/api/dashboard/stats` | Yes (admin) | Admin dashboard statistics |
 | GET/POST | `/api/categories` | Yes | |
 | PUT/DELETE | `/api/categories/:id` | Yes | |
@@ -76,6 +80,12 @@ CORS currently allows all origins (`*`). Allowed request headers: `Origin`, `Con
 | PUT | `/api/currencies/:id/set-default` | Yes | |
 | PUT/DELETE | `/api/currencies/:id` | Yes | |
 | GET | `/api/analytics` | Yes | |
+| GET/PUT | `/api/preferences` | Yes | User preferences & onboarding |
+| GET | `/api/notifications` | Yes | In-app notifications |
+| PUT | `/api/notifications/:id/read` | Yes | Mark notification read |
+| DELETE | `/api/notifications/:id` | Yes | Delete notification |
+| GET/POST | `/api/recurring-transactions` | Yes | Recurring rules (GET also posts due items) |
+| DELETE | `/api/recurring-transactions/:id` | Yes | |
 
 ## Health Check
 
@@ -276,14 +286,13 @@ Request a password reset email/link for the given address.
 }
 ```
 
-**Response:**
+**Response:** Always returns a generic success message (does not reveal whether the email exists). The reset token is sent only via email.
+
 ```json
 {
   "status": "success",
   "data": {
-    "message": "...",
-    "token": "...",
-    "reset_link": "..."
+    "message": "If an account exists for that email, a password reset link has been sent."
   },
   "error": null
 }
@@ -343,7 +352,7 @@ Change password for the authenticated user. Requires `Authorization: Bearer <tok
 
 ### GET /api/users
 
-List users. Requires authentication.
+List users. Requires authentication and `admin` role (or higher).
 
 **Response:**
 ```json
@@ -1263,46 +1272,121 @@ Get the user's default currency.
 
 ### GET /api/analytics
 
-Get spending analytics and reports.
+Get spending analytics and reports for the authenticated user.
 
 **Query Parameters:**
-- `period` (optional): Time period for analytics (`daily`, `weekly`, `monthly`, `yearly`)
-- `start_date` (optional): Start date for custom period (YYYY-MM-DD)
-- `end_date` (optional): End date for custom period (YYYY-MM-DD)
+- `period` (optional): `weekly`, `monthly` (default), or `yearly`
 
 **Response:**
 ```json
 {
   "status": "success",
   "data": {
-    "total_expenses": 1250.50,
-    "total_incomes": 3000.00,
-    "net_balance": 1749.50,
-    "expenses_by_category": [
+    "total_income": 3000.00,
+    "total_spent": 1250.50,
+    "net_amount": 1749.50,
+    "period": "monthly",
+    "transaction_count": 42,
+    "spending_by_category": [
       {
         "category_id": 1,
         "category_name": "Food",
+        "category_color": "#22c55e",
         "amount": 450.00,
         "percentage": 36.0
-      },
-      {
-        "category_id": 2,
-        "category_name": "Transport",
-        "amount": 200.50,
-        "percentage": 16.0
       }
     ],
-    "monthly_trends": [
+    "spending_by_period": [
       {
-        "month": "2024-01",
-        "expenses": 1250.50,
-        "incomes": 3000.00
+        "period": "Week 1",
+        "amount": 320.00,
+        "date": "2024-01-03"
       }
     ]
   },
   "error": null
 }
 ```
+
+---
+
+## Preferences
+
+### GET /api/preferences
+
+Returns the authenticated user's preferences. Creates defaults on first access.
+
+### PUT /api/preferences
+
+Partial update. Accepts any of:
+- `primary_currency_id`
+- `email_notifications`, `budget_alerts`, `recurring_reminders`
+- Onboarding fields: `onboarding_completed`, `goal`, `topics`, `cadence`, `start_path`
+
+**Response:**
+```json
+{
+  "status": "success",
+  "data": {
+    "message": "Preferences updated successfully",
+    "preferences": {
+      "id": 1,
+      "user_id": 1,
+      "primary_currency_id": 1,
+      "email_notifications": true,
+      "budget_alerts": true,
+      "recurring_reminders": true,
+      "onboarding": {},
+      "onboarding_completed": true
+    }
+  },
+  "error": null
+}
+```
+
+---
+
+## Notifications
+
+### GET /api/notifications
+
+List in-app notifications for the authenticated user (newest first).
+
+### PUT /api/notifications/:id/read
+
+Mark a notification as read.
+
+### DELETE /api/notifications/:id
+
+Delete a notification.
+
+---
+
+## Recurring Transactions
+
+### GET /api/recurring-transactions
+
+List recurring rules. Also posts any **due** active rules as real expenses/incomes and advances `next_due_date`. May create `recurring_reminder` notifications when enabled in preferences.
+
+### POST /api/recurring-transactions
+
+**Request Body:**
+```json
+{
+  "type": "expense",
+  "category_id": 1,
+  "amount": 150000,
+  "description": "Rent",
+  "frequency": "monthly",
+  "next_due_date": "2024-02-01"
+}
+```
+
+`next_due_date` is optional (defaults to today). Currency uses the user's primary currency.
+
+### DELETE /api/recurring-transactions/:id
+
+Delete a recurring rule owned by the authenticated user.
 
 ---
 
@@ -1408,6 +1492,12 @@ Keep this file in sync with the running API. When routes, request/response shape
 ---
 
 ## Version History
+
+- **v2.6.0**: **Berbudget backlog ship**
+  - `GET /api/users` is admin-only; forgot-password no longer returns token/reset_link in JSON
+  - Preferences GET/PUT, in-app notifications, recurring transactions (with due posting)
+  - Analytics returns `spending_by_category` and `spending_by_period`
+  - Budget alerts create in-app notifications when spending approaches/exceeds limits
 
 - **v2.5.1**: **Budgets correctness**
   - Create/update responses include `id`, `created_at`, and `report`

@@ -1,25 +1,22 @@
-# PandaPocket Backend
+# Berbudget Backend (PandaPocket API)
 
-A personal finance management API built with Go using Domain-Driven Design (DDD) architecture. PandaPocket allows users to track expenses, incomes, and manage financial categories with a clean, maintainable codebase.
+Personal finance management API for **Berbudget**, built with Go using Domain-Driven Design (DDD).
 
-## 🚀 Features
+## Features
 
-### ✅ Currently Implemented
-- **User Authentication**: JWT-based authentication with registration and login
-- **Category Management**: Create and retrieve expense/income categories
-- **Transaction Management**: Create, retrieve, and delete expenses and incomes
-- **Multi-Currency Support**: Support for multiple currencies
-- **Clean Architecture**: Domain-Driven Design with proper separation of concerns
+### Implemented
+- **User Authentication**: JWT register/login/refresh/logout, forgot/reset/change password
+- **Category Management**: Default + custom expense/income categories
+- **Transaction Management**: Expenses, incomes, unified transactions feed
+- **Budgets**: Category budgets with spend reports
+- **Multi-Currency**: Catalog + primary currency via preferences
+- **Recurring Transactions**: CRUD + due posting on list
+- **Preferences**: Alert toggles + onboarding payload
+- **In-app Notifications**: List/read/delete + budget/recurring writers
+- **Analytics**: Period totals, spending by category and period
+- **Admin**: Dashboard stats + user list (admin role)
 
-### 🔄 Planned Features
-- Budget management and tracking
-- Recurring transactions
-- Financial analytics and reports
-- User preferences and settings
-- Admin API endpoints
-- Notification system
-
-## 🏗️ Architecture
+## Architecture
 
 PandaPocket follows Domain-Driven Design (DDD) principles with a clean architecture:
 
