@@ -126,13 +126,15 @@ No additional setup required. The database file will be created automatically.
 
 ## 📚 API Documentation
 
-The API provides endpoints for:
+The API provides endpoints under `/api` (see [API_DOCUMENTATION.md](API_DOCUMENTATION.md) for the full contract), including:
 
 - **Authentication**: `/api/auth/*`
-- **Categories**: `/api/categories`
-- **Expenses**: `/api/expenses`
-- **Incomes**: `/api/incomes`
+- **Categories / Expenses / Incomes / Transactions / Budgets / Currencies / Analytics**
+- **Users**: `/api/users`
+- **Admin dashboard**: `/api/dashboard/stats`
 - **Health Check**: `/health`
+
+**Keep docs in sync:** any change to routes, request/response shapes, auth, or error codes must update [API_DOCUMENTATION.md](API_DOCUMENTATION.md) in the same change. Cursor rule: `.cursor/rules/api-documentation.mdc`.
 
 For detailed API documentation, see [API_DOCUMENTATION.md](API_DOCUMENTATION.md).
 

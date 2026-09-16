@@ -41,7 +41,7 @@ PandaPocket supports multiple deployment strategies:
 
 ## Development Guide
 
-This section provides comprehensive guidance for developers working on the PandaPocket backend, including local development setup, API versioning, testing strategies, and best practices.
+This section provides comprehensive guidance for developers working on the PandaPocket backend, including local development setup, testing strategies, and best practices.
 
 ### Development Environment Setup
 
@@ -132,149 +132,9 @@ go run main.go
 air
 ```
 
-### API Versioning Development
+### API Routes
 
-#### Version Structure
-
-The API follows a versioning strategy where each version is maintained independently:
-
-```
-/api/v100/transactions  # Version 1.0.0 (Legacy)
-/api/v110/transactions  # Version 1.1.0 (Previous)
-/api/v120/transactions  # Version 1.2.0 (Latest)
-```
-
-#### Adding New Features
-
-**1. Create Version-Specific Handlers**:
-```go
-// internal/interfaces/http/handlers/v120/finance_handlers.go
-package v120
-
-import (
-    "net/http"
-    "github.com/gin-gonic/gin"
-)
-
-type FinanceHandlersV120 struct {
-    // Include all necessary use cases
-    createTransactionUseCase  *finance.CreateTransactionUseCase
-    getTransactionsUseCase    *finance.GetTransactionsUseCase
-    // ... other use cases
-}
-
-// New features specific to v120
-func (h *FinanceHandlersV120) GetTransactionsWithAnalytics(c *gin.Context) {
-    // Implementation with new analytics features
-    userID := c.GetInt("user_id")
-    
-    // New v120-specific logic
-    response, err := h.getTransactionsUseCase.Execute(c.Request.Context(), userID)
-    if err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch transactions"})
-        return
-    }
-    
-    // Enhanced response with analytics
-    c.JSON(http.StatusOK, gin.H{
-        "transactions": response.Transactions,
-        "analytics": gin.H{
-            "total_amount": response.TotalAmount,
-            "category_breakdown": response.CategoryBreakdown,
-            "monthly_trends": response.MonthlyTrends,
-        },
-    })
-}
-```
-
-**2. Update Route Configuration**:
-```go
-// internal/application/app.go
-func (app *App) SetupRoutes() *gin.Engine {
-    r := gin.Default()
-    
-    // Version middleware
-    versionMiddleware := middleware.NewVersionMiddleware()
-    r.Use(versionMiddleware.ExtractVersion())
-    
-    // Versioned routes
-    versioned := r.Group("/api")
-    {
-        // v120 routes (latest)
-        v120 := versioned.Group("/v120")
-        {
-            v120Handlers := handlers.NewFinanceHandlersV120(
-                app.createTransactionUseCase,
-                app.getTransactionsUseCase,
-                // ... other use cases
-            )
-            
-            protected := v120.Group("")
-            protected.Use(app.AuthMiddleware.RequireAuth())
-            {
-                protected.GET("/transactions", v120Handlers.GetTransactionsWithAnalytics)
-                protected.POST("/transactions", v120Handlers.CreateTransaction)
-                // ... other v120 routes
-            }
-        }
-        
-        // v110 routes (previous version)
-        v110 := versioned.Group("/v110")
-        {
-            // v110-specific handlers
-        }
-        
-        // v100 routes (legacy)
-        v100 := versioned.Group("/v100")
-        {
-            // v100-specific handlers
-        }
-    }
-    
-    return r
-}
-```
-
-#### Backward Compatibility
-
-**1. Maintain Previous Versions**:
-```go
-// internal/interfaces/http/handlers/v100/finance_handlers.go
-package v100
-
-// Legacy handlers maintain original functionality
-func (h *FinanceHandlersV100) GetTransactions(c *gin.Context) {
-    // Original implementation without new features
-    userID := c.GetInt("user_id")
-    
-    response, err := h.getTransactionsUseCase.Execute(c.Request.Context(), userID)
-    if err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch transactions"})
-        return
-    }
-    
-    // Simple response without analytics
-    c.JSON(http.StatusOK, response.Transactions)
-}
-```
-
-**2. Deprecation Handling**:
-```go
-// internal/interfaces/http/middleware/deprecation_middleware.go
-func DeprecationMiddleware() gin.HandlerFunc {
-    return func(c *gin.Context) {
-        version := c.GetString("api_version")
-        
-        if version == "v100" {
-            c.Header("X-API-Deprecated", "true")
-            c.Header("X-API-Sunset-Date", "2024-06-01")
-            c.Header("X-API-Upgrade-URL", "https://docs.pandapocket.com/upgrade")
-        }
-        
-        c.Next()
-    }
-}
-```
+All application endpoints are mounted under the unversioned `/api` prefix (for example `/api/auth/login`, `/api/transactions`). There is no URL-based API versioning.
 
 ### Testing Strategy
 
@@ -388,13 +248,13 @@ func TestAPIVersioning(t *testing.T) {
         {
             name:     "v120 transactions",
             version:  "v120",
-            endpoint: "/api/v120/transactions",
+            endpoint: "/api/transactions",
             expected: http.StatusOK,
         },
         {
             name:     "v100 transactions (deprecated)",
             version:  "v100",
-            endpoint: "/api/v100/transactions",
+            endpoint: "/api/transactions",
             expected: http.StatusOK,
         },
     }
@@ -500,7 +360,7 @@ func TestCompleteUserFlow(t *testing.T) {
         "date":        "2024-01-01",
     }
     
-    req, _ := http.NewRequest("POST", baseURL+"/api/v120/transactions", 
+    req, _ := http.NewRequest("POST", baseURL+"/api/transactions", 
         bytes.NewBuffer(mustMarshal(transactionData)))
     req.Header.Set("Authorization", "Bearer "+extractToken(resp))
     
@@ -708,14 +568,14 @@ func RateLimitMiddleware() gin.HandlerFunc {
 **1. Feature Branch Strategy**:
 ```bash
 # Create feature branch
-git checkout -b feature/api-versioning
+git checkout -b feature/my-change
 
 # Make changes
 git add .
-git commit -m "feat: implement API versioning middleware"
+git commit -m "feat: describe your change"
 
 # Push and create PR
-git push origin feature/api-versioning
+git push origin feature/my-change
 ```
 
 **2. Commit Message Convention**:

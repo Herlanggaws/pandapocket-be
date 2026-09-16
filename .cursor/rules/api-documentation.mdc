@@ -1,0 +1,25 @@
+---
+description: Keep API_DOCUMENTATION.md in sync with backend API changes
+globs: **/*.go
+alwaysApply: false
+---
+
+# API documentation updates required
+
+Any backend change that affects the HTTP API must update `API_DOCUMENTATION.md` in the same change.
+
+## Triggers
+
+- New, removed, or renamed routes in `internal/application/app.go`
+- Changed request/response bodies, status codes, or error codes
+- Changed auth (public / authenticated / admin)
+- CORS or other client-visible HTTP behavior
+
+## Checklist
+
+1. Update the endpoint index if routes changed
+2. Update the endpoint section (path, method, body, response)
+3. Keep examples matching the real `{ status, data, error }` envelope
+4. Do not document routes that are not registered in `SetupRoutes`
+
+Route source of truth: `internal/application/app.go`.

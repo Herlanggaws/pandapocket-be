@@ -4,66 +4,24 @@
 
 PandaPocket is a personal finance management API built with Domain-Driven Design (DDD) architecture. The API allows users to track expenses, incomes, categories, budgets, and currencies with comprehensive analytics.
 
-**Base URL:** `http://localhost:8080`  
-**API Versioning:** Versioned endpoints only (v100)  
+**Base URL:** `http://localhost:8080/api`  
 **Content-Type:** `application/json`  
 **Architecture:** Domain-Driven Design (DDD)
 
-## API Versioning
-
-The PandaPocket API supports multiple versions to ensure backward compatibility and smooth evolution:
-
-### Supported Versions
-
-| Version | Status | Features | Sunset Date |
-|---------|--------|----------|-------------|
-| **v100** | ✅ Current | Core features, transactions, categories, budgets, currencies, analytics | - |
-
-### Version Endpoints
-
-- **Current Version (v100):** `/api/v100/transactions`
-- **All endpoints require versioning** - Version must be specified in URL
-
-### Version Headers
-
-All API responses include version information:
-
-```
-X-API-Version: v110
-X-API-Latest: v110 (for legacy routes)
-```
-
-### Migration Guide
-
-For future version management:
-
-1. **Check version status:** `GET /api/version/info/{version}`
-2. **Get version features:** `GET /api/version/features/{version}`
-3. **Get version matrix:** `GET /api/version/matrix`
-
 ## Current Implementation Status
 
-### ✅ Implemented Endpoints
+### Implemented Endpoints
 
-#### Version 1.1.0 (v110) - Current
-- **Authentication**: Register, Login, Logout
-- **Transactions**: Enhanced CRUD with analytics and advanced filtering
-- **Categories**: Full CRUD operations with enhanced validation
-- **Budgets**: Full CRUD operations with enhanced validation
-- **Currencies**: Full CRUD operations with enhanced validation
-- **Analytics**: Advanced analytics with detailed insights
-- **Version Management**: Complete version lifecycle management
-
-#### Versioned Routes (v100 Only)
-- **Authentication**: Register, Login, Logout (versioned)
-- **Categories**: Full CRUD operations (Get, Create, Update, Delete)
-- **Expenses**: Full CRUD operations (Get, Create, Update, Delete)
-- **Incomes**: Full CRUD operations (Get, Create, Update, Delete)
+- **Authentication**: Register, Login, Logout, Refresh, Forgot/Reset Password, Change Password
+- **Categories**: Full CRUD operations
+- **Expenses**: Full CRUD operations
+- **Incomes**: Full CRUD operations
 - **Transactions**: Get all transactions with advanced filtering and pagination
-- **Budgets**: Full CRUD operations (Get, Create, Update, Delete)
-- **Currencies**: Full CRUD operations (Get, Create, Update, Delete)
+- **Budgets**: Full CRUD operations
+- **Currencies**: Full CRUD operations
 - **Analytics**: Spending analytics and reports
-- **Health Check**: Server status
+- **Dashboard**: Admin-only dashboard statistics
+- **Health Check**: Server status (`GET /health`)
 
 ### 📊 Architecture Overview
 The application follows Domain-Driven Design principles with the following structure:
@@ -88,12 +46,36 @@ Authorization: Bearer <your-token>
 
 ## CORS Configuration
 
-The API allows requests from the following origins:
-- `http://localhost:3000`
-- `http://localhost:3001`
-- `http://localhost:3002`
-- `http://localhost:3003`
-- `http://localhost:3004` (Back office)
+CORS currently allows all origins (`*`). Allowed request headers: `Origin`, `Content-Type`, `Accept`, `Authorization`.
+
+## Endpoint Index
+
+| Method | Path | Auth | Notes |
+|--------|------|------|-------|
+| GET | `/health` | No | Health check (outside `/api`) |
+| POST | `/api/auth/register` | No | |
+| POST | `/api/auth/login` | No | |
+| POST | `/api/auth/refresh` | No | Refresh access token |
+| POST | `/api/auth/logout` | No | Requires `refresh_token` body |
+| POST | `/api/auth/forgot` | No | Forgot password |
+| POST | `/api/auth/reset-password` | No | Reset with token from email |
+| POST | `/api/auth/change-password` | Yes | Authenticated password change |
+| GET | `/api/users` | Yes | List users |
+| GET | `/api/dashboard/stats` | Yes (admin) | Admin dashboard statistics |
+| GET/POST | `/api/categories` | Yes | |
+| PUT/DELETE | `/api/categories/:id` | Yes | |
+| GET/POST | `/api/expenses` | Yes | |
+| PUT/DELETE | `/api/expenses/:id` | Yes | |
+| GET/POST | `/api/incomes` | Yes | |
+| PUT/DELETE | `/api/incomes/:id` | Yes | |
+| GET | `/api/transactions` | Yes | Filtered/paginated list |
+| GET/POST | `/api/budgets` | Yes | |
+| PUT/DELETE | `/api/budgets/:id` | Yes | |
+| GET/POST | `/api/currencies` | Yes | |
+| GET | `/api/currencies/default` | Yes | |
+| PUT | `/api/currencies/:id/set-default` | Yes | |
+| PUT/DELETE | `/api/currencies/:id` | Yes | |
+| GET | `/api/analytics` | Yes | |
 
 ## Health Check
 
@@ -176,584 +158,9 @@ All API endpoints follow a standardized response structure:
 
 ---
 
-## Version-Specific Endpoints
-
-### Version 1.0.0 (v100) - Current Features
-
-#### Authentication
-- **POST** `/api/v100/auth/register` - Register new user
-- **POST** `/api/v100/auth/login` - Login user
-- **POST** `/api/v100/auth/logout` - Logout user
-
-#### Categories
-- **GET** `/api/v100/categories` - Get categories
-- **POST** `/api/v100/categories` - Create category
-- **PUT** `/api/v100/categories/{id}` - Update category
-- **DELETE** `/api/v100/categories/{id}` - Delete category
-
-#### Expenses
-- **GET** `/api/v100/expenses` - Get expenses
-- **POST** `/api/v100/expenses` - Create expense
-- **PUT** `/api/v100/expenses/{id}` - Update expense
-- **DELETE** `/api/v100/expenses/{id}` - Delete expense
-
-#### Incomes
-- **GET** `/api/v100/incomes` - Get incomes
-- **POST** `/api/v100/incomes` - Create income
-- **PUT** `/api/v100/incomes/{id}` - Update income
-- **DELETE** `/api/v100/incomes/{id}` - Delete income
-
-#### Transactions
-- **GET** `/api/v100/transactions` - Get all transactions with filtering
-
-#### Budgets
-- **GET** `/api/v100/budgets` - Get budgets
-- **POST** `/api/v100/budgets` - Create budget
-- **PUT** `/api/v100/budgets/{id}` - Update budget
-- **DELETE** `/api/v100/budgets/{id}` - Delete budget
-
-#### Currencies
-- **GET** `/api/v100/currencies` - Get currencies
-- **POST** `/api/v100/currencies` - Create currency
-- **PUT** `/api/v100/currencies/{id}` - Update currency
-- **DELETE** `/api/v100/currencies/{id}` - Delete currency
-- **GET** `/api/v100/currencies/default` - Get default currency
-- **PUT** `/api/v100/currencies/{id}/set-default` - Set default currency
-
-#### Analytics
-- **GET** `/api/v100/analytics` - Get spending analytics
-
-#### Dashboard Statistics (Admin Only)
-- **GET** `/api/v100/dashboard/stats` - Get dashboard statistics for back office
-
-
----
-
-## Version-Specific API Endpoints
-
-### Version 1.1.0 (v110) - Current Features
-
-#### Enhanced Transactions
-
-##### GET /api/v110/transactions
-
-Get transactions with advanced analytics and enhanced filtering.
-
-**Query Parameters:**
-- `type` (optional): Filter by transaction type (`expense` or `income`)
-- `category_ids` (optional): Filter by category IDs (comma-separated)
-- `start_date` (optional): Filter transactions from this date (YYYY-MM-DD)
-- `end_date` (optional): Filter transactions until this date (YYYY-MM-DD)
-- `page` (optional): Page number for pagination (default: 1)
-- `limit` (optional): Number of items per page (default: 20, max: 100)
-
-**Response:**
-```json
-{
-  "transactions": [
-    {
-      "id": 1,
-      "user_id": 1,
-      "category_id": 1,
-      "currency_id": 1,
-      "amount": 50.0,
-      "description": "Test transaction",
-      "date": "2024-01-15",
-      "type": "expense",
-      "created_at": "2024-01-15T10:00:00Z"
-    }
-  ],
-  "pagination": {
-    "page": 1,
-    "limit": 20,
-    "total": 1
-  },
-  "analytics": {
-    "version": "v110",
-    "features": ["analytics", "advanced_filtering", "pagination"]
-  }
-}
-```
-
-##### POST /api/v110/transactions
-
-Create a transaction with enhanced validation.
-
-**Request Body:**
-```json
-{
-  "category_id": 1,
-  "amount": 100.0,
-  "description": "Enhanced transaction",
-  "date": "2024-01-15",
-  "type": "expense"
-}
-```
-
-**Response:**
-```json
-{
-  "message": "Transaction created successfully",
-  "transaction": {
-    "id": 1,
-    "user_id": 1,
-    "category_id": 1,
-    "currency_id": 1,
-    "amount": 100.0,
-    "description": "Enhanced transaction",
-    "date": "2024-01-15",
-    "type": "expense"
-  },
-  "analytics": {
-    "version": "v110",
-    "features": ["enhanced_validation", "analytics"]
-  }
-}
-```
-
-##### GET /api/v110/transactions/analytics
-
-Get detailed transaction analytics (v110 specific feature).
-
-**Query Parameters:**
-- `period` (optional): Time period (`daily`, `weekly`, `monthly`, `yearly`)
-
-**Response:**
-```json
-{
-  "transactions": [...],
-  "analytics": {
-    "period": "monthly",
-    "data": {
-      "total_expenses": 1250.50,
-      "total_incomes": 3000.00,
-      "net_balance": 1749.50
-    },
-    "version": "v110",
-    "features": ["detailed_analytics", "period_analysis", "trend_analysis"]
-  },
-  "pagination": {
-    "total": 10
-  }
-}
-```
-
-#### Enhanced Categories
-
-##### GET /api/v120/categories
-
-Get categories with analytics.
-
-**Response:**
-```json
-{
-  "categories": [
-    {
-      "id": 1,
-      "name": "Food",
-      "color": "#EF4444",
-      "type": "expense"
-    }
-  ],
-  "analytics": {
-    "version": "v110",
-    "features": ["analytics", "category_insights"]
-  }
-}
-```
-
-##### POST /api/v120/categories
-
-Create category with enhanced validation.
-
-**Request Body:**
-```json
-{
-  "name": "Enhanced Category",
-  "color": "#3B82F6",
-  "type": "expense"
-}
-```
-
-**Response:**
-```json
-{
-  "message": "Category created successfully",
-  "category": {
-    "id": 1,
-    "name": "Enhanced Category",
-    "color": "#3B82F6",
-    "type": "expense"
-  },
-  "analytics": {
-    "version": "v110",
-    "features": ["enhanced_validation", "analytics"]
-  }
-}
-```
-
-#### Enhanced Budgets
-
-##### GET /api/v120/budgets
-
-Get budgets with analytics.
-
-**Response:**
-```json
-{
-  "budgets": [
-    {
-      "id": 1,
-      "user_id": 1,
-      "amount": 500.0,
-      "period": "monthly",
-      "start_date": "2024-01-01",
-      "end_date": "2024-01-31",
-      "category": {
-        "id": 1,
-        "name": "Food",
-        "color": "#EF4444",
-        "type": "expense"
-      }
-    }
-  ],
-  "analytics": {
-    "version": "v110",
-    "features": ["analytics", "budget_insights"]
-  }
-}
-```
-
-#### Enhanced Currencies
-
-##### GET /api/v120/currencies
-
-Get currencies with analytics.
-
-**Response:**
-```json
-{
-  "currencies": [
-    {
-      "id": 1,
-      "code": "USD",
-      "name": "US Dollar",
-      "symbol": "$",
-      "is_default": true
-    }
-  ],
-  "analytics": {
-    "version": "v110",
-    "features": ["analytics", "currency_insights"]
-  }
-}
-```
-
-#### Enhanced Analytics
-
-##### GET /api/v120/analytics
-
-Get advanced analytics with detailed insights.
-
-**Query Parameters:**
-- `period` (optional): Time period for analytics
-
-**Response:**
-```json
-{
-  "analytics": {
-    "total_expenses": 1250.50,
-    "total_incomes": 3000.00,
-    "net_balance": 1749.50,
-    "expenses_by_category": [...],
-    "monthly_trends": [...]
-  },
-  "version": "v120",
-  "features": ["detailed_analytics", "period_analysis", "trend_analysis", "export_functionality"]
-}
-```
-
-
----
-
-## Version Headers and Client Usage
-
-### Response Headers
-
-All API responses include version information in headers:
-
-```
-X-API-Version: v110
-X-API-Deprecated: true (for deprecated versions)
-X-API-Sunset-Date: 2024-06-01 (for deprecated versions)
-X-API-Upgrade-URL: https://docs.pandapocket.com/upgrade
-X-API-Latest: v110 (for legacy routes)
-```
-
-### Client Implementation Examples
-
-#### JavaScript/TypeScript Client
-
-```typescript
-class PandaPocketClient {
-    private baseURL: string;
-    private version: string;
-    private token: string;
-    
-    constructor(baseURL: string, version: string = 'v110', token: string = '') {
-        this.baseURL = baseURL;
-        this.version = version;
-        this.token = token;
-    }
-    
-    async getTransactions(): Promise<any> {
-        const response = await fetch(`${this.baseURL}/api/${this.version}/transactions`, {
-            headers: {
-                'Authorization': `Bearer ${this.token}`,
-                'X-API-Version': this.version,
-                'Content-Type': 'application/json'
-            }
-        });
-        
-        // Check for deprecation warnings
-        if (response.headers.get('X-API-Deprecated') === 'true') {
-            console.warn('⚠️ API version is deprecated:', {
-                version: this.version,
-                sunsetDate: response.headers.get('X-API-Sunset-Date'),
-                upgradeURL: response.headers.get('X-API-Upgrade-URL')
-            });
-        }
-        
-        return response.json();
-    }
-    
-    async createTransaction(transaction: any): Promise<any> {
-        const response = await fetch(`${this.baseURL}/api/${this.version}/transactions`, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${this.token}`,
-                'X-API-Version': this.version,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(transaction)
-        });
-        
-        return response.json();
-    }
-}
-
-// Usage examples
-const client = new PandaPocketClient('http://localhost:8080', 'v110', 'your-token');
-
-// Current version (v110)
-const transactions = await client.getTransactions();
-```
-
-#### Go Client
-
-```go
-package main
-
-import (
-    "bytes"
-    "encoding/json"
-    "fmt"
-    "net/http"
-    "time"
-)
-
-type PandaPocketClient struct {
-    BaseURL string
-    Version string
-    Token   string
-    Client  *http.Client
-}
-
-func NewPandaPocketClient(baseURL, version, token string) *PandaPocketClient {
-    return &PandaPocketClient{
-        BaseURL: baseURL,
-        Version: version,
-        Token:   token,
-        Client:  &http.Client{Timeout: 10 * time.Second},
-    }
-}
-
-func (c *PandaPocketClient) GetTransactions() (map[string]interface{}, error) {
-    url := fmt.Sprintf("%s/api/%s/transactions", c.BaseURL, c.Version)
-    
-    req, err := http.NewRequest("GET", url, nil)
-    if err != nil {
-        return nil, err
-    }
-    
-    req.Header.Set("Authorization", "Bearer "+c.Token)
-    req.Header.Set("X-API-Version", c.Version)
-    
-    resp, err := c.Client.Do(req)
-    if err != nil {
-        return nil, err
-    }
-    defer resp.Body.Close()
-    
-    // Check for deprecation warnings
-    if resp.Header.Get("X-API-Deprecated") == "true" {
-        fmt.Printf("⚠️ Warning: API version %s is deprecated!\n", c.Version)
-        fmt.Printf("   Sunset date: %s\n", resp.Header.Get("X-API-Sunset-Date"))
-        fmt.Printf("   Upgrade URL: %s\n", resp.Header.Get("X-API-Upgrade-URL"))
-    }
-    
-    var response map[string]interface{}
-    err = json.NewDecoder(resp.Body).Decode(&response)
-    return response, err
-}
-
-func (c *PandaPocketClient) CreateTransaction(transaction map[string]interface{}) (map[string]interface{}, error) {
-    url := fmt.Sprintf("%s/api/%s/transactions", c.BaseURL, c.Version)
-    
-    jsonData, err := json.Marshal(transaction)
-    if err != nil {
-        return nil, err
-    }
-    
-    req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
-    if err != nil {
-        return nil, err
-    }
-    
-    req.Header.Set("Authorization", "Bearer "+c.Token)
-    req.Header.Set("X-API-Version", c.Version)
-    req.Header.Set("Content-Type", "application/json")
-    
-    resp, err := c.Client.Do(req)
-    if err != nil {
-        return nil, err
-    }
-    defer resp.Body.Close()
-    
-    var response map[string]interface{}
-    err = json.NewDecoder(resp.Body).Decode(&response)
-    return response, err
-}
-
-// Usage example
-func main() {
-    // Current version (v110)
-    client := NewPandaPocketClient("http://localhost:8080", "v110", "your-token")
-    transactions, err := client.GetTransactions()
-    if err != nil {
-        fmt.Printf("Error: %v\n", err)
-        return
-    }
-    fmt.Printf("Transactions: %+v\n", transactions)
-}
-```
-
-#### Python Client
-
-```python
-import requests
-import json
-from typing import Dict, Any, Optional
-
-class PandaPocketClient:
-    def __init__(self, base_url: str, version: str = 'v110', token: str = ''):
-        self.base_url = base_url
-        self.version = version
-        self.token = token
-        self.session = requests.Session()
-        self.session.headers.update({
-            'Authorization': f'Bearer {token}',
-            'X-API-Version': version,
-            'Content-Type': 'application/json'
-        })
-    
-    def get_transactions(self) -> Dict[str, Any]:
-        url = f"{self.base_url}/api/{self.version}/transactions"
-        response = self.session.get(url)
-        
-        # Check for deprecation warnings
-        if response.headers.get('X-API-Deprecated') == 'true':
-            print(f"⚠️ Warning: API version {self.version} is deprecated!")
-            print(f"   Sunset date: {response.headers.get('X-API-Sunset-Date')}")
-            print(f"   Upgrade URL: {response.headers.get('X-API-Upgrade-URL')}")
-        
-        response.raise_for_status()
-        return response.json()
-    
-    def create_transaction(self, transaction: Dict[str, Any]) -> Dict[str, Any]:
-        url = f"{self.base_url}/api/{self.version}/transactions"
-        response = self.session.post(url, json=transaction)
-        response.raise_for_status()
-        return response.json()
-
-# Usage examples
-# Current version (v110)
-client = PandaPocketClient('http://localhost:8080', 'v110', 'your-token')
-transactions = client.get_transactions()
-```
-
-### Migration Strategies
-
-#### 1. Gradual Migration
-
-```typescript
-// Start with current version
-const client = new PandaPocketClient('http://localhost:8080', 'v110', token);
-
-// Check if version is supported
-const versionInfo = await fetch('/api/version/info/v110').then(r => r.json());
-if (versionInfo.deprecated) {
-    console.warn('Version is deprecated, consider upgrading');
-}
-```
-
-#### 2. Version Detection
-
-```typescript
-async function detectBestVersion(baseURL: string): Promise<string> {
-    try {
-        // Try current version first
-        const response = await fetch(`${baseURL}/api/v110/transactions`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-        
-        if (response.ok) {
-            return 'v110';
-        }
-    } catch (error) {
-        console.log('v110 not available, using legacy routes...');
-    }
-    
-    // Fallback to legacy routes
-    return 'legacy';
-}
-```
-
-#### 3. Feature Detection
-
-```typescript
-async function checkFeatures(baseURL: string, version: string): Promise<string[]> {
-    const response = await fetch(`${baseURL}/api/version/features/${version}`);
-    const data = await response.json();
-    return Object.keys(data.features).filter(feature => data.features[feature]);
-}
-
-// Check if analytics are available
-const features = await checkFeatures('http://localhost:8080', 'v110');
-if (features.includes('analytics')) {
-    // Use enhanced analytics endpoint
-    const analytics = await fetch('/api/v110/transactions/analytics');
-} else {
-    // Use basic analytics endpoint
-    const analytics = await fetch('/api/analytics');
-}
-```
-
----
-
 ## User Authentication
 
-### POST /api/v100/auth/register
+### POST /api/auth/register
 
 Register a new user account.
 
@@ -768,19 +175,22 @@ Register a new user account.
 **Response:**
 ```json
 {
-  "message": "User registered successfully",
-  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "user": {
-    "id": 1,
-    "email": "user@example.com",
-    "name": "User"
-  }
+  "status": "success",
+  "data": {
+    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "refresh_token": "...",
+    "user": {
+      "id": 1,
+      "email": "user@example.com"
+    }
+  },
+  "error": null
 }
 ```
 
-### POST /api/v100/auth/login
+### POST /api/auth/login
 
-Login to get an authentication token.
+Login to get access and refresh tokens.
 
 **Request Body:**
 ```json
@@ -793,24 +203,184 @@ Login to get an authentication token.
 **Response:**
 ```json
 {
-  "message": "Login successful",
-  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "user": {
-    "id": 1,
-    "email": "user@example.com",
-    "name": "User"
-  }
+  "status": "success",
+  "data": {
+    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "refresh_token": "...",
+    "user": {
+      "id": 1,
+      "email": "user@example.com"
+    }
+  },
+  "error": null
 }
 ```
 
-### POST /api/v100/auth/logout
+### POST /api/auth/refresh
 
-Logout and invalidate the current token.
+Exchange a refresh token for a new access token and refresh token pair.
+
+**Request Body:**
+```json
+{
+  "refresh_token": "..."
+}
+```
 
 **Response:**
 ```json
 {
-  "message": "Logout successful"
+  "status": "success",
+  "data": {
+    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "refresh_token": "..."
+  },
+  "error": null
+}
+```
+
+### POST /api/auth/logout
+
+Revoke a refresh token.
+
+**Request Body:**
+```json
+{
+  "refresh_token": "..."
+}
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "data": {
+    "message": "Logout successful"
+  },
+  "error": null
+}
+```
+
+### POST /api/auth/forgot
+
+Request a password reset email/link for the given address.
+
+**Request Body:**
+```json
+{
+  "email": "user@example.com"
+}
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "data": {
+    "message": "...",
+    "token": "...",
+    "reset_link": "..."
+  },
+  "error": null
+}
+```
+
+### POST /api/auth/reset-password
+
+Reset password using the token from the forgot-password flow.
+
+**Request Body:**
+```json
+{
+  "token": "...",
+  "new_password": "newpassword123",
+  "confirm_new_password": "newpassword123"
+}
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "data": {
+    "message": "..."
+  },
+  "error": null
+}
+```
+
+### POST /api/auth/change-password
+
+Change password for the authenticated user. Requires `Authorization: Bearer <token>`.
+
+**Request Body:**
+```json
+{
+  "old_password": "password123",
+  "new_password": "newpassword123",
+  "confirm_new_password": "newpassword123"
+}
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "data": {
+    "message": "Password changed successfully"
+  },
+  "error": null
+}
+```
+
+---
+
+## Users
+
+### GET /api/users
+
+List users. Requires authentication.
+
+**Response:**
+```json
+{
+  "status": "success",
+  "data": {
+    "users": [
+      {
+        "id": 1,
+        "email": "user@example.com",
+        "created_at": "2024-01-01T00:00:00Z"
+      }
+    ]
+  },
+  "error": null
+}
+```
+
+---
+
+## Dashboard (Admin)
+
+### GET /api/dashboard/stats
+
+Admin-only dashboard statistics. Requires authentication and `admin` role.
+
+**Response:**
+```json
+{
+  "status": "success",
+  "data": {
+    "total_users": 100,
+    "active_users": 80,
+    "total_budgets": 50,
+    "total_transactions": 1000,
+    "total_expenses": 25000.5,
+    "total_income": 40000.0,
+    "budgets_created_this_week": 5,
+    "budgets_created_this_month": 20
+  },
+  "error": null
 }
 ```
 
@@ -818,7 +388,7 @@ Logout and invalidate the current token.
 
 ## Categories
 
-### GET /api/v100/categories
+### GET /api/categories
 
 Get all categories available to the user (default + user-created).
 
@@ -845,7 +415,7 @@ Get all categories available to the user (default + user-created).
 ]
 ```
 
-### POST /api/v100/categories
+### POST /api/categories
 
 Create a new category.
 
@@ -871,7 +441,7 @@ Create a new category.
 }
 ```
 
-### PUT /api/v100/categories/:id
+### PUT /api/categories/:id
 
 Update an existing category.
 
@@ -897,7 +467,7 @@ Update an existing category.
 }
 ```
 
-### DELETE /api/v100/categories/:id
+### DELETE /api/categories/:id
 
 Delete a category.
 
@@ -913,7 +483,7 @@ Delete a category.
 
 ## Expenses
 
-### GET /api/v100/expenses
+### GET /api/expenses
 
 Get all expense transactions for the authenticated user.
 
@@ -938,7 +508,7 @@ Get all expense transactions for the authenticated user.
 ]
 ```
 
-### POST /api/v100/expenses
+### POST /api/expenses
 
 Create a new expense transaction.
 
@@ -968,7 +538,7 @@ Create a new expense transaction.
 }
 ```
 
-### PUT /api/v100/expenses/:id
+### PUT /api/expenses/:id
 
 Update an existing expense transaction.
 
@@ -1058,7 +628,7 @@ The "access denied" error can occur in the following scenarios:
 }
 ```
 
-### DELETE /api/v100/expenses/:id
+### DELETE /api/expenses/:id
 
 Delete an expense transaction.
 
@@ -1073,7 +643,7 @@ Delete an expense transaction.
 
 ## Incomes
 
-### GET /api/v100/incomes
+### GET /api/incomes
 
 Get all income transactions for the authenticated user.
 
@@ -1102,7 +672,7 @@ Get all income transactions for the authenticated user.
 }
 ```
 
-### POST /api/v100/incomes
+### POST /api/incomes
 
 Create a new income transaction.
 
@@ -1135,7 +705,7 @@ Create a new income transaction.
 }
 ```
 
-### PUT /api/v100/incomes/:id
+### PUT /api/incomes/:id
 
 Update an existing income transaction.
 
@@ -1263,7 +833,7 @@ The "access denied" error can occur in the following scenarios:
 }
 ```
 
-### DELETE /api/v100/incomes/:id
+### DELETE /api/incomes/:id
 
 Delete an income transaction.
 
@@ -1282,7 +852,7 @@ Delete an income transaction.
 
 ## Transactions
 
-### GET /api/v100/transactions
+### GET /api/transactions
 
 Get all transactions (both income and expense) for the authenticated user with advanced filtering capabilities.
 
@@ -1295,13 +865,13 @@ Get all transactions (both income and expense) for the authenticated user with a
 - `limit` (optional): Number of items per page (default: 20, max: 100)
 
 **Examples:**
-- Get all transactions: `GET /api/v100/transactions`
-- Get only expenses: `GET /api/v100/transactions?type=expense`
-- Get transactions from specific date range: `GET /api/v100/transactions?start_date=2024-01-01&end_date=2024-12-31`
-- Get transactions from specific categories: `GET /api/v100/transactions?category_ids=1,2,3`
-- Combined filters: `GET /api/v100/transactions?type=expense&start_date=2024-01-01&end_date=2024-12-31&category_ids=1,2`
-- Paginated results: `GET /api/v100/transactions?page=2&limit=10`
-- Paginated with filters: `GET /api/v100/transactions?type=expense&page=1&limit=5`
+- Get all transactions: `GET /api/transactions`
+- Get only expenses: `GET /api/transactions?type=expense`
+- Get transactions from specific date range: `GET /api/transactions?start_date=2024-01-01&end_date=2024-12-31`
+- Get transactions from specific categories: `GET /api/transactions?category_ids=1,2,3`
+- Combined filters: `GET /api/transactions?type=expense&start_date=2024-01-01&end_date=2024-12-31&category_ids=1,2`
+- Paginated results: `GET /api/transactions?page=2&limit=10`
+- Paginated with filters: `GET /api/transactions?type=expense&page=1&limit=5`
 
 **Response:**
 ```json
@@ -1381,7 +951,7 @@ Get all transactions (both income and expense) for the authenticated user with a
 
 ## Budgets
 
-### GET /api/v100/budgets
+### GET /api/budgets
 
 Get all budgets for the authenticated user.
 
@@ -1424,7 +994,7 @@ Get all budgets for the authenticated user.
   - `color` (string): Category color (hex code)
   - `type` (string): Category type (expense or income)
 
-### POST /api/v100/budgets
+### POST /api/budgets
 
 Create a new budget.
 
@@ -1459,7 +1029,7 @@ Create a new budget.
 }
 ```
 
-### PUT /api/v100/budgets/:id
+### PUT /api/budgets/:id
 
 Update an existing budget.
 
@@ -1490,7 +1060,7 @@ Update an existing budget.
 }
 ```
 
-### DELETE /api/v100/budgets/:id
+### DELETE /api/budgets/:id
 
 Delete a budget.
 
@@ -1509,7 +1079,7 @@ Delete a budget.
 
 ## Currencies
 
-### GET /api/v100/currencies
+### GET /api/currencies
 
 Get all currencies available in the system.
 
@@ -1537,7 +1107,7 @@ Get all currencies available in the system.
 }
 ```
 
-### POST /api/v100/currencies
+### POST /api/currencies
 
 Create a new currency.
 
@@ -1568,7 +1138,7 @@ Create a new currency.
 }
 ```
 
-### PUT /api/v100/currencies/:id
+### PUT /api/currencies/:id
 
 Update an existing currency.
 
@@ -1599,7 +1169,7 @@ Update an existing currency.
 }
 ```
 
-### DELETE /api/v100/currencies/:id
+### DELETE /api/currencies/:id
 
 Delete a currency.
 
@@ -1614,7 +1184,7 @@ Delete a currency.
 }
 ```
 
-### PUT /api/v100/currencies/:id/set-default
+### PUT /api/currencies/:id/set-default
 
 Set a currency as the user's default currency.
 
@@ -1629,7 +1199,7 @@ Set a currency as the user's default currency.
 }
 ```
 
-### GET /api/v100/currencies/default
+### GET /api/currencies/default
 
 Get the user's default currency.
 
@@ -1653,7 +1223,7 @@ Get the user's default currency.
 
 ## Analytics
 
-### GET /api/v100/analytics
+### GET /api/analytics
 
 Get spending analytics and reports.
 
@@ -1782,12 +1352,16 @@ All endpoints may return the following error responses:
 
 ---
 
+## Documentation Maintenance
+
+Keep this file in sync with the running API. When routes, request/response shapes, auth rules, or error codes change in the backend, update `API_DOCUMENTATION.md` in the same change. Source of truth for mounted routes is `internal/application/app.go`.
+
 ## Development Notes
 
 - The API uses Domain-Driven Design (DDD) architecture
 - Built with Go and Gin framework for HTTP routing
-- Authentication is implemented using JWT tokens
-- CORS is configured to allow localhost development
+- Authentication uses bearer access tokens plus refresh tokens
+- CORS allows all origins (`*`)
 - All timestamps are in UTC format
 - Date formats should be in `YYYY-MM-DD` format for input
 - Amounts are stored as floating-point numbers
@@ -1798,38 +1372,25 @@ All endpoints may return the following error responses:
 
 ## Version History
 
+- **v2.5.0**: **Removed API Versioning** - Endpoints live under unversioned `/api/*` paths
+  - Dropped `/api/v100` URL prefix and version middleware
+  - Removed unused version lifecycle / deprecation handlers
+  - Documented refresh, forgot/reset/change password, users, and admin dashboard endpoints
+
 - **v2.4.0**: **Dashboard Statistics API** - Added comprehensive dashboard statistics for back office
-  - New admin-only dashboard statistics endpoint (`GET /api/v100/dashboard/stats`)
-  - Real-time metrics including user counts, transaction totals, and budget analytics
+  - New admin-only dashboard statistics endpoint (`GET /api/dashboard/stats`)
   - Role-based access control ensuring only admin users can access dashboard data
-  - Comprehensive error handling and response documentation
   - User registration automatically assigns "user" role by default
-  - Dashboard statistics filter to show only regular users (excludes admin accounts)
 
 - **v2.3.0**: **Enhanced API Documentation** - Updated documentation to reflect current implementation
   - Added detailed documentation for Expenses and Incomes endpoints
   - Updated Transactions endpoint with enhanced response structure including category details
-  - Improved pagination and filtering documentation
-  - Added comprehensive request/response examples for all endpoints
-  - Updated version history and implementation status
 
-- **v2.2.0**: **API Versioning System** - Multi-version API support with backward compatibility
-  - Complete API versioning implementation with support for v110
-  - Version middleware for automatic version detection and validation
-  - Version management endpoints for future migration support
-  - Enhanced v110 endpoints with advanced analytics and filtering
-  - Client library examples for JavaScript, Go, and Python
-  - Comprehensive migration strategies and feature detection
+- **v2.2.0**: **API Versioning System** (superseded by v2.5.0)
+  - Historical note: multi-version URL prefixes were introduced and later removed
 
 - **v2.1.0**: **Enhanced Transaction API** - Advanced filtering and pagination for transaction retrieval
-  - New unified transactions endpoint with filtering capabilities
-  - Support for filtering by transaction type, categories, and date ranges
-  - Combined filter support for complex queries
-  - Pagination support with configurable page size (default: 20, max: 100)
-  - Improved API response structure with pagination metadata and filter transparency
+  - Unified transactions endpoint with filtering and pagination
 
 - **v2.0.0**: **DDD Refactored** - Complete architectural overhaul with Domain-Driven Design
-  - Full CRUD operations for Categories, Currencies
-  - Budget management system
-  - Analytics and reporting
-  - Comprehensive transaction tracking
+  - Full CRUD for Categories, Currencies, Budgets, and transaction tracking

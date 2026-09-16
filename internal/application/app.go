@@ -10,7 +10,6 @@ import (
 	"panda-pocket/internal/infrastructure/notification"
 	"panda-pocket/internal/interfaces/http/handlers"
 	"panda-pocket/internal/interfaces/http/middleware"
-	"panda-pocket/internal/interfaces/http/versioning"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -19,14 +18,11 @@ import (
 
 // App represents the application with all its dependencies
 type App struct {
-	DB                 *gorm.DB
-	IdentityHandlers   *handlers.IdentityHandlers
-	FinanceHandlers    *handlers.FinanceHandlers
-	DashboardHandlers  *handlers.DashboardHandlers
-	DeprecationHandler *handlers.DeprecationHandler
-	AuthMiddleware     *middleware.AuthMiddleware
-	VersionMiddleware  *middleware.VersionMiddleware
-	VersionManager     *versioning.VersionManager
+	DB                *gorm.DB
+	IdentityHandlers  *handlers.IdentityHandlers
+	FinanceHandlers   *handlers.FinanceHandlers
+	DashboardHandlers *handlers.DashboardHandlers
+	AuthMiddleware    *middleware.AuthMiddleware
 }
 
 // NewApp creates a new application instance with all dependencies wired up
@@ -113,22 +109,14 @@ func NewApp(db *gorm.DB) *App {
 		getDefaultCurrencyUseCase,
 	)
 	dashboardHandlers := handlers.NewDashboardHandlers(getDashboardStatsUseCase)
-
-	// Version management
-	versionManager := versioning.NewVersionManager()
-	versionMiddleware := middleware.NewVersionMiddleware()
-	deprecationHandler := handlers.NewDeprecationHandler(versionManager)
 	authMiddleware := middleware.NewAuthMiddleware(tokenService)
 
 	return &App{
-		DB:                 db,
-		IdentityHandlers:   identityHandlers,
-		FinanceHandlers:    financeHandlers,
-		DashboardHandlers:  dashboardHandlers,
-		DeprecationHandler: deprecationHandler,
-		AuthMiddleware:     authMiddleware,
-		VersionMiddleware:  versionMiddleware,
-		VersionManager:     versionManager,
+		DB:                db,
+		IdentityHandlers:  identityHandlers,
+		FinanceHandlers:   financeHandlers,
+		DashboardHandlers: dashboardHandlers,
+		AuthMiddleware:    authMiddleware,
 	}
 }
 
@@ -142,95 +130,68 @@ func (app *App) SetupRoutes() *gin.Engine {
 		"*",
 	}
 	config.AllowMethods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}
-	config.AllowHeaders = []string{"Origin", "Content-Type", "Accept", "Authorization", "X-API-Version"}
+	config.AllowHeaders = []string{"Origin", "Content-Type", "Accept", "Authorization"}
 	config.AllowCredentials = false
 	r.Use(cors.New(config))
 
-	// Version middleware
-	r.Use(app.VersionMiddleware.ExtractVersion())
-	r.Use(app.VersionMiddleware.ValidateVersion())
-	r.Use(app.VersionMiddleware.AddDeprecationWarning())
-
-	// Rate limiting middleware - commented out as it doesn't exist yet
-	// r.Use(middleware.RateLimitMiddleware(15*time.Minute, 100)) // 100 requests per 15 minutes
-
-	// Versioned routes
-	versioned := r.Group("/api")
+	api := r.Group("/api")
 	{
-		// v100 routes (current version)
-		v100 := versioned.Group("/v100")
+		auth := api.Group("/auth")
 		{
-			// Auth routes
-			auth := v100.Group("/auth")
-			{
-				auth.POST("/register", app.IdentityHandlers.Register)
-				auth.POST("/login", app.IdentityHandlers.Login)
-				auth.POST("/refresh", app.IdentityHandlers.RefreshToken)
-				auth.POST("/logout", app.IdentityHandlers.Logout)
-				auth.POST("/forgot", app.IdentityHandlers.ForgotPassword)
-				auth.POST("/reset-password", app.IdentityHandlers.ResetPassword)
+			auth.POST("/register", app.IdentityHandlers.Register)
+			auth.POST("/login", app.IdentityHandlers.Login)
+			auth.POST("/refresh", app.IdentityHandlers.RefreshToken)
+			auth.POST("/logout", app.IdentityHandlers.Logout)
+			auth.POST("/forgot", app.IdentityHandlers.ForgotPassword)
+			auth.POST("/reset-password", app.IdentityHandlers.ResetPassword)
 
-				// Authenticated password change
-				auth.POST("/change-password", app.AuthMiddleware.RequireAuth(), app.IdentityHandlers.ChangePassword)
+			auth.POST("/change-password", app.AuthMiddleware.RequireAuth(), app.IdentityHandlers.ChangePassword)
+		}
+
+		protected := api.Group("")
+		protected.Use(app.AuthMiddleware.RequireAuth())
+		{
+			protected.GET("/users", app.IdentityHandlers.GetUsers)
+
+			adminOnly := protected.Group("")
+			adminOnly.Use(app.AuthMiddleware.RequireRole("admin"))
+			{
+				adminOnly.GET("/dashboard/stats", app.DashboardHandlers.GetDashboardStats)
 			}
 
-			// Protected routes
-			protected := v100.Group("")
-			protected.Use(app.AuthMiddleware.RequireAuth())
-			{
-				// Users (basic)
-				protected.GET("/users", app.IdentityHandlers.GetUsers)
+			protected.GET("/categories", app.FinanceHandlers.GetCategories)
+			protected.POST("/categories", app.FinanceHandlers.CreateCategory)
+			protected.PUT("/categories/:id", app.FinanceHandlers.UpdateCategory)
+			protected.DELETE("/categories/:id", app.FinanceHandlers.DeleteCategory)
 
-				// User Management (admin only)
-				adminOnly := protected.Group("")
-				adminOnly.Use(app.AuthMiddleware.RequireRole("admin"))
-				{
-					// Dashboard stats (admin only)
-					adminOnly.GET("/dashboard/stats", app.DashboardHandlers.GetDashboardStats)
-				}
+			protected.GET("/expenses", app.FinanceHandlers.GetExpenses)
+			protected.POST("/expenses", app.FinanceHandlers.CreateExpense)
+			protected.PUT("/expenses/:id", app.FinanceHandlers.UpdateExpense)
+			protected.DELETE("/expenses/:id", app.FinanceHandlers.DeleteExpense)
 
-				// Categories
-				protected.GET("/categories", app.FinanceHandlers.GetCategories)
-				protected.POST("/categories", app.FinanceHandlers.CreateCategory)
-				protected.PUT("/categories/:id", app.FinanceHandlers.UpdateCategory)
-				protected.DELETE("/categories/:id", app.FinanceHandlers.DeleteCategory)
+			protected.GET("/incomes", app.FinanceHandlers.GetIncomes)
+			protected.POST("/incomes", app.FinanceHandlers.CreateIncome)
+			protected.PUT("/incomes/:id", app.FinanceHandlers.UpdateIncome)
+			protected.DELETE("/incomes/:id", app.FinanceHandlers.DeleteIncome)
 
-				// Expenses
-				protected.GET("/expenses", app.FinanceHandlers.GetExpenses)
-				protected.POST("/expenses", app.FinanceHandlers.CreateExpense)
-				protected.PUT("/expenses/:id", app.FinanceHandlers.UpdateExpense)
-				protected.DELETE("/expenses/:id", app.FinanceHandlers.DeleteExpense)
+			protected.GET("/transactions", app.FinanceHandlers.GetAllTransactions)
 
-				// Incomes
-				protected.GET("/incomes", app.FinanceHandlers.GetIncomes)
-				protected.POST("/incomes", app.FinanceHandlers.CreateIncome)
-				protected.PUT("/incomes/:id", app.FinanceHandlers.UpdateIncome)
-				protected.DELETE("/incomes/:id", app.FinanceHandlers.DeleteIncome)
+			protected.GET("/budgets", app.FinanceHandlers.GetBudgets)
+			protected.POST("/budgets", app.FinanceHandlers.CreateBudget)
+			protected.PUT("/budgets/:id", app.FinanceHandlers.UpdateBudget)
+			protected.DELETE("/budgets/:id", app.FinanceHandlers.DeleteBudget)
 
-				// All Transactions (with filters)
-				protected.GET("/transactions", app.FinanceHandlers.GetAllTransactions)
+			protected.GET("/currencies", app.FinanceHandlers.GetCurrencies)
+			protected.POST("/currencies", app.FinanceHandlers.CreateCurrency)
+			protected.GET("/currencies/default", app.FinanceHandlers.GetDefaultCurrency)
+			protected.PUT("/currencies/:id/set-default", app.FinanceHandlers.SetDefaultCurrency)
+			protected.PUT("/currencies/:id", app.FinanceHandlers.UpdateCurrency)
+			protected.DELETE("/currencies/:id", app.FinanceHandlers.DeleteCurrency)
 
-				// Budgets
-				protected.GET("/budgets", app.FinanceHandlers.GetBudgets)
-				protected.POST("/budgets", app.FinanceHandlers.CreateBudget)
-				protected.PUT("/budgets/:id", app.FinanceHandlers.UpdateBudget)
-				protected.DELETE("/budgets/:id", app.FinanceHandlers.DeleteBudget)
-
-				// Currencies
-				protected.GET("/currencies", app.FinanceHandlers.GetCurrencies)
-				protected.POST("/currencies", app.FinanceHandlers.CreateCurrency)
-				protected.GET("/currencies/default", app.FinanceHandlers.GetDefaultCurrency)
-				protected.PUT("/currencies/:id/set-default", app.FinanceHandlers.SetDefaultCurrency)
-				protected.PUT("/currencies/:id", app.FinanceHandlers.UpdateCurrency)
-				protected.DELETE("/currencies/:id", app.FinanceHandlers.DeleteCurrency)
-
-				// Analytics
-				protected.GET("/analytics", app.FinanceHandlers.GetAnalytics)
-			}
+			protected.GET("/analytics", app.FinanceHandlers.GetAnalytics)
 		}
 	}
 
-	// Health check
 	r.GET("/health", func(c *gin.Context) {
 		handlers.SuccessResponse(c, http.StatusOK, gin.H{"status": "ok"})
 	})
