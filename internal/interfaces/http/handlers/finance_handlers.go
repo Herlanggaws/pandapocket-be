@@ -40,6 +40,16 @@ type FinanceHandlers struct {
 	listPendingUseCase        *finance.ListPendingTransactionsUseCase
 	confirmPendingUseCase     *finance.ConfirmPendingTransactionUseCase
 	rejectPendingUseCase      *finance.RejectPendingTransactionUseCase
+	createWalletUseCase       *finance.CreateWalletUseCase
+	getWalletsUseCase         *finance.GetWalletsUseCase
+	getWalletUseCase          *finance.GetWalletUseCase
+	updateWalletUseCase       *finance.UpdateWalletUseCase
+	setDefaultWalletUseCase   *finance.SetDefaultWalletUseCase
+	archiveWalletUseCase      *finance.ArchiveWalletUseCase
+	unarchiveWalletUseCase    *finance.UnarchiveWalletUseCase
+	getWalletBalanceUseCase   *finance.GetWalletBalanceUseCase
+	createTransferUseCase     *finance.CreateTransferUseCase
+	getTransfersUseCase       *finance.GetTransfersUseCase
 }
 
 // NewFinanceHandlers creates a new finance handlers instance
@@ -71,6 +81,16 @@ func NewFinanceHandlers(
 	listPendingUseCase *finance.ListPendingTransactionsUseCase,
 	confirmPendingUseCase *finance.ConfirmPendingTransactionUseCase,
 	rejectPendingUseCase *finance.RejectPendingTransactionUseCase,
+	createWalletUseCase *finance.CreateWalletUseCase,
+	getWalletsUseCase *finance.GetWalletsUseCase,
+	getWalletUseCase *finance.GetWalletUseCase,
+	updateWalletUseCase *finance.UpdateWalletUseCase,
+	setDefaultWalletUseCase *finance.SetDefaultWalletUseCase,
+	archiveWalletUseCase *finance.ArchiveWalletUseCase,
+	unarchiveWalletUseCase *finance.UnarchiveWalletUseCase,
+	getWalletBalanceUseCase *finance.GetWalletBalanceUseCase,
+	createTransferUseCase *finance.CreateTransferUseCase,
+	getTransfersUseCase *finance.GetTransfersUseCase,
 ) *FinanceHandlers {
 	return &FinanceHandlers{
 		createTransactionUseCase:  createTransactionUseCase,
@@ -100,6 +120,16 @@ func NewFinanceHandlers(
 		listPendingUseCase:        listPendingUseCase,
 		confirmPendingUseCase:     confirmPendingUseCase,
 		rejectPendingUseCase:      rejectPendingUseCase,
+		createWalletUseCase:       createWalletUseCase,
+		getWalletsUseCase:         getWalletsUseCase,
+		getWalletUseCase:          getWalletUseCase,
+		updateWalletUseCase:       updateWalletUseCase,
+		setDefaultWalletUseCase:   setDefaultWalletUseCase,
+		archiveWalletUseCase:      archiveWalletUseCase,
+		unarchiveWalletUseCase:    unarchiveWalletUseCase,
+		getWalletBalanceUseCase:   getWalletBalanceUseCase,
+		createTransferUseCase:     createTransferUseCase,
+		getTransfersUseCase:       getTransfersUseCase,
 	}
 }
 
@@ -224,6 +254,12 @@ func (h *FinanceHandlers) GetAllTransactions(c *gin.Context) {
 		Type:      c.Query("type"),
 		StartDate: startDateStr,
 		EndDate:   endDateStr,
+	}
+
+	if walletIDParam := c.Query("wallet_id"); walletIDParam != "" {
+		if walletID, err := strconv.Atoi(walletIDParam); err == nil {
+			req.WalletID = &walletID
+		}
 	}
 
 	// Parse category IDs from query parameter
@@ -480,6 +516,11 @@ func (h *FinanceHandlers) GetAnalytics(c *gin.Context) {
 
 	req := finance.GetAnalyticsRequest{
 		Period: period,
+	}
+	if walletIDParam := c.Query("wallet_id"); walletIDParam != "" {
+		if walletID, err := strconv.Atoi(walletIDParam); err == nil {
+			req.WalletID = &walletID
+		}
 	}
 
 	response, err := h.getAnalyticsUseCase.Execute(c.Request.Context(), userID, req)
@@ -777,4 +818,165 @@ func (h *FinanceHandlers) RejectPendingTransaction(c *gin.Context) {
 		"message":             "Pending transaction rejected",
 		"pending_transaction": response,
 	})
+}
+
+func (h *FinanceHandlers) CreateWallet(c *gin.Context) {
+	userID := c.GetInt("user_id")
+	var req finance.CreateWalletRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		ValidationErrorResponse(c, err.Error())
+		return
+	}
+	response, err := h.createWalletUseCase.Execute(c.Request.Context(), userID, req)
+	if err != nil {
+		HandleError(c, err, http.StatusBadRequest)
+		return
+	}
+	SuccessResponse(c, http.StatusCreated, gin.H{"wallet": response})
+}
+
+func (h *FinanceHandlers) GetWallets(c *gin.Context) {
+	userID := c.GetInt("user_id")
+	includeArchived := c.Query("include_archived") == "true" || c.Query("include_archived") == "1"
+	response, err := h.getWalletsUseCase.Execute(c.Request.Context(), userID, includeArchived)
+	if err != nil {
+		HandleError(c, err, http.StatusBadRequest)
+		return
+	}
+	SuccessResponse(c, http.StatusOK, gin.H{"wallets": response})
+}
+
+func (h *FinanceHandlers) GetWallet(c *gin.Context) {
+	userID := c.GetInt("user_id")
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		ValidationErrorResponse(c, "invalid wallet id")
+		return
+	}
+	response, err := h.getWalletUseCase.Execute(c.Request.Context(), userID, id)
+	if err != nil {
+		HandleError(c, err, http.StatusNotFound)
+		return
+	}
+	SuccessResponse(c, http.StatusOK, gin.H{"wallet": response})
+}
+
+func (h *FinanceHandlers) UpdateWallet(c *gin.Context) {
+	userID := c.GetInt("user_id")
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		ValidationErrorResponse(c, "invalid wallet id")
+		return
+	}
+	var req finance.UpdateWalletRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		ValidationErrorResponse(c, err.Error())
+		return
+	}
+	response, err := h.updateWalletUseCase.Execute(c.Request.Context(), userID, id, req)
+	if err != nil {
+		HandleError(c, err, http.StatusBadRequest)
+		return
+	}
+	SuccessResponse(c, http.StatusOK, gin.H{"wallet": response})
+}
+
+func (h *FinanceHandlers) SetDefaultWallet(c *gin.Context) {
+	userID := c.GetInt("user_id")
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		ValidationErrorResponse(c, "invalid wallet id")
+		return
+	}
+	response, err := h.setDefaultWalletUseCase.Execute(c.Request.Context(), userID, id)
+	if err != nil {
+		HandleError(c, err, http.StatusBadRequest)
+		return
+	}
+	SuccessResponse(c, http.StatusOK, gin.H{"wallet": response})
+}
+
+func (h *FinanceHandlers) ArchiveWallet(c *gin.Context) {
+	userID := c.GetInt("user_id")
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		ValidationErrorResponse(c, "invalid wallet id")
+		return
+	}
+	response, err := h.archiveWalletUseCase.Execute(c.Request.Context(), userID, id)
+	if err != nil {
+		HandleError(c, err, http.StatusBadRequest)
+		return
+	}
+	SuccessResponse(c, http.StatusOK, gin.H{"wallet": response})
+}
+
+func (h *FinanceHandlers) UnarchiveWallet(c *gin.Context) {
+	userID := c.GetInt("user_id")
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		ValidationErrorResponse(c, "invalid wallet id")
+		return
+	}
+	response, err := h.unarchiveWalletUseCase.Execute(c.Request.Context(), userID, id)
+	if err != nil {
+		HandleError(c, err, http.StatusBadRequest)
+		return
+	}
+	SuccessResponse(c, http.StatusOK, gin.H{"wallet": response})
+}
+
+func (h *FinanceHandlers) GetWalletBalance(c *gin.Context) {
+	userID := c.GetInt("user_id")
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		ValidationErrorResponse(c, "invalid wallet id")
+		return
+	}
+	response, err := h.getWalletBalanceUseCase.Execute(c.Request.Context(), userID, id)
+	if err != nil {
+		HandleError(c, err, http.StatusNotFound)
+		return
+	}
+	SuccessResponse(c, http.StatusOK, response)
+}
+
+func (h *FinanceHandlers) CreateTransfer(c *gin.Context) {
+	userID := c.GetInt("user_id")
+	var req finance.CreateTransferRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		ValidationErrorResponse(c, err.Error())
+		return
+	}
+	response, err := h.createTransferUseCase.Execute(c.Request.Context(), userID, req)
+	if err != nil {
+		HandleError(c, err, http.StatusBadRequest)
+		return
+	}
+	SuccessResponse(c, http.StatusCreated, gin.H{"transfer": response})
+}
+
+func (h *FinanceHandlers) GetTransfers(c *gin.Context) {
+	userID := c.GetInt("user_id")
+	var walletID *int
+	if walletIDParam := c.Query("wallet_id"); walletIDParam != "" {
+		if id, err := strconv.Atoi(walletIDParam); err == nil {
+			walletID = &id
+		}
+	}
+	startDate := c.Query("start_date")
+	endDate := c.Query("end_date")
+	var startPtr, endPtr *string
+	if startDate != "" {
+		startPtr = &startDate
+	}
+	if endDate != "" {
+		endPtr = &endDate
+	}
+	response, err := h.getTransfersUseCase.Execute(c.Request.Context(), userID, walletID, startPtr, endPtr)
+	if err != nil {
+		HandleError(c, err, http.StatusBadRequest)
+		return
+	}
+	SuccessResponse(c, http.StatusOK, gin.H{"transfers": response})
 }

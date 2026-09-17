@@ -25,6 +25,7 @@ func (r *GormPendingTransactionRepository) toDomain(model PendingTransaction) (*
 	return finance.ReconstitutePendingTransaction(
 		finance.NewPendingTransactionID(int(model.ID)),
 		finance.NewUserID(int(model.UserID)),
+		walletIDFromPtr(model.WalletID),
 		finance.NewRecurringTransactionID(int(model.RecurringTransactionID)),
 		model.DueDate,
 		amount,
@@ -39,8 +40,11 @@ func (r *GormPendingTransactionRepository) toDomain(model PendingTransaction) (*
 }
 
 func (r *GormPendingTransactionRepository) Save(ctx context.Context, pending *finance.PendingTransaction) error {
+	walletID := uint(pending.WalletID().Value())
+	walletIDPtr := &walletID
 	model := &PendingTransaction{
 		UserID:                 uint(pending.UserID().Value()),
+		WalletID:               walletIDPtr,
 		RecurringTransactionID: uint(pending.RecurringTransactionID().Value()),
 		DueDate:                pending.DueDate(),
 		Amount:                 pending.Amount().Amount(),

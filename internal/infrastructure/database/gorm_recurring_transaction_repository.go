@@ -34,6 +34,7 @@ func (r *GormRecurringTransactionRepository) toDomain(model RecurringTransaction
 	return finance.ReconstituteRecurringTransaction(
 		finance.NewRecurringTransactionID(int(model.ID)),
 		finance.NewUserID(int(model.UserID)),
+		walletIDFromPtr(model.WalletID),
 		finance.NewCategoryID(int(model.CategoryID)),
 		finance.NewCurrencyID(int(model.CurrencyID)),
 		amount,
@@ -49,8 +50,11 @@ func (r *GormRecurringTransactionRepository) toDomain(model RecurringTransaction
 
 func (r *GormRecurringTransactionRepository) Save(ctx context.Context, rt *finance.RecurringTransaction) error {
 	schedule := rt.Schedule()
+	walletID := uint(rt.WalletID().Value())
+	walletIDPtr := &walletID
 	model := &RecurringTransaction{
 		UserID:      uint(rt.UserID().Value()),
+		WalletID:    walletIDPtr,
 		CategoryID:  uint(rt.CategoryID().Value()),
 		CurrencyID:  uint(rt.CurrencyID().Value()),
 		Amount:      rt.Amount().Amount(),
@@ -67,6 +71,7 @@ func (r *GormRecurringTransactionRepository) Save(ctx context.Context, rt *finan
 	if rt.ID().Value() != 0 {
 		model.ID = uint(rt.ID().Value())
 		return r.db.WithContext(ctx).Model(&RecurringTransaction{}).Where("id = ?", model.ID).Updates(map[string]interface{}{
+			"wallet_id":      model.WalletID,
 			"category_id":    model.CategoryID,
 			"currency_id":    model.CurrencyID,
 			"amount":         model.Amount,

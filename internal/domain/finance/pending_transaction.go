@@ -31,6 +31,7 @@ func (p PendingTransactionID) Value() int {
 type PendingTransaction struct {
 	id                     PendingTransactionID
 	userID                 UserID
+	walletID               WalletID
 	recurringTransactionID RecurringTransactionID
 	dueDate                time.Time
 	amount                 Money
@@ -45,6 +46,7 @@ type PendingTransaction struct {
 
 func NewPendingTransaction(
 	userID UserID,
+	walletID WalletID,
 	recurringTransactionID RecurringTransactionID,
 	dueDate time.Time,
 	amount Money,
@@ -58,6 +60,7 @@ func NewPendingTransaction(
 	}
 	return &PendingTransaction{
 		userID:                 userID,
+		walletID:               walletID,
 		recurringTransactionID: recurringTransactionID,
 		dueDate:                dueDate.Truncate(24 * time.Hour),
 		amount:                 amount,
@@ -73,6 +76,7 @@ func NewPendingTransaction(
 func ReconstitutePendingTransaction(
 	id PendingTransactionID,
 	userID UserID,
+	walletID WalletID,
 	recurringTransactionID RecurringTransactionID,
 	dueDate time.Time,
 	amount Money,
@@ -87,6 +91,7 @@ func ReconstitutePendingTransaction(
 	return &PendingTransaction{
 		id:                     id,
 		userID:                 userID,
+		walletID:               walletID,
 		recurringTransactionID: recurringTransactionID,
 		dueDate:                dueDate,
 		amount:                 amount,
@@ -106,6 +111,7 @@ func (p *PendingTransaction) AssignID(id PendingTransactionID) {
 
 func (p *PendingTransaction) ID() PendingTransactionID { return p.id }
 func (p *PendingTransaction) UserID() UserID           { return p.userID }
+func (p *PendingTransaction) WalletID() WalletID       { return p.walletID }
 func (p *PendingTransaction) RecurringTransactionID() RecurringTransactionID {
 	return p.recurringTransactionID
 }

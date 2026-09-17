@@ -257,6 +257,43 @@ func (s *stubCurrencyRepo) GetUserDefaultCurrency(ctx context.Context, userID do
 	return s.FindByID(ctx, domainFinance.NewCurrencyID(1))
 }
 
+
+type stubWalletRepo struct{}
+
+func (s *stubWalletRepo) Save(ctx context.Context, wallet *domainFinance.Wallet) error { return nil }
+func (s *stubWalletRepo) FindByID(ctx context.Context, id domainFinance.WalletID) (*domainFinance.Wallet, error) {
+	return domainFinance.ReconstituteWallet(
+		domainFinance.NewWalletID(1),
+		domainFinance.NewUserID(1),
+		"Cash",
+		domainFinance.WalletTypeCash,
+		domainFinance.NewCurrencyID(1),
+		0,
+		true,
+		false,
+		time.Now(),
+	), nil
+}
+func (s *stubWalletRepo) FindByUserID(ctx context.Context, userID domainFinance.UserID, includeArchived bool) ([]*domainFinance.Wallet, error) {
+	w, _ := s.FindByID(ctx, domainFinance.NewWalletID(1))
+	return []*domainFinance.Wallet{w}, nil
+}
+func (s *stubWalletRepo) FindDefaultByUserID(ctx context.Context, userID domainFinance.UserID) (*domainFinance.Wallet, error) {
+	return s.FindByID(ctx, domainFinance.NewWalletID(1))
+}
+func (s *stubWalletRepo) CountActiveByUserID(ctx context.Context, userID domainFinance.UserID) (int64, error) {
+	return 1, nil
+}
+func (s *stubWalletRepo) ClearDefaultForUser(ctx context.Context, userID domainFinance.UserID) error {
+	return nil
+}
+func (s *stubWalletRepo) HasTransactions(ctx context.Context, id domainFinance.WalletID) (bool, error) {
+	return false, nil
+}
+func (s *stubWalletRepo) GetBalanceBreakdown(ctx context.Context, id domainFinance.WalletID) (domainFinance.WalletBalanceBreakdown, error) {
+	return domainFinance.WalletBalanceBreakdown{}, nil
+}
+
 func mustDueRecurring(t *testing.T) *domainFinance.RecurringTransaction {
 	t.Helper()
 	amount, err := domainFinance.NewMoney(150000, domainFinance.NewCurrencyID(1))
@@ -266,6 +303,7 @@ func mustDueRecurring(t *testing.T) *domainFinance.RecurringTransaction {
 	today := time.Now().Truncate(24 * time.Hour)
 	rt, err := domainFinance.NewRecurringTransaction(
 		domainFinance.NewUserID(1),
+		domainFinance.NewWalletID(1),
 		domainFinance.NewCategoryID(1),
 		domainFinance.NewCurrencyID(1),
 		amount,
@@ -331,6 +369,7 @@ func TestConfirmPendingCreatesTransaction(t *testing.T) {
 	amount, _ := domainFinance.NewMoney(99, domainFinance.NewCurrencyID(1))
 	pt, err := domainFinance.NewPendingTransaction(
 		domainFinance.NewUserID(1),
+		domainFinance.NewWalletID(1),
 		domainFinance.NewRecurringTransactionID(5),
 		time.Now(),
 		amount,
@@ -344,7 +383,7 @@ func TestConfirmPendingCreatesTransaction(t *testing.T) {
 	}
 	_ = pendingRepo.Save(context.Background(), pt)
 
-	txService := domainFinance.NewTransactionService(txRepo, &stubCategoryRepo{}, &stubCurrencyRepo{})
+	txService := domainFinance.NewTransactionService(txRepo, &stubCategoryRepo{}, &stubCurrencyRepo{}, &stubWalletRepo{})
 	uc := NewConfirmPendingTransactionUseCase(pendingRepo, txService)
 	resp, err := uc.Execute(context.Background(), 1, pt.ID().Value())
 	if err != nil {
@@ -366,6 +405,7 @@ func TestRejectPendingDoesNotCreateTransaction(t *testing.T) {
 	amount, _ := domainFinance.NewMoney(99, domainFinance.NewCurrencyID(1))
 	pt, err := domainFinance.NewPendingTransaction(
 		domainFinance.NewUserID(1),
+		domainFinance.NewWalletID(1),
 		domainFinance.NewRecurringTransactionID(5),
 		time.Now(),
 		amount,

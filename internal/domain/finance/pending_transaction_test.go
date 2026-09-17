@@ -13,6 +13,7 @@ func TestNewPendingTransaction(t *testing.T) {
 	due := time.Date(2024, 6, 15, 12, 30, 0, 0, time.UTC)
 	pt, err := NewPendingTransaction(
 		NewUserID(1),
+		NewWalletID(1),
 		NewRecurringTransactionID(10),
 		due,
 		amount,
@@ -39,6 +40,7 @@ func TestPendingTransactionConfirm(t *testing.T) {
 	amount, _ := NewMoney(50, NewCurrencyID(1))
 	pt, err := NewPendingTransaction(
 		NewUserID(1),
+		NewWalletID(1),
 		NewRecurringTransactionID(1),
 		time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 		amount,
@@ -71,6 +73,7 @@ func TestPendingTransactionReject(t *testing.T) {
 	amount, _ := NewMoney(50, NewCurrencyID(1))
 	pt, err := NewPendingTransaction(
 		NewUserID(1),
+		NewWalletID(1),
 		NewRecurringTransactionID(1),
 		time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 		amount,

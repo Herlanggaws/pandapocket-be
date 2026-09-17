@@ -39,15 +39,19 @@ func NewApp(db *gorm.DB) *App {
 	authTokenRepo := database.NewGormTokenRepository(db)
 	prefsRepo := database.NewGormPreferencesRepository(db)
 	notificationRepo := database.NewGormNotificationRepository(db)
+	walletRepo := database.NewGormWalletRepository(db)
+	transferRepo := database.NewGormTransferRepository(db)
 	recurringRepo := database.NewGormRecurringTransactionRepository(db)
 	pendingRepo := database.NewGormPendingTransactionRepository(db)
 
 	// Domain layer - services
 	userService := domainIdentity.NewUserService(userRepo)
-	transactionService := domainFinance.NewTransactionService(transactionRepo, categoryRepo, currencyRepo)
+	transactionService := domainFinance.NewTransactionService(transactionRepo, categoryRepo, currencyRepo, walletRepo)
 	categoryService := domainFinance.NewCategoryService(categoryRepo, budgetRepo)
 	currencyService := domainFinance.NewCurrencyService(currencyRepo)
 	budgetService := domainFinance.NewBudgetService(budgetRepo, categoryRepo)
+	walletService := domainFinance.NewWalletService(walletRepo, currencyRepo)
+	transferService := domainFinance.NewTransferService(transferRepo, walletRepo)
 
 	// Application layer - use cases
 	tokenService := appIdentity.NewTokenService(authTokenRepo)
@@ -66,7 +70,7 @@ func NewApp(db *gorm.DB) *App {
 	markNotificationReadUseCase := appNotification.NewMarkNotificationReadUseCase(notificationRepo)
 	deleteNotificationUseCase := appNotification.NewDeleteNotificationUseCase(notificationRepo)
 	getDashboardStatsUseCase := appIdentity.NewGetDashboardStatsUseCase(userRepo, budgetRepo, transactionRepo)
-	createTransactionUseCase := appFinance.NewCreateTransactionUseCase(transactionService, currencyService)
+	createTransactionUseCase := appFinance.NewCreateTransactionUseCase(transactionService, walletService)
 	getTransactionsUseCase := appFinance.NewGetTransactionsUseCase(transactionService, categoryService)
 	getAllTransactionsUseCase := appFinance.NewGetAllTransactionsUseCase(transactionService, categoryService)
 	updateTransactionUseCase := appFinance.NewUpdateTransactionUseCase(transactionService)
@@ -93,7 +97,7 @@ func NewApp(db *gorm.DB) *App {
 		prefsRepo,
 		notificationHelper,
 	)
-	createRecurringUseCase := appFinance.NewCreateRecurringTransactionUseCase(recurringRepo, currencyService, categoryService)
+	createRecurringUseCase := appFinance.NewCreateRecurringTransactionUseCase(recurringRepo, walletService, categoryService)
 	enqueueDueRecurringUseCase := appFinance.NewEnqueueDueRecurringUseCase(
 		recurringRepo,
 		pendingRepo,
@@ -113,6 +117,16 @@ func NewApp(db *gorm.DB) *App {
 	)
 	confirmPendingUseCase := appFinance.NewConfirmPendingTransactionUseCase(pendingRepo, transactionService)
 	rejectPendingUseCase := appFinance.NewRejectPendingTransactionUseCase(pendingRepo)
+	createWalletUseCase := appFinance.NewCreateWalletUseCase(walletService)
+	getWalletsUseCase := appFinance.NewGetWalletsUseCase(walletService)
+	getWalletUseCase := appFinance.NewGetWalletUseCase(walletService)
+	updateWalletUseCase := appFinance.NewUpdateWalletUseCase(walletService)
+	setDefaultWalletUseCase := appFinance.NewSetDefaultWalletUseCase(walletService)
+	archiveWalletUseCase := appFinance.NewArchiveWalletUseCase(walletService)
+	unarchiveWalletUseCase := appFinance.NewUnarchiveWalletUseCase(walletService)
+	getWalletBalanceUseCase := appFinance.NewGetWalletBalanceUseCase(walletService)
+	createTransferUseCase := appFinance.NewCreateTransferUseCase(transferService)
+	getTransfersUseCase := appFinance.NewGetTransfersUseCase(transferService)
 
 	// Interface layer - handlers and middleware
 	identityHandlers := handlers.NewIdentityHandlers(
@@ -155,6 +169,16 @@ func NewApp(db *gorm.DB) *App {
 		listPendingUseCase,
 		confirmPendingUseCase,
 		rejectPendingUseCase,
+		createWalletUseCase,
+		getWalletsUseCase,
+		getWalletUseCase,
+		updateWalletUseCase,
+		setDefaultWalletUseCase,
+		archiveWalletUseCase,
+		unarchiveWalletUseCase,
+		getWalletBalanceUseCase,
+		createTransferUseCase,
+		getTransfersUseCase,
 	)
 	dashboardHandlers := handlers.NewDashboardHandlers(getDashboardStatsUseCase)
 	notificationHandlers := handlers.NewNotificationHandlers(
@@ -257,6 +281,18 @@ func (app *App) SetupRoutes() *gin.Engine {
 			protected.GET("/pending-transactions", app.FinanceHandlers.GetPendingTransactions)
 			protected.POST("/pending-transactions/:id/confirm", app.FinanceHandlers.ConfirmPendingTransaction)
 			protected.POST("/pending-transactions/:id/reject", app.FinanceHandlers.RejectPendingTransaction)
+
+			protected.GET("/wallets", app.FinanceHandlers.GetWallets)
+			protected.POST("/wallets", app.FinanceHandlers.CreateWallet)
+			protected.GET("/wallets/:id", app.FinanceHandlers.GetWallet)
+			protected.PUT("/wallets/:id", app.FinanceHandlers.UpdateWallet)
+			protected.POST("/wallets/:id/default", app.FinanceHandlers.SetDefaultWallet)
+			protected.POST("/wallets/:id/archive", app.FinanceHandlers.ArchiveWallet)
+			protected.POST("/wallets/:id/unarchive", app.FinanceHandlers.UnarchiveWallet)
+			protected.GET("/wallets/:id/balance", app.FinanceHandlers.GetWalletBalance)
+
+			protected.GET("/transfers", app.FinanceHandlers.GetTransfers)
+			protected.POST("/transfers", app.FinanceHandlers.CreateTransfer)
 		}
 	}
 

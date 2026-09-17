@@ -31,6 +31,7 @@ func TestSumExpensesForBudgetFiltersCategoryTypeAndCurrency(t *testing.T) {
 		finance.NewTransaction(
 			finance.NewTransactionID(1),
 			finance.NewUserID(1),
+			finance.NewWalletID(1),
 			finance.NewCategoryID(10),
 			finance.NewCurrencyID(1),
 			matchingMoney,
@@ -41,6 +42,7 @@ func TestSumExpensesForBudgetFiltersCategoryTypeAndCurrency(t *testing.T) {
 		finance.NewTransaction(
 			finance.NewTransactionID(2),
 			finance.NewUserID(1),
+			finance.NewWalletID(1),
 			finance.NewCategoryID(10),
 			finance.NewCurrencyID(2),
 			otherCurrencyMoney,
@@ -51,6 +53,7 @@ func TestSumExpensesForBudgetFiltersCategoryTypeAndCurrency(t *testing.T) {
 		finance.NewTransaction(
 			finance.NewTransactionID(3),
 			finance.NewUserID(1),
+			finance.NewWalletID(1),
 			finance.NewCategoryID(11),
 			finance.NewCurrencyID(1),
 			otherCategoryMoney,
@@ -61,6 +64,7 @@ func TestSumExpensesForBudgetFiltersCategoryTypeAndCurrency(t *testing.T) {
 		finance.NewTransaction(
 			finance.NewTransactionID(4),
 			finance.NewUserID(1),
+			finance.NewWalletID(1),
 			finance.NewCategoryID(10),
 			finance.NewCurrencyID(1),
 			incomeMoney,

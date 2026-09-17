@@ -18,6 +18,7 @@ const (
 type TransactionFilters struct {
 	TransactionType *TransactionType
 	CategoryIDs     []CategoryID
+	WalletID        *WalletID
 	StartDate       *time.Time
 	EndDate         *time.Time
 	Limit           int
@@ -28,6 +29,7 @@ type TransactionFilters struct {
 type Transaction struct {
 	id              TransactionID
 	userID          UserID
+	walletID        WalletID
 	categoryID      CategoryID
 	currencyID      CurrencyID
 	amount          Money
@@ -124,6 +126,7 @@ func (m Money) Currency() CurrencyID {
 func NewTransaction(
 	id TransactionID,
 	userID UserID,
+	walletID WalletID,
 	categoryID CategoryID,
 	currencyID CurrencyID,
 	amount Money,
@@ -134,6 +137,7 @@ func NewTransaction(
 	return &Transaction{
 		id:              id,
 		userID:          userID,
+		walletID:        walletID,
 		categoryID:      categoryID,
 		currencyID:      currencyID,
 		amount:          amount,
@@ -151,6 +155,10 @@ func (t *Transaction) ID() TransactionID {
 
 func (t *Transaction) UserID() UserID {
 	return t.userID
+}
+
+func (t *Transaction) WalletID() WalletID {
+	return t.walletID
 }
 
 func (t *Transaction) CategoryID() CategoryID {

@@ -11,6 +11,7 @@ import (
 type RecurringTransactionResponse struct {
 	ID            int               `json:"id"`
 	Type          string            `json:"type"`
+	WalletID      int               `json:"wallet_id"`
 	CategoryID    int               `json:"category_id"`
 	Amount        float64           `json:"amount"`
 	Description   string            `json:"description"`
@@ -27,6 +28,7 @@ type RecurringTransactionResponse struct {
 
 type CreateRecurringTransactionRequest struct {
 	Type        string  `json:"type" binding:"required,oneof=expense income"`
+	WalletID    *int    `json:"wallet_id"`
 	CategoryID  int     `json:"category_id" binding:"required"`
 	Amount      float64 `json:"amount" binding:"required,gt=0"`
 	Description string  `json:"description"`
@@ -39,26 +41,26 @@ type CreateRecurringTransactionRequest struct {
 
 type CreateRecurringTransactionUseCase struct {
 	recurringRepo   domainFinance.RecurringTransactionRepository
-	currencyService *domainFinance.CurrencyService
+	walletService   *domainFinance.WalletService
 	categoryService *domainFinance.CategoryService
 }
 
 func NewCreateRecurringTransactionUseCase(
 	recurringRepo domainFinance.RecurringTransactionRepository,
-	currencyService *domainFinance.CurrencyService,
+	walletService *domainFinance.WalletService,
 	categoryService *domainFinance.CategoryService,
 ) *CreateRecurringTransactionUseCase {
 	return &CreateRecurringTransactionUseCase{
 		recurringRepo:   recurringRepo,
-		currencyService: currencyService,
+		walletService:   walletService,
 		categoryService: categoryService,
 	}
 }
 
 func (uc *CreateRecurringTransactionUseCase) Execute(ctx context.Context, userID int, req CreateRecurringTransactionRequest) (*RecurringTransactionResponse, error) {
-	currency, err := uc.currencyService.GetPrimaryCurrency(ctx, domainFinance.NewUserID(userID))
+	wallet, err := uc.walletService.ResolveUsableWallet(ctx, domainFinance.NewUserID(userID), req.WalletID)
 	if err != nil {
-		return nil, errors.New("failed to get primary currency")
+		return nil, err
 	}
 
 	category, err := uc.categoryService.GetCategoryByID(ctx, domainFinance.NewCategoryID(req.CategoryID))
@@ -69,7 +71,7 @@ func (uc *CreateRecurringTransactionUseCase) Execute(ctx context.Context, userID
 		return nil, errors.New("category type does not match transaction type")
 	}
 
-	money, err := domainFinance.NewMoney(req.Amount, currency.ID())
+	money, err := domainFinance.NewMoney(req.Amount, wallet.CurrencyID())
 	if err != nil {
 		return nil, err
 	}
@@ -91,8 +93,9 @@ func (uc *CreateRecurringTransactionUseCase) Execute(ctx context.Context, userID
 
 	rt, err := domainFinance.NewRecurringTransaction(
 		domainFinance.NewUserID(userID),
+		wallet.ID(),
 		domainFinance.NewCategoryID(req.CategoryID),
-		currency.ID(),
+		wallet.CurrencyID(),
 		money,
 		req.Description,
 		domainFinance.Frequency(req.Frequency),
@@ -177,6 +180,7 @@ func toRecurringResponse(rt *domainFinance.RecurringTransaction, category *domai
 	resp := RecurringTransactionResponse{
 		ID:            rt.ID().Value(),
 		Type:          string(rt.Type()),
+		WalletID:      rt.WalletID().Value(),
 		CategoryID:    rt.CategoryID().Value(),
 		Amount:        rt.Amount().Amount(),
 		Description:   rt.Description(),

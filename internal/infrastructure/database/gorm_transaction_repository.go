@@ -23,10 +23,13 @@ func NewGormTransactionRepository(db *gorm.DB) *GormTransactionRepository {
 func (r *GormTransactionRepository) Save(ctx context.Context, transaction *finance.Transaction) error {
 	// Convert domain transaction to GORM model
 	var transactionModel interface{}
+	walletID := uint(transaction.WalletID().Value())
+	walletIDPtr := &walletID
 
 	if transaction.Type() == finance.TransactionTypeExpense {
 		expenseModel := &Expense{
 			UserID:      uint(transaction.UserID().Value()),
+			WalletID:    walletIDPtr,
 			CategoryID:  uint(transaction.CategoryID().Value()),
 			CurrencyID:  uint(transaction.CurrencyID().Value()),
 			Amount:      transaction.Amount().Amount(),
@@ -42,6 +45,7 @@ func (r *GormTransactionRepository) Save(ctx context.Context, transaction *finan
 	} else {
 		incomeModel := &Income{
 			UserID:      uint(transaction.UserID().Value()),
+			WalletID:    walletIDPtr,
 			CategoryID:  uint(transaction.CategoryID().Value()),
 			CurrencyID:  uint(transaction.CurrencyID().Value()),
 			Amount:      transaction.Amount().Amount(),
@@ -236,6 +240,7 @@ func (r *GormTransactionRepository) FindByUserIDAndCategory(ctx context.Context,
 type TransactionView struct {
 	ID          uint
 	UserID      uint
+	WalletID    *uint
 	CategoryID  uint
 	CurrencyID  uint
 	Amount      float64
@@ -273,6 +278,11 @@ func (r *GormTransactionRepository) FindByUserIDWithFilters(ctx context.Context,
 		}
 		baseConditions += " AND category_id IN ?"
 		args = append(args, categoryIDs)
+	}
+
+	if filters.WalletID != nil {
+		baseConditions += " AND wallet_id = ?"
+		args = append(args, filters.WalletID.Value())
 	}
 
 	// Case 1: Only Expense or Only Income requested - use standard GORM
@@ -353,11 +363,11 @@ func (r *GormTransactionRepository) FindByUserIDWithFilters(ctx context.Context,
 	// This automatically handles placeholder (?) parameters and avoids manual string concatenation issues
 
 	expenseQuery := r.db.Model(&Expense{}).
-		Select("id, user_id, category_id, currency_id, amount, description, date, created_at, 'expense' as type").
+		Select("id, user_id, wallet_id, category_id, currency_id, amount, description, date, created_at, 'expense' as type").
 		Where(baseConditions, args...)
 
 	incomeQuery := r.db.Model(&Income{}).
-		Select("id, user_id, category_id, currency_id, amount, description, date, created_at, 'income' as type").
+		Select("id, user_id, wallet_id, category_id, currency_id, amount, description, date, created_at, 'income' as type").
 		Where(baseConditions, args...)
 
 	// Combine SQL
@@ -386,6 +396,7 @@ func (r *GormTransactionRepository) FindByUserIDWithFilters(ctx context.Context,
 	for _, view := range views {
 		tID := finance.NewTransactionID(int(view.ID))
 		uID := finance.NewUserID(int(view.UserID))
+		wID := walletIDFromPtr(view.WalletID)
 		cID := finance.NewCategoryID(int(view.CategoryID))
 		currID := finance.NewCurrencyID(int(view.CurrencyID))
 		amount, _ := finance.NewMoney(view.Amount, currID)
@@ -400,6 +411,7 @@ func (r *GormTransactionRepository) FindByUserIDWithFilters(ctx context.Context,
 		transaction := finance.NewTransaction(
 			tID,
 			uID,
+			wID,
 			cID,
 			currID,
 			amount,
@@ -413,10 +425,18 @@ func (r *GormTransactionRepository) FindByUserIDWithFilters(ctx context.Context,
 	return transactions, totalCount, nil
 }
 
+func walletIDFromPtr(id *uint) finance.WalletID {
+	if id == nil {
+		return finance.NewWalletID(0)
+	}
+	return finance.NewWalletID(int(*id))
+}
+
 // Helper methods to convert GORM models to domain transactions
 func (r *GormTransactionRepository) expenseToTransaction(expense *Expense) *finance.Transaction {
 	transactionID := finance.NewTransactionID(int(expense.ID))
 	userID := finance.NewUserID(int(expense.UserID))
+	walletID := walletIDFromPtr(expense.WalletID)
 	categoryID := finance.NewCategoryID(int(expense.CategoryID))
 	currencyID := finance.NewCurrencyID(int(expense.CurrencyID))
 	amount, err := finance.NewMoney(expense.Amount, currencyID)
@@ -429,6 +449,7 @@ func (r *GormTransactionRepository) expenseToTransaction(expense *Expense) *fina
 	transaction := finance.NewTransaction(
 		transactionID,
 		userID,
+		walletID,
 		categoryID,
 		currencyID,
 		amount,
@@ -442,6 +463,7 @@ func (r *GormTransactionRepository) expenseToTransaction(expense *Expense) *fina
 func (r *GormTransactionRepository) incomeToTransaction(income *Income) *finance.Transaction {
 	transactionID := finance.NewTransactionID(int(income.ID))
 	userID := finance.NewUserID(int(income.UserID))
+	walletID := walletIDFromPtr(income.WalletID)
 	categoryID := finance.NewCategoryID(int(income.CategoryID))
 	currencyID := finance.NewCurrencyID(int(income.CurrencyID))
 	amount, err := finance.NewMoney(income.Amount, currencyID)
@@ -454,6 +476,7 @@ func (r *GormTransactionRepository) incomeToTransaction(income *Income) *finance
 	transaction := finance.NewTransaction(
 		transactionID,
 		userID,
+		walletID,
 		categoryID,
 		currencyID,
 		amount,

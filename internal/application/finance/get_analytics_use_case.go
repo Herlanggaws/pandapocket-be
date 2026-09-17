@@ -10,7 +10,8 @@ import (
 
 // GetAnalyticsRequest represents the request for analytics
 type GetAnalyticsRequest struct {
-	Period string `json:"period"` // "monthly", "weekly", "yearly"
+	Period   string `json:"period"` // "monthly", "weekly", "yearly"
+	WalletID *int   `json:"wallet_id,omitempty"`
 }
 
 type SpendingByCategoryItem struct {
@@ -85,6 +86,16 @@ func (uc *GetAnalyticsUseCase) Execute(ctx context.Context, userID int, req GetA
 	transactions, err := uc.transactionService.GetTransactionsByUserAndDateRange(ctx, finance.NewUserID(userID), startDate, endDate)
 	if err != nil {
 		return nil, err
+	}
+
+	if req.WalletID != nil && *req.WalletID > 0 {
+		filtered := make([]*finance.Transaction, 0, len(transactions))
+		for _, transaction := range transactions {
+			if transaction.WalletID().Value() == *req.WalletID {
+				filtered = append(filtered, transaction)
+			}
+		}
+		transactions = filtered
 	}
 
 	var totalIncome, totalSpent float64

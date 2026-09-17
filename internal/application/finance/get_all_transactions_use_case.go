@@ -12,6 +12,7 @@ import (
 type GetAllTransactionsRequest struct {
 	Type        string   `json:"type,omitempty"`         // "income", "expense", or empty for both
 	CategoryIDs []string `json:"category_ids,omitempty"` // Comma-separated category IDs
+	WalletID    *int     `json:"wallet_id,omitempty"`
 	StartDate   string   `json:"start_date,omitempty"`   // Date in YYYY-MM-DD format
 	EndDate     string   `json:"end_date,omitempty"`     // Date in YYYY-MM-DD format
 	Page        int      `json:"page,omitempty"`         // Page number (1-based)
@@ -83,6 +84,11 @@ func (uc *GetAllTransactionsUseCase) Execute(ctx context.Context, userID int, re
 		filters.CategoryIDs = categoryIDs
 	}
 
+	if req.WalletID != nil && *req.WalletID > 0 {
+		walletID := finance.NewWalletID(*req.WalletID)
+		filters.WalletID = &walletID
+	}
+
 	// Parse date range
 	if req.StartDate != "" {
 		if startDate, err := time.Parse("2006-01-02", req.StartDate); err == nil {
@@ -140,8 +146,9 @@ func (uc *GetAllTransactionsUseCase) Execute(ctx context.Context, userID int, re
 		}
 
 		transactionResponses[i] = TransactionResponse{
-			ID:     transaction.ID().Value(),
-			UserID: transaction.UserID().Value(),
+			ID:       transaction.ID().Value(),
+			UserID:   transaction.UserID().Value(),
+			WalletID: transaction.WalletID().Value(),
 			Category: CategoryResponse{
 				ID:        category.ID().Value(),
 				Name:      category.Name(),

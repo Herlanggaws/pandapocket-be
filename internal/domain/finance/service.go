@@ -11,6 +11,7 @@ type TransactionService struct {
 	transactionRepo TransactionRepository
 	categoryRepo    CategoryRepository
 	currencyRepo    CurrencyRepository
+	walletRepo      WalletRepository
 }
 
 // NewTransactionService creates a new transaction service
@@ -18,11 +19,13 @@ func NewTransactionService(
 	transactionRepo TransactionRepository,
 	categoryRepo CategoryRepository,
 	currencyRepo CurrencyRepository,
+	walletRepo WalletRepository,
 ) *TransactionService {
 	return &TransactionService{
 		transactionRepo: transactionRepo,
 		categoryRepo:    categoryRepo,
 		currencyRepo:    currencyRepo,
+		walletRepo:      walletRepo,
 	}
 }
 
@@ -30,6 +33,7 @@ func NewTransactionService(
 func (s *TransactionService) CreateTransaction(
 	ctx context.Context,
 	userID UserID,
+	walletID WalletID,
 	categoryID CategoryID,
 	currencyID CurrencyID,
 	amount Money,
@@ -37,6 +41,23 @@ func (s *TransactionService) CreateTransaction(
 	date time.Time,
 	transactionType TransactionType,
 ) (*Transaction, error) {
+	wallet, err := s.walletRepo.FindByID(ctx, walletID)
+	if err != nil {
+		return nil, errors.New("wallet not found")
+	}
+	if wallet.UserID().Value() != userID.Value() {
+		return nil, errors.New("access denied to wallet")
+	}
+	if err := wallet.CanAcceptTransactions(); err != nil {
+		return nil, err
+	}
+	if currencyID.Value() == 0 {
+		currencyID = wallet.CurrencyID()
+	}
+	if wallet.CurrencyID().Value() != currencyID.Value() {
+		return nil, errors.New("transaction currency must match wallet currency")
+	}
+
 	// Validate category exists and user has access
 	category, err := s.categoryRepo.FindByID(ctx, categoryID)
 	if err != nil {
@@ -64,13 +85,19 @@ func (s *TransactionService) CreateTransaction(
 		return nil, errors.New("access denied to currency")
 	}
 
+	money, err := NewMoney(amount.Amount(), currencyID)
+	if err != nil {
+		return nil, err
+	}
+
 	// Create transaction
 	transaction := NewTransaction(
 		TransactionID{}, // Will be set by repository
 		userID,
+		walletID,
 		categoryID,
 		currencyID,
-		amount,
+		money,
 		description,
 		date,
 		transactionType,

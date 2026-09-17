@@ -89,6 +89,13 @@ CORS currently allows all origins (`*`). Allowed request headers: `Origin`, `Con
 | GET | `/api/pending-transactions` | Yes | List open pending recurring occurrences (also enqueues dues) |
 | POST | `/api/pending-transactions/:id/confirm` | Yes | Confirm pending → create real expense/income |
 | POST | `/api/pending-transactions/:id/reject` | Yes | Reject pending (no transaction) |
+| GET/POST | `/api/wallets` | Yes | List/create wallets (`include_archived` query on GET) |
+| GET/PUT | `/api/wallets/:id` | Yes | Get/update wallet |
+| POST | `/api/wallets/:id/default` | Yes | Set default wallet |
+| POST | `/api/wallets/:id/archive` | Yes | Archive wallet |
+| POST | `/api/wallets/:id/unarchive` | Yes | Unarchive wallet |
+| GET | `/api/wallets/:id/balance` | Yes | Ledger balance breakdown |
+| GET/POST | `/api/transfers` | Yes | List/create same-currency transfers |
 
 ## Health Check
 
@@ -875,6 +882,7 @@ Get all transactions (both income and expense) for the authenticated user with a
 **Query Parameters:**
 - `type` (optional): Filter by transaction type (`expense` or `income`)
 - `category_ids` (optional): Filter by category IDs (comma-separated, e.g., `1,2,3`)
+- `wallet_id` (optional): Filter by wallet ID
 - `start_date` (optional): Filter transactions from this date (YYYY-MM-DD format)
 - `end_date` (optional): Filter transactions until this date (YYYY-MM-DD format)
 - `page` (optional): Page number for pagination (1-based, default: 1)
@@ -1442,6 +1450,81 @@ Reject a pending occurrence owned by the user: sets status to `rejected` without
 
 ---
 
+## Wallets
+
+### GET /api/wallets
+
+List wallets for the authenticated user. Each item includes computed `balance`.
+
+**Query Parameters:**
+- `include_archived` (optional): `true` / `1` to include archived wallets
+
+### POST /api/wallets
+
+```json
+{
+  "name": "BCA",
+  "type": "bank",
+  "currency_id": 1,
+  "opening_balance": 100000,
+  "is_default": false
+}
+```
+
+`type`: `cash` | `bank` | `e_wallet`
+
+### GET /api/wallets/:id
+
+### PUT /api/wallets/:id
+
+Update `name`, `type`, and/or `opening_balance`. Currency is fixed after create.
+
+### POST /api/wallets/:id/default
+
+### POST /api/wallets/:id/archive
+
+Cannot archive the default wallet or the last active wallet.
+
+### POST /api/wallets/:id/unarchive
+
+### GET /api/wallets/:id/balance
+
+```json
+{
+  "wallet_id": 1,
+  "opening_balance": 0,
+  "total_income": 500000,
+  "total_expense": 200000,
+  "transfers_in": 0,
+  "transfers_out": 50000,
+  "balance": 250000
+}
+```
+
+Balance = `opening_balance + total_income − total_expense + transfers_in − transfers_out`.
+
+## Transfers
+
+Same-currency moves between wallets. Transfers are **not** income/expense and do not affect budgets/analytics cashflow.
+
+### GET /api/transfers
+
+**Query Parameters:** `wallet_id`, `start_date`, `end_date`
+
+### POST /api/transfers
+
+```json
+{
+  "from_wallet_id": 1,
+  "to_wallet_id": 2,
+  "amount": 50000,
+  "description": "Top up",
+  "date": "2026-09-17"
+}
+```
+
+---
+
 ## Error Responses
 
 All endpoints may return the following error responses:
@@ -1544,6 +1627,13 @@ Keep this file in sync with the running API. When routes, request/response shape
 ---
 
 ## Version History
+
+- **v2.7.0**: **Multi-wallet**
+  - New `wallets` and `transfers` resources (types: `cash` | `bank` | `e_wallet`; default, archive, opening balance)
+  - Expenses, incomes, recurring, and pending stamp `wallet_id`; currency inherited from wallet
+  - `GET /api/transactions` and `GET /api/analytics` accept optional `wallet_id`
+  - Startup backfill creates a default Cash wallet per user and attaches existing rows
+  - Transfers are same-currency only and excluded from budget/analytics cashflow
 
 - **v2.6.1**: **Recurring schedule rules**
   - Weekly requires `weekday`; monthly `day_of_month` (clamp to last day); yearly `month_of_year` + `day_of_month`

@@ -27,6 +27,7 @@ type RecurringSchedule struct {
 type RecurringTransaction struct {
 	id              RecurringTransactionID
 	userID          UserID
+	walletID        WalletID
 	categoryID      CategoryID
 	currencyID      CurrencyID
 	amount          Money
@@ -237,6 +238,7 @@ func DeriveScheduleFromDueDate(frequency Frequency, schedule RecurringSchedule, 
 // NewRecurringTransaction creates a new recurring transaction with schedule
 func NewRecurringTransaction(
 	userID UserID,
+	walletID WalletID,
 	categoryID CategoryID,
 	currencyID CurrencyID,
 	amount Money,
@@ -268,6 +270,7 @@ func NewRecurringTransaction(
 
 	return &RecurringTransaction{
 		userID:          userID,
+		walletID:        walletID,
 		categoryID:      categoryID,
 		currencyID:      currencyID,
 		amount:          amount,
@@ -284,6 +287,7 @@ func NewRecurringTransaction(
 func ReconstituteRecurringTransaction(
 	id RecurringTransactionID,
 	userID UserID,
+	walletID WalletID,
 	categoryID CategoryID,
 	currencyID CurrencyID,
 	amount Money,
@@ -299,6 +303,7 @@ func ReconstituteRecurringTransaction(
 	return &RecurringTransaction{
 		id:              id,
 		userID:          userID,
+		walletID:        walletID,
 		categoryID:      categoryID,
 		currencyID:      currencyID,
 		amount:          amount,
@@ -318,6 +323,7 @@ func (r *RecurringTransaction) AssignID(id RecurringTransactionID) {
 
 func (r *RecurringTransaction) ID() RecurringTransactionID { return r.id }
 func (r *RecurringTransaction) UserID() UserID             { return r.userID }
+func (r *RecurringTransaction) WalletID() WalletID         { return r.walletID }
 func (r *RecurringTransaction) CategoryID() CategoryID     { return r.categoryID }
 func (r *RecurringTransaction) CurrencyID() CurrencyID     { return r.currencyID }
 func (r *RecurringTransaction) Amount() Money              { return r.amount }

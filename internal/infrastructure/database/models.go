@@ -20,12 +20,48 @@ type User struct {
 	// Relationships
 	Currencies            []Currency             `gorm:"foreignKey:UserID" json:"currencies,omitempty"`
 	Categories            []Category             `gorm:"foreignKey:UserID" json:"categories,omitempty"`
+	Wallets               []Wallet               `gorm:"foreignKey:UserID" json:"wallets,omitempty"`
 	Expenses              []Expense              `gorm:"foreignKey:UserID" json:"expenses,omitempty"`
 	Incomes               []Income               `gorm:"foreignKey:UserID" json:"incomes,omitempty"`
 	Budgets               []Budget               `gorm:"foreignKey:UserID" json:"budgets,omitempty"`
 	RecurringTransactions []RecurringTransaction `gorm:"foreignKey:UserID" json:"recurring_transactions,omitempty"`
+	Transfers             []Transfer             `gorm:"foreignKey:UserID" json:"transfers,omitempty"`
 	UserPreferences       *UserPreferences       `gorm:"foreignKey:UserID" json:"user_preferences,omitempty"`
 	Notifications         []Notification         `gorm:"foreignKey:UserID" json:"notifications,omitempty"`
+}
+
+// Wallet represents a money account / dompet for a user
+type Wallet struct {
+	ID             uint      `gorm:"primaryKey" json:"id"`
+	UserID         uint      `gorm:"not null;index" json:"user_id"`
+	Name           string    `gorm:"not null" json:"name"`
+	Type           string    `gorm:"not null;default:'cash';check:type IN ('cash', 'bank', 'e_wallet')" json:"type"`
+	CurrencyID     uint      `gorm:"not null;index" json:"currency_id"`
+	OpeningBalance float64   `gorm:"type:decimal(12,2);not null;default:0" json:"opening_balance"`
+	IsDefault      bool      `gorm:"default:false;index" json:"is_default"`
+	IsArchived     bool      `gorm:"default:false;index" json:"is_archived"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
+
+	User     *User     `gorm:"foreignKey:UserID" json:"user,omitempty"`
+	Currency *Currency `gorm:"foreignKey:CurrencyID" json:"currency,omitempty"`
+}
+
+// Transfer represents a same-currency move between two wallets
+type Transfer struct {
+	ID           uint      `gorm:"primaryKey" json:"id"`
+	UserID       uint      `gorm:"not null;index" json:"user_id"`
+	FromWalletID uint      `gorm:"not null;index" json:"from_wallet_id"`
+	ToWalletID   uint      `gorm:"not null;index" json:"to_wallet_id"`
+	Amount       float64   `gorm:"type:decimal(12,2);not null" json:"amount"`
+	Description  string    `gorm:"type:text" json:"description"`
+	Date         time.Time `gorm:"type:date;not null;index" json:"date"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+
+	User       *User   `gorm:"foreignKey:UserID" json:"user,omitempty"`
+	FromWallet *Wallet `gorm:"foreignKey:FromWalletID" json:"from_wallet,omitempty"`
+	ToWallet   *Wallet `gorm:"foreignKey:ToWalletID" json:"to_wallet,omitempty"`
 }
 
 // Currency represents a currency in the database
@@ -70,6 +106,7 @@ type Category struct {
 type Expense struct {
 	ID          uint      `gorm:"primaryKey" json:"id"`
 	UserID      uint      `gorm:"not null;index;index:idx_expense_user_date_created,priority:1" json:"user_id"`
+	WalletID    *uint     `gorm:"index" json:"wallet_id,omitempty"`
 	CategoryID  uint      `gorm:"not null;index" json:"category_id"`
 	CurrencyID  uint      `gorm:"not null;index" json:"currency_id"`
 	Amount      float64   `gorm:"type:decimal(10,2);not null" json:"amount"`
@@ -80,6 +117,7 @@ type Expense struct {
 
 	// Relationships
 	User     *User     `gorm:"foreignKey:UserID" json:"user,omitempty"`
+	Wallet   *Wallet   `gorm:"foreignKey:WalletID" json:"wallet,omitempty"`
 	Category *Category `gorm:"foreignKey:CategoryID" json:"category,omitempty"`
 	Currency *Currency `gorm:"foreignKey:CurrencyID" json:"currency,omitempty"`
 }
@@ -88,6 +126,7 @@ type Expense struct {
 type Income struct {
 	ID          uint      `gorm:"primaryKey" json:"id"`
 	UserID      uint      `gorm:"not null;index;index:idx_income_user_date_created,priority:1" json:"user_id"`
+	WalletID    *uint     `gorm:"index" json:"wallet_id,omitempty"`
 	CategoryID  uint      `gorm:"not null;index" json:"category_id"`
 	CurrencyID  uint      `gorm:"not null;index" json:"currency_id"`
 	Amount      float64   `gorm:"type:decimal(10,2);not null" json:"amount"`
@@ -98,6 +137,7 @@ type Income struct {
 
 	// Relationships
 	User     *User     `gorm:"foreignKey:UserID" json:"user,omitempty"`
+	Wallet   *Wallet   `gorm:"foreignKey:WalletID" json:"wallet,omitempty"`
 	Category *Category `gorm:"foreignKey:CategoryID" json:"category,omitempty"`
 	Currency *Currency `gorm:"foreignKey:CurrencyID" json:"currency,omitempty"`
 }
@@ -125,6 +165,7 @@ type Budget struct {
 type RecurringTransaction struct {
 	ID           uint      `gorm:"primaryKey" json:"id"`
 	UserID       uint      `gorm:"not null;index" json:"user_id"`
+	WalletID     *uint     `gorm:"index" json:"wallet_id,omitempty"`
 	CategoryID   uint      `gorm:"not null;index" json:"category_id"`
 	CurrencyID   uint      `gorm:"not null;index" json:"currency_id"`
 	Amount       float64   `gorm:"type:decimal(10,2);not null" json:"amount"`
@@ -141,6 +182,7 @@ type RecurringTransaction struct {
 
 	// Relationships
 	User     *User     `gorm:"foreignKey:UserID" json:"user,omitempty"`
+	Wallet   *Wallet   `gorm:"foreignKey:WalletID" json:"wallet,omitempty"`
 	Category *Category `gorm:"foreignKey:CategoryID" json:"category,omitempty"`
 	Currency *Currency `gorm:"foreignKey:CurrencyID" json:"currency,omitempty"`
 }
@@ -149,6 +191,7 @@ type RecurringTransaction struct {
 type PendingTransaction struct {
 	ID                     uint       `gorm:"primaryKey" json:"id"`
 	UserID                 uint       `gorm:"not null;index" json:"user_id"`
+	WalletID               *uint      `gorm:"index" json:"wallet_id,omitempty"`
 	RecurringTransactionID uint       `gorm:"not null;uniqueIndex:idx_pending_recurring_due" json:"recurring_transaction_id"`
 	DueDate                time.Time  `gorm:"type:date;not null;uniqueIndex:idx_pending_recurring_due" json:"due_date"`
 	Amount                 float64    `gorm:"type:decimal(10,2);not null" json:"amount"`
@@ -162,6 +205,7 @@ type PendingTransaction struct {
 	ResolvedAt             *time.Time `json:"resolved_at,omitempty"`
 
 	User                 *User                 `gorm:"foreignKey:UserID" json:"user,omitempty"`
+	Wallet               *Wallet               `gorm:"foreignKey:WalletID" json:"wallet,omitempty"`
 	RecurringTransaction *RecurringTransaction `gorm:"foreignKey:RecurringTransactionID" json:"recurring_transaction,omitempty"`
 	Category             *Category             `gorm:"foreignKey:CategoryID" json:"category,omitempty"`
 	Currency             *Currency             `gorm:"foreignKey:CurrencyID" json:"currency,omitempty"`
@@ -225,6 +269,14 @@ func (Currency) TableName() string {
 
 func (Category) TableName() string {
 	return "categories"
+}
+
+func (Wallet) TableName() string {
+	return "wallets"
+}
+
+func (Transfer) TableName() string {
+	return "transfers"
 }
 
 func (Expense) TableName() string {

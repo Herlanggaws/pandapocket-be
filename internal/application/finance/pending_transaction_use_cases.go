@@ -12,6 +12,7 @@ import (
 type PendingTransactionResponse struct {
 	ID                     int               `json:"id"`
 	UserID                 int               `json:"user_id"`
+	WalletID               int               `json:"wallet_id"`
 	RecurringTransactionID int               `json:"recurring_transaction_id"`
 	DueDate                string            `json:"due_date"`
 	Amount                 float64           `json:"amount"`
@@ -66,6 +67,7 @@ func (uc *EnqueueDueRecurringUseCase) Execute(ctx context.Context, userID int) e
 			if !exists {
 				pending, err := domainFinance.NewPendingTransaction(
 					rt.UserID(),
+					rt.WalletID(),
 					rt.ID(),
 					dueDate,
 					rt.Amount(),
@@ -176,6 +178,7 @@ func (uc *ConfirmPendingTransactionUseCase) Execute(ctx context.Context, userID,
 	_, err = uc.transactionService.CreateTransaction(
 		ctx,
 		pending.UserID(),
+		pending.WalletID(),
 		pending.CategoryID(),
 		pending.CurrencyID(),
 		pending.Amount(),
@@ -235,6 +238,7 @@ func toPendingResponse(pt *domainFinance.PendingTransaction, category *domainFin
 	return PendingTransactionResponse{
 		ID:                     pt.ID().Value(),
 		UserID:                 pt.UserID().Value(),
+		WalletID:               pt.WalletID().Value(),
 		RecurringTransactionID: pt.RecurringTransactionID().Value(),
 		DueDate:                pt.DueDate().Format("2006-01-02"),
 		Amount:                 pt.Amount().Amount(),

@@ -44,8 +44,9 @@ func (uc *GetTransactionsUseCase) Execute(ctx context.Context, userID int) (*Get
 		}
 
 		transactionResponses[i] = TransactionResponse{
-			ID:     transaction.ID().Value(),
-			UserID: transaction.UserID().Value(),
+			ID:       transaction.ID().Value(),
+			UserID:   transaction.UserID().Value(),
+			WalletID: transaction.WalletID().Value(),
 			Category: CategoryResponse{
 				ID:        category.ID().Value(),
 				Name:      category.Name(),

@@ -5,6 +5,24 @@ import (
 	"time"
 )
 
+// WalletRepository defines persistence for wallets.
+type WalletRepository interface {
+	Save(ctx context.Context, wallet *Wallet) error
+	FindByID(ctx context.Context, id WalletID) (*Wallet, error)
+	FindByUserID(ctx context.Context, userID UserID, includeArchived bool) ([]*Wallet, error)
+	FindDefaultByUserID(ctx context.Context, userID UserID) (*Wallet, error)
+	CountActiveByUserID(ctx context.Context, userID UserID) (int64, error)
+	ClearDefaultForUser(ctx context.Context, userID UserID) error
+	HasTransactions(ctx context.Context, id WalletID) (bool, error)
+	GetBalanceBreakdown(ctx context.Context, id WalletID) (WalletBalanceBreakdown, error)
+}
+
+// TransferRepository defines persistence for transfers.
+type TransferRepository interface {
+	Save(ctx context.Context, transfer *Transfer) error
+	FindByUserID(ctx context.Context, userID UserID, filters TransferFilters) ([]*Transfer, error)
+}
+
 // TransactionRepository defines the contract for transaction persistence
 type TransactionRepository interface {
 	Save(ctx context.Context, transaction *Transaction) error

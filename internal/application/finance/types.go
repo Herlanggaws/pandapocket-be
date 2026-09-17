@@ -4,6 +4,7 @@ package finance
 type TransactionResponse struct {
 	ID          int              `json:"id"`
 	UserID      int              `json:"user_id"`
+	WalletID    int              `json:"wallet_id"`
 	Category    CategoryResponse `json:"category"`
 	CurrencyID  int              `json:"currency_id"`
 	Amount      float64          `json:"amount"`

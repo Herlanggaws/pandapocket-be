@@ -61,6 +61,11 @@ func InitDB() (*gorm.DB, error) {
 		return nil, err
 	}
 
+	err = backfillDefaultWallets(db)
+	if err != nil {
+		return nil, err
+	}
+
 	log.Printf("Database initialized successfully with GORM and PostgreSQL")
 	return db, nil
 }
@@ -133,12 +138,13 @@ func autoMigrate(db *gorm.DB) error {
 		&User{},
 		&Currency{},
 		&Category{},
+		&Wallet{},
 		&Expense{},
 		&Income{},
 		&Budget{},
 		&RecurringTransaction{},
 		&PendingTransaction{},
-		&UserPreferences{},
+		&Transfer{},
 		&UserPreferences{},
 		&Notification{},
 		&PasswordResetToken{},
@@ -258,5 +264,75 @@ func createDefaultCurrenciesGorm(db *gorm.DB) error {
 	}
 
 	log.Printf("Created %d default currencies", len(defaultCurrencies))
+	return nil
+}
+
+// backfillDefaultWallets creates a default Cash wallet per user and attaches existing rows.
+func backfillDefaultWallets(db *gorm.DB) error {
+	var users []User
+	if err := db.Find(&users).Error; err != nil {
+		return err
+	}
+
+	for _, user := range users {
+		var walletCount int64
+		if err := db.Model(&Wallet{}).Where("user_id = ?", user.ID).Count(&walletCount).Error; err != nil {
+			return err
+		}
+
+		var defaultWallet Wallet
+		if walletCount == 0 {
+			currencyID := uint(1)
+			var prefs UserPreferences
+			if err := db.Where("user_id = ?", user.ID).First(&prefs).Error; err == nil && prefs.PrimaryCurrencyID != 0 {
+				currencyID = prefs.PrimaryCurrencyID
+			} else {
+				var systemCurrency Currency
+				if err := db.Where("is_default = ? AND code = ?", true, "USD").First(&systemCurrency).Error; err == nil {
+					currencyID = systemCurrency.ID
+				} else if err := db.Where("is_default = ?", true).First(&systemCurrency).Error; err == nil {
+					currencyID = systemCurrency.ID
+				}
+			}
+
+			defaultWallet = Wallet{
+				UserID:         user.ID,
+				Name:           "Cash",
+				Type:           "cash",
+				CurrencyID:     currencyID,
+				OpeningBalance: 0,
+				IsDefault:      true,
+				IsArchived:     false,
+			}
+			if err := db.Create(&defaultWallet).Error; err != nil {
+				return err
+			}
+			log.Printf("Created default wallet for user %d", user.ID)
+		} else {
+			if err := db.Where("user_id = ? AND is_default = ?", user.ID, true).First(&defaultWallet).Error; err != nil {
+				if err := db.Where("user_id = ? AND is_archived = ?", user.ID, false).First(&defaultWallet).Error; err != nil {
+					if err := db.Where("user_id = ?", user.ID).First(&defaultWallet).Error; err != nil {
+						return err
+					}
+				}
+			}
+		}
+
+		walletID := defaultWallet.ID
+		updates := map[string]interface{}{"wallet_id": walletID}
+		if err := db.Model(&Expense{}).Where("user_id = ? AND wallet_id IS NULL", user.ID).Updates(updates).Error; err != nil {
+			return err
+		}
+		if err := db.Model(&Income{}).Where("user_id = ? AND wallet_id IS NULL", user.ID).Updates(updates).Error; err != nil {
+			return err
+		}
+		if err := db.Model(&RecurringTransaction{}).Where("user_id = ? AND wallet_id IS NULL", user.ID).Updates(updates).Error; err != nil {
+			return err
+		}
+		if err := db.Model(&PendingTransaction{}).Where("user_id = ? AND wallet_id IS NULL", user.ID).Updates(updates).Error; err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
