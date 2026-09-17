@@ -137,6 +137,7 @@ func autoMigrate(db *gorm.DB) error {
 		&Income{},
 		&Budget{},
 		&RecurringTransaction{},
+		&PendingTransaction{},
 		&UserPreferences{},
 		&UserPreferences{},
 		&Notification{},

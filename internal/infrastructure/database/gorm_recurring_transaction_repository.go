@@ -26,6 +26,11 @@ func (r *GormRecurringTransactionRepository) toDomain(model RecurringTransaction
 	if txnType == "" {
 		txnType = finance.TransactionTypeExpense
 	}
+	schedule := finance.RecurringSchedule{
+		Weekday:     model.Weekday,
+		DayOfMonth:  model.DayOfMonth,
+		MonthOfYear: model.MonthOfYear,
+	}
 	return finance.ReconstituteRecurringTransaction(
 		finance.NewRecurringTransactionID(int(model.ID)),
 		finance.NewUserID(int(model.UserID)),
@@ -35,6 +40,7 @@ func (r *GormRecurringTransactionRepository) toDomain(model RecurringTransaction
 		model.Description,
 		finance.Frequency(model.Frequency),
 		txnType,
+		schedule,
 		model.NextDueDate,
 		model.IsActive,
 		model.CreatedAt,
@@ -42,6 +48,7 @@ func (r *GormRecurringTransactionRepository) toDomain(model RecurringTransaction
 }
 
 func (r *GormRecurringTransactionRepository) Save(ctx context.Context, rt *finance.RecurringTransaction) error {
+	schedule := rt.Schedule()
 	model := &RecurringTransaction{
 		UserID:      uint(rt.UserID().Value()),
 		CategoryID:  uint(rt.CategoryID().Value()),
@@ -50,6 +57,9 @@ func (r *GormRecurringTransactionRepository) Save(ctx context.Context, rt *finan
 		Description: rt.Description(),
 		Frequency:   string(rt.Frequency()),
 		Type:        string(rt.Type()),
+		Weekday:     schedule.Weekday,
+		DayOfMonth:  schedule.DayOfMonth,
+		MonthOfYear: schedule.MonthOfYear,
 		NextDueDate: rt.NextDueDate(),
 		IsActive:    rt.IsActive(),
 	}
@@ -57,15 +67,18 @@ func (r *GormRecurringTransactionRepository) Save(ctx context.Context, rt *finan
 	if rt.ID().Value() != 0 {
 		model.ID = uint(rt.ID().Value())
 		return r.db.WithContext(ctx).Model(&RecurringTransaction{}).Where("id = ?", model.ID).Updates(map[string]interface{}{
-			"category_id":   model.CategoryID,
-			"currency_id":   model.CurrencyID,
-			"amount":        model.Amount,
-			"description":   model.Description,
-			"frequency":     model.Frequency,
-			"type":          model.Type,
-			"next_due_date": model.NextDueDate,
-			"is_active":     model.IsActive,
-			"updated_at":    time.Now(),
+			"category_id":    model.CategoryID,
+			"currency_id":    model.CurrencyID,
+			"amount":         model.Amount,
+			"description":    model.Description,
+			"frequency":      model.Frequency,
+			"type":           model.Type,
+			"weekday":        model.Weekday,
+			"day_of_month":   model.DayOfMonth,
+			"month_of_year":  model.MonthOfYear,
+			"next_due_date":  model.NextDueDate,
+			"is_active":      model.IsActive,
+			"updated_at":     time.Now(),
 		}).Error
 	}
 

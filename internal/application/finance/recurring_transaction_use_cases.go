@@ -3,25 +3,26 @@ package finance
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
-	appNotification "panda-pocket/internal/application/notification"
 	domainFinance "panda-pocket/internal/domain/finance"
-	domainIdentity "panda-pocket/internal/domain/identity"
 )
 
 type RecurringTransactionResponse struct {
-	ID          int     `json:"id"`
-	Type        string  `json:"type"`
-	CategoryID  int     `json:"category_id"`
-	Amount      float64 `json:"amount"`
-	Description string  `json:"description"`
-	Frequency   string  `json:"frequency"`
-	NextDueDate string  `json:"next_due_date"`
-	NextDate    string  `json:"next_date"`
-	IsActive    bool    `json:"is_active"`
-	Category    *CategoryResponse `json:"category,omitempty"`
+	ID            int               `json:"id"`
+	Type          string            `json:"type"`
+	CategoryID    int               `json:"category_id"`
+	Amount        float64           `json:"amount"`
+	Description   string            `json:"description"`
+	Frequency     string            `json:"frequency"`
+	Weekday       *int              `json:"weekday,omitempty"`
+	DayOfMonth    *int              `json:"day_of_month,omitempty"`
+	MonthOfYear   *int              `json:"month_of_year,omitempty"`
+	ScheduleLabel string            `json:"schedule_label"`
+	NextDueDate   string            `json:"next_due_date"`
+	NextDate      string            `json:"next_date"`
+	IsActive      bool              `json:"is_active"`
+	Category      *CategoryResponse `json:"category,omitempty"`
 }
 
 type CreateRecurringTransactionRequest struct {
@@ -30,6 +31,9 @@ type CreateRecurringTransactionRequest struct {
 	Amount      float64 `json:"amount" binding:"required,gt=0"`
 	Description string  `json:"description"`
 	Frequency   string  `json:"frequency" binding:"required,oneof=daily weekly monthly yearly"`
+	Weekday     *int    `json:"weekday"`
+	DayOfMonth  *int    `json:"day_of_month"`
+	MonthOfYear *int    `json:"month_of_year"`
 	NextDueDate string  `json:"next_due_date"`
 }
 
@@ -61,21 +65,28 @@ func (uc *CreateRecurringTransactionUseCase) Execute(ctx context.Context, userID
 	if err != nil {
 		return nil, errors.New("category not found")
 	}
+	if string(category.Type()) != req.Type {
+		return nil, errors.New("category type does not match transaction type")
+	}
 
 	money, err := domainFinance.NewMoney(req.Amount, currency.ID())
 	if err != nil {
 		return nil, err
 	}
 
-	nextDue := time.Now()
+	from := time.Now()
 	if req.NextDueDate != "" {
 		parsed, err := time.Parse("2006-01-02", req.NextDueDate)
 		if err != nil {
 			return nil, errors.New("invalid next_due_date format. Expected YYYY-MM-DD")
 		}
-		nextDue = parsed
-	} else {
-		nextDue = time.Date(nextDue.Year(), nextDue.Month(), nextDue.Day(), 0, 0, 0, 0, nextDue.Location())
+		from = parsed
+	}
+
+	schedule := domainFinance.RecurringSchedule{
+		Weekday:     req.Weekday,
+		DayOfMonth:  req.DayOfMonth,
+		MonthOfYear: req.MonthOfYear,
 	}
 
 	rt, err := domainFinance.NewRecurringTransaction(
@@ -86,7 +97,8 @@ func (uc *CreateRecurringTransactionUseCase) Execute(ctx context.Context, userID
 		req.Description,
 		domainFinance.Frequency(req.Frequency),
 		domainFinance.TransactionType(req.Type),
-		nextDue,
+		schedule,
+		from,
 	)
 	if err != nil {
 		return nil, err
@@ -101,78 +113,31 @@ func (uc *CreateRecurringTransactionUseCase) Execute(ctx context.Context, userID
 }
 
 type GetRecurringTransactionsUseCase struct {
-	recurringRepo      domainFinance.RecurringTransactionRepository
-	transactionService *domainFinance.TransactionService
-	categoryService    *domainFinance.CategoryService
-	prefsRepo          domainIdentity.PreferencesRepository
-	notificationHelper *appNotification.CreateNotificationHelper
+	recurringRepo   domainFinance.RecurringTransactionRepository
+	categoryService *domainFinance.CategoryService
+	enqueueUseCase  *EnqueueDueRecurringUseCase
 }
 
 func NewGetRecurringTransactionsUseCase(
 	recurringRepo domainFinance.RecurringTransactionRepository,
-	transactionService *domainFinance.TransactionService,
 	categoryService *domainFinance.CategoryService,
-	prefsRepo domainIdentity.PreferencesRepository,
-	notificationHelper *appNotification.CreateNotificationHelper,
+	enqueueUseCase *EnqueueDueRecurringUseCase,
 ) *GetRecurringTransactionsUseCase {
 	return &GetRecurringTransactionsUseCase{
-		recurringRepo:      recurringRepo,
-		transactionService: transactionService,
-		categoryService:    categoryService,
-		prefsRepo:          prefsRepo,
-		notificationHelper: notificationHelper,
+		recurringRepo:   recurringRepo,
+		categoryService: categoryService,
+		enqueueUseCase:  enqueueUseCase,
 	}
 }
 
 func (uc *GetRecurringTransactionsUseCase) Execute(ctx context.Context, userID int) ([]RecurringTransactionResponse, error) {
-	items, err := uc.recurringRepo.FindByUserID(ctx, domainFinance.NewUserID(userID))
-	if err != nil {
-		return nil, err
-	}
-
-	remindersEnabled := true
-	if prefs, err := uc.prefsRepo.FindByUserID(ctx, domainIdentity.NewUserID(userID)); err == nil && prefs != nil {
-		remindersEnabled = prefs.RecurringReminders()
-	}
-
-	for _, rt := range items {
-		for rt.IsDue() {
-			dueDate := rt.NextDueDate()
-			_, err := uc.transactionService.CreateTransaction(
-				ctx,
-				rt.UserID(),
-				rt.CategoryID(),
-				rt.CurrencyID(),
-				rt.Amount(),
-				rt.Description(),
-				dueDate,
-				rt.Type(),
-			)
-			if err != nil {
-				break
-			}
-
-			if remindersEnabled && uc.notificationHelper != nil {
-				title := "Recurring transaction posted"
-				message := fmt.Sprintf("%s (%s) was posted automatically.", rt.Description(), rt.Type())
-				if rt.Description() == "" {
-					message = fmt.Sprintf("A recurring %s was posted automatically.", rt.Type())
-				}
-				_ = uc.notificationHelper.CreateIfNotRecent(ctx, userID, title, message, "recurring_reminder")
-			}
-
-			rt.UpdateNextDueDate(rt.CalculateNextDueDate())
-			if err := uc.recurringRepo.Save(ctx, rt); err != nil {
-				break
-			}
-			// safety: avoid infinite loop if frequency somehow stuck
-			if rt.NextDueDate().Equal(dueDate) {
-				break
-			}
+	if uc.enqueueUseCase != nil {
+		if err := uc.enqueueUseCase.Execute(ctx, userID); err != nil {
+			return nil, err
 		}
 	}
 
-	items, err = uc.recurringRepo.FindByUserID(ctx, domainFinance.NewUserID(userID))
+	items, err := uc.recurringRepo.FindByUserID(ctx, domainFinance.NewUserID(userID))
 	if err != nil {
 		return nil, err
 	}
@@ -210,15 +175,19 @@ func (uc *DeleteRecurringTransactionUseCase) Execute(ctx context.Context, userID
 func toRecurringResponse(rt *domainFinance.RecurringTransaction, category *domainFinance.Category) RecurringTransactionResponse {
 	due := rt.NextDueDate().Format("2006-01-02")
 	resp := RecurringTransactionResponse{
-		ID:          rt.ID().Value(),
-		Type:        string(rt.Type()),
-		CategoryID:  rt.CategoryID().Value(),
-		Amount:      rt.Amount().Amount(),
-		Description: rt.Description(),
-		Frequency:   string(rt.Frequency()),
-		NextDueDate: due,
-		NextDate:    due,
-		IsActive:    rt.IsActive(),
+		ID:            rt.ID().Value(),
+		Type:          string(rt.Type()),
+		CategoryID:    rt.CategoryID().Value(),
+		Amount:        rt.Amount().Amount(),
+		Description:   rt.Description(),
+		Frequency:     string(rt.Frequency()),
+		Weekday:       rt.Weekday(),
+		DayOfMonth:    rt.DayOfMonth(),
+		MonthOfYear:   rt.MonthOfYear(),
+		ScheduleLabel: rt.ScheduleLabel(),
+		NextDueDate:   due,
+		NextDate:      due,
+		IsActive:      rt.IsActive(),
 	}
 	if category != nil {
 		resp.Category = buildCategoryResponse(category)

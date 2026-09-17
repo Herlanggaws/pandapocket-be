@@ -68,3 +68,11 @@ type RecurringTransactionRepository interface {
 	FindDueTransactions(ctx context.Context) ([]*RecurringTransaction, error)
 	Delete(ctx context.Context, id RecurringTransactionID) error
 }
+
+// PendingTransactionRepository defines persistence for pending recurring occurrences
+type PendingTransactionRepository interface {
+	Save(ctx context.Context, pending *PendingTransaction) error
+	FindByID(ctx context.Context, id PendingTransactionID) (*PendingTransaction, error)
+	FindOpenByUserID(ctx context.Context, userID UserID) ([]*PendingTransaction, error)
+	ExistsByRecurringAndDueDate(ctx context.Context, recurringID RecurringTransactionID, dueDate time.Time) (bool, error)
+}

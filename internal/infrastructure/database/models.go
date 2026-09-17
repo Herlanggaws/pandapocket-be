@@ -123,23 +123,48 @@ type Budget struct {
 
 // RecurringTransaction represents a recurring transaction in the database
 type RecurringTransaction struct {
-	ID          uint      `gorm:"primaryKey" json:"id"`
-	UserID      uint      `gorm:"not null;index" json:"user_id"`
-	CategoryID  uint      `gorm:"not null;index" json:"category_id"`
-	CurrencyID  uint      `gorm:"not null;index" json:"currency_id"`
-	Amount      float64   `gorm:"type:decimal(10,2);not null" json:"amount"`
-	Description string    `gorm:"type:text" json:"description"`
-	Frequency   string    `gorm:"not null;check:frequency IN ('daily', 'weekly', 'monthly', 'yearly')" json:"frequency"`
-	Type        string    `gorm:"not null;default:'expense';check:type IN ('expense', 'income')" json:"type"`
-	NextDueDate time.Time `gorm:"type:date;not null" json:"next_due_date"`
-	IsActive    bool      `gorm:"default:true" json:"is_active"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID           uint      `gorm:"primaryKey" json:"id"`
+	UserID       uint      `gorm:"not null;index" json:"user_id"`
+	CategoryID   uint      `gorm:"not null;index" json:"category_id"`
+	CurrencyID   uint      `gorm:"not null;index" json:"currency_id"`
+	Amount       float64   `gorm:"type:decimal(10,2);not null" json:"amount"`
+	Description  string    `gorm:"type:text" json:"description"`
+	Frequency    string    `gorm:"not null;check:frequency IN ('daily', 'weekly', 'monthly', 'yearly')" json:"frequency"`
+	Type         string    `gorm:"not null;default:'expense';check:type IN ('expense', 'income')" json:"type"`
+	Weekday      *int      `gorm:"column:weekday" json:"weekday,omitempty"`
+	DayOfMonth   *int      `gorm:"column:day_of_month" json:"day_of_month,omitempty"`
+	MonthOfYear  *int      `gorm:"column:month_of_year" json:"month_of_year,omitempty"`
+	NextDueDate  time.Time `gorm:"type:date;not null" json:"next_due_date"`
+	IsActive     bool      `gorm:"default:true" json:"is_active"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 
 	// Relationships
 	User     *User     `gorm:"foreignKey:UserID" json:"user,omitempty"`
 	Category *Category `gorm:"foreignKey:CategoryID" json:"category,omitempty"`
 	Currency *Currency `gorm:"foreignKey:CurrencyID" json:"currency,omitempty"`
+}
+
+// PendingTransaction represents a due recurring occurrence awaiting confirmation
+type PendingTransaction struct {
+	ID                     uint       `gorm:"primaryKey" json:"id"`
+	UserID                 uint       `gorm:"not null;index" json:"user_id"`
+	RecurringTransactionID uint       `gorm:"not null;uniqueIndex:idx_pending_recurring_due" json:"recurring_transaction_id"`
+	DueDate                time.Time  `gorm:"type:date;not null;uniqueIndex:idx_pending_recurring_due" json:"due_date"`
+	Amount                 float64    `gorm:"type:decimal(10,2);not null" json:"amount"`
+	Description            string     `gorm:"type:text" json:"description"`
+	Type                   string     `gorm:"not null;check:type IN ('expense', 'income')" json:"type"`
+	CategoryID             uint       `gorm:"not null;index" json:"category_id"`
+	CurrencyID             uint       `gorm:"not null;index" json:"currency_id"`
+	Status                 string     `gorm:"not null;default:'pending';check:status IN ('pending', 'confirmed', 'rejected');index" json:"status"`
+	CreatedAt              time.Time  `json:"created_at"`
+	UpdatedAt              time.Time  `json:"updated_at"`
+	ResolvedAt             *time.Time `json:"resolved_at,omitempty"`
+
+	User                 *User                 `gorm:"foreignKey:UserID" json:"user,omitempty"`
+	RecurringTransaction *RecurringTransaction `gorm:"foreignKey:RecurringTransactionID" json:"recurring_transaction,omitempty"`
+	Category             *Category             `gorm:"foreignKey:CategoryID" json:"category,omitempty"`
+	Currency             *Currency             `gorm:"foreignKey:CurrencyID" json:"currency,omitempty"`
 }
 
 // UserPreferences represents user preferences in the database
@@ -216,6 +241,10 @@ func (Budget) TableName() string {
 
 func (RecurringTransaction) TableName() string {
 	return "recurring_transactions"
+}
+
+func (PendingTransaction) TableName() string {
+	return "pending_transactions"
 }
 
 func (UserPreferences) TableName() string {

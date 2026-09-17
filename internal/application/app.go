@@ -40,6 +40,7 @@ func NewApp(db *gorm.DB) *App {
 	prefsRepo := database.NewGormPreferencesRepository(db)
 	notificationRepo := database.NewGormNotificationRepository(db)
 	recurringRepo := database.NewGormRecurringTransactionRepository(db)
+	pendingRepo := database.NewGormPendingTransactionRepository(db)
 
 	// Domain layer - services
 	userService := domainIdentity.NewUserService(userRepo)
@@ -93,14 +94,25 @@ func NewApp(db *gorm.DB) *App {
 		notificationHelper,
 	)
 	createRecurringUseCase := appFinance.NewCreateRecurringTransactionUseCase(recurringRepo, currencyService, categoryService)
-	getRecurringUseCase := appFinance.NewGetRecurringTransactionsUseCase(
+	enqueueDueRecurringUseCase := appFinance.NewEnqueueDueRecurringUseCase(
 		recurringRepo,
-		transactionService,
-		categoryService,
+		pendingRepo,
 		prefsRepo,
 		notificationHelper,
 	)
+	getRecurringUseCase := appFinance.NewGetRecurringTransactionsUseCase(
+		recurringRepo,
+		categoryService,
+		enqueueDueRecurringUseCase,
+	)
 	deleteRecurringUseCase := appFinance.NewDeleteRecurringTransactionUseCase(recurringRepo)
+	listPendingUseCase := appFinance.NewListPendingTransactionsUseCase(
+		enqueueDueRecurringUseCase,
+		pendingRepo,
+		categoryService,
+	)
+	confirmPendingUseCase := appFinance.NewConfirmPendingTransactionUseCase(pendingRepo, transactionService)
+	rejectPendingUseCase := appFinance.NewRejectPendingTransactionUseCase(pendingRepo)
 
 	// Interface layer - handlers and middleware
 	identityHandlers := handlers.NewIdentityHandlers(
@@ -140,6 +152,9 @@ func NewApp(db *gorm.DB) *App {
 		createRecurringUseCase,
 		getRecurringUseCase,
 		deleteRecurringUseCase,
+		listPendingUseCase,
+		confirmPendingUseCase,
+		rejectPendingUseCase,
 	)
 	dashboardHandlers := handlers.NewDashboardHandlers(getDashboardStatsUseCase)
 	notificationHandlers := handlers.NewNotificationHandlers(
@@ -238,6 +253,10 @@ func (app *App) SetupRoutes() *gin.Engine {
 			protected.GET("/recurring-transactions", app.FinanceHandlers.GetRecurringTransactions)
 			protected.POST("/recurring-transactions", app.FinanceHandlers.CreateRecurringTransaction)
 			protected.DELETE("/recurring-transactions/:id", app.FinanceHandlers.DeleteRecurringTransaction)
+
+			protected.GET("/pending-transactions", app.FinanceHandlers.GetPendingTransactions)
+			protected.POST("/pending-transactions/:id/confirm", app.FinanceHandlers.ConfirmPendingTransaction)
+			protected.POST("/pending-transactions/:id/reject", app.FinanceHandlers.RejectPendingTransaction)
 		}
 	}
 

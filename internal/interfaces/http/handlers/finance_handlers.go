@@ -37,6 +37,9 @@ type FinanceHandlers struct {
 	createRecurringUseCase    *finance.CreateRecurringTransactionUseCase
 	getRecurringUseCase       *finance.GetRecurringTransactionsUseCase
 	deleteRecurringUseCase    *finance.DeleteRecurringTransactionUseCase
+	listPendingUseCase        *finance.ListPendingTransactionsUseCase
+	confirmPendingUseCase     *finance.ConfirmPendingTransactionUseCase
+	rejectPendingUseCase      *finance.RejectPendingTransactionUseCase
 }
 
 // NewFinanceHandlers creates a new finance handlers instance
@@ -65,6 +68,9 @@ func NewFinanceHandlers(
 	createRecurringUseCase *finance.CreateRecurringTransactionUseCase,
 	getRecurringUseCase *finance.GetRecurringTransactionsUseCase,
 	deleteRecurringUseCase *finance.DeleteRecurringTransactionUseCase,
+	listPendingUseCase *finance.ListPendingTransactionsUseCase,
+	confirmPendingUseCase *finance.ConfirmPendingTransactionUseCase,
+	rejectPendingUseCase *finance.RejectPendingTransactionUseCase,
 ) *FinanceHandlers {
 	return &FinanceHandlers{
 		createTransactionUseCase:  createTransactionUseCase,
@@ -91,6 +97,9 @@ func NewFinanceHandlers(
 		createRecurringUseCase:    createRecurringUseCase,
 		getRecurringUseCase:       getRecurringUseCase,
 		deleteRecurringUseCase:    deleteRecurringUseCase,
+		listPendingUseCase:        listPendingUseCase,
+		confirmPendingUseCase:     confirmPendingUseCase,
+		rejectPendingUseCase:      rejectPendingUseCase,
 	}
 }
 
@@ -673,7 +682,7 @@ func (h *FinanceHandlers) GetDefaultCurrency(c *gin.Context) {
 	SuccessResponse(c, http.StatusOK, currency)
 }
 
-// GetRecurringTransactions lists recurring rules and posts any that are due
+// GetRecurringTransactions lists recurring rules and enqueues due items as pending
 func (h *FinanceHandlers) GetRecurringTransactions(c *gin.Context) {
 	userID := c.GetInt("user_id")
 	response, err := h.getRecurringUseCase.Execute(c.Request.Context(), userID)
@@ -716,4 +725,56 @@ func (h *FinanceHandlers) DeleteRecurringTransaction(c *gin.Context) {
 		return
 	}
 	SuccessResponse(c, http.StatusOK, gin.H{"message": "Recurring transaction deleted"})
+}
+
+// GetPendingTransactions lists open pending recurring occurrences (also enqueues dues)
+func (h *FinanceHandlers) GetPendingTransactions(c *gin.Context) {
+	userID := c.GetInt("user_id")
+	response, err := h.listPendingUseCase.Execute(c.Request.Context(), userID)
+	if err != nil {
+		HandleError(c, err, http.StatusBadRequest)
+		return
+	}
+	SuccessResponse(c, http.StatusOK, response)
+}
+
+// ConfirmPendingTransaction confirms a pending occurrence into a real transaction
+func (h *FinanceHandlers) ConfirmPendingTransaction(c *gin.Context) {
+	userID := c.GetInt("user_id")
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		ValidationErrorResponse(c, "invalid pending transaction id")
+		return
+	}
+	response, err := h.confirmPendingUseCase.Execute(c.Request.Context(), userID, id)
+	if err != nil {
+		HandleError(c, err, http.StatusBadRequest)
+		return
+	}
+	if h.checkBudgetAlertsUseCase != nil && response != nil {
+		h.checkBudgetAlertsUseCase.Execute(c.Request.Context(), userID, response.CategoryID)
+	}
+	SuccessResponse(c, http.StatusOK, gin.H{
+		"message":             "Pending transaction confirmed",
+		"pending_transaction": response,
+	})
+}
+
+// RejectPendingTransaction rejects a pending occurrence without creating a transaction
+func (h *FinanceHandlers) RejectPendingTransaction(c *gin.Context) {
+	userID := c.GetInt("user_id")
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		ValidationErrorResponse(c, "invalid pending transaction id")
+		return
+	}
+	response, err := h.rejectPendingUseCase.Execute(c.Request.Context(), userID, id)
+	if err != nil {
+		HandleError(c, err, http.StatusBadRequest)
+		return
+	}
+	SuccessResponse(c, http.StatusOK, gin.H{
+		"message":             "Pending transaction rejected",
+		"pending_transaction": response,
+	})
 }

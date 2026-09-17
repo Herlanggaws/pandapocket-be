@@ -21,7 +21,7 @@ PandaPocket (product brand: **Berbudget**) is a personal finance management API 
 - **Currencies**: Full CRUD operations
 - **Preferences**: GET/PUT user preferences and onboarding
 - **Notifications**: In-app list, mark read, delete
-- **Recurring Transactions**: Create/list/delete with due posting on list
+- **Recurring Transactions**: Create/list/delete; due items enqueue as pending for confirm/reject
 - **Analytics**: Totals plus spending by category and period
 - **Dashboard**: Admin-only dashboard statistics
 - **Users**: Admin-only user list
@@ -84,8 +84,11 @@ CORS currently allows all origins (`*`). Allowed request headers: `Origin`, `Con
 | GET | `/api/notifications` | Yes | In-app notifications |
 | PUT | `/api/notifications/:id/read` | Yes | Mark notification read |
 | DELETE | `/api/notifications/:id` | Yes | Delete notification |
-| GET/POST | `/api/recurring-transactions` | Yes | Recurring rules (GET also posts due items) |
+| GET/POST | `/api/recurring-transactions` | Yes | Recurring rules (GET also enqueues due items as pending) |
 | DELETE | `/api/recurring-transactions/:id` | Yes | |
+| GET | `/api/pending-transactions` | Yes | List open pending recurring occurrences (also enqueues dues) |
+| POST | `/api/pending-transactions/:id/confirm` | Yes | Confirm pending → create real expense/income |
+| POST | `/api/pending-transactions/:id/reject` | Yes | Reject pending (no transaction) |
 
 ## Health Check
 
@@ -1366,11 +1369,29 @@ Delete a notification.
 
 ### GET /api/recurring-transactions
 
-List recurring rules. Also posts any **due** active rules as real expenses/incomes and advances `next_due_date`. May create `recurring_reminder` notifications when enabled in preferences.
+List recurring rules. Also enqueues any **due** active rules as **pending transactions** (does not create expenses/incomes) and advances `next_due_date` using the schedule. May create `recurring_reminder` notifications when enabled in preferences.
+
+Each item includes schedule fields (`weekday`, `day_of_month`, `month_of_year` as applicable) and `schedule_label`.
 
 ### POST /api/recurring-transactions
 
-**Request Body:**
+Creates a recurring rule. `next_due_date` is computed from the schedule (first occurrence on/after today), unless an optional `next_due_date` seed date is provided as the search start.
+
+**Weekly** — requires `weekday` (`0`=Sunday … `6`=Saturday):
+
+```json
+{
+  "type": "expense",
+  "category_id": 1,
+  "amount": 50000,
+  "description": "Gym",
+  "frequency": "weekly",
+  "weekday": 1
+}
+```
+
+**Monthly** — requires `day_of_month` (`1`–`31`). If the month has fewer days, the due date is **clamped to the last day** of that month (e.g. day 31 → Feb 28/29, Apr 30):
+
 ```json
 {
   "type": "expense",
@@ -1378,15 +1399,46 @@ List recurring rules. Also posts any **due** active rules as real expenses/incom
   "amount": 150000,
   "description": "Rent",
   "frequency": "monthly",
-  "next_due_date": "2024-02-01"
+  "day_of_month": 31
 }
 ```
 
-`next_due_date` is optional (defaults to today). Currency uses the user's primary currency.
+**Yearly** — requires `month_of_year` (`1`–`12`) and `day_of_month`. Feb 29 clamps to Feb 28 in non-leap years:
+
+```json
+{
+  "type": "income",
+  "category_id": 2,
+  "amount": 1000000,
+  "description": "Annual bonus",
+  "frequency": "yearly",
+  "month_of_year": 3,
+  "day_of_month": 15
+}
+```
+
+Currency uses the user's primary currency.
 
 ### DELETE /api/recurring-transactions/:id
 
 Delete a recurring rule owned by the authenticated user.
+
+---
+
+### GET /api/pending-transactions
+
+List open pending recurring occurrences for the authenticated user. Also runs due enqueue (same as GET recurring) so visiting Dashboard/Transactions can surface new pendings without opening Recurring.
+
+**Response** — array of:
+- `id`, `user_id`, `recurring_transaction_id`, `due_date`, `amount`, `description`, `type`, `category_id`, `status` (`pending`), `category`, `created_at`
+
+### POST /api/pending-transactions/:id/confirm
+
+Confirm a pending occurrence owned by the user: creates the corresponding expense/income on `due_date`, sets status to `confirmed`.
+
+### POST /api/pending-transactions/:id/reject
+
+Reject a pending occurrence owned by the user: sets status to `rejected` without creating a transaction. The recurring schedule was already advanced when the pending was enqueued.
 
 ---
 
@@ -1493,9 +1545,13 @@ Keep this file in sync with the running API. When routes, request/response shape
 
 ## Version History
 
+- **v2.6.1**: **Recurring schedule rules**
+  - Weekly requires `weekday`; monthly `day_of_month` (clamp to last day); yearly `month_of_year` + `day_of_month`
+  - Due advancement is schedule-aware; list responses include `schedule_label`
+
 - **v2.6.0**: **Berbudget backlog ship**
   - `GET /api/users` is admin-only; forgot-password no longer returns token/reset_link in JSON
-  - Preferences GET/PUT, in-app notifications, recurring transactions (with due posting)
+  - Preferences GET/PUT, in-app notifications, recurring transactions (due → pending confirm/reject)
   - Analytics returns `spending_by_category` and `spending_by_period`
   - Budget alerts create in-app notifications when spending approaches/exceeds limits
 
