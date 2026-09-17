@@ -148,6 +148,8 @@ func TestBudgetServiceCreateRejectsIncomeCategory(t *testing.T) {
 		NewUserID(1),
 		NewCategoryID(2),
 		amount,
+		BudgetLimitFixed,
+		nil,
 		BudgetPeriodMonthly,
 		time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 	)
@@ -163,6 +165,8 @@ func TestBudgetServiceCreateRejectsOverlap(t *testing.T) {
 		NewUserID(1),
 		NewCategoryID(1),
 		amount,
+		BudgetLimitFixed,
+		nil,
 		BudgetPeriodMonthly,
 		time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 	)
@@ -180,6 +184,8 @@ func TestBudgetServiceCreateRejectsOverlap(t *testing.T) {
 		NewUserID(1),
 		NewCategoryID(1),
 		amount,
+		BudgetLimitFixed,
+		nil,
 		BudgetPeriodMonthly,
 		time.Date(2024, 1, 15, 0, 0, 0, 0, time.UTC),
 	)
@@ -203,6 +209,8 @@ func TestBudgetServiceCreateAssignsID(t *testing.T) {
 		NewUserID(1),
 		NewCategoryID(1),
 		amount,
+		BudgetLimitFixed,
+		nil,
 		BudgetPeriodMonthly,
 		time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 	)
@@ -221,6 +229,8 @@ func TestBudgetServiceDeleteReturnsNotFoundForOtherUser(t *testing.T) {
 		NewUserID(1),
 		NewCategoryID(1),
 		amount,
+		BudgetLimitFixed,
+		nil,
 		BudgetPeriodMonthly,
 		time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 	)
@@ -241,6 +251,8 @@ func TestCategoryServiceDeleteBlockedByBudgets(t *testing.T) {
 		userID,
 		NewCategoryID(5),
 		amount,
+		BudgetLimitFixed,
+		nil,
 		BudgetPeriodMonthly,
 		time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 	)

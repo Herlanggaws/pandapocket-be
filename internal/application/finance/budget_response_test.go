@@ -13,6 +13,8 @@ func TestSumExpensesForBudgetFiltersCategoryTypeAndCurrency(t *testing.T) {
 		finance.NewUserID(1),
 		finance.NewCategoryID(10),
 		amount,
+		finance.BudgetLimitFixed,
+		nil,
 		finance.BudgetPeriodMonthly,
 		time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 		time.Date(2024, 1, 31, 0, 0, 0, 0, time.UTC),

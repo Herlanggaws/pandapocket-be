@@ -381,6 +381,8 @@ func (s *BudgetService) CreateBudget(
 	userID UserID,
 	categoryID CategoryID,
 	amount Money,
+	limitType BudgetLimitType,
+	percent *float64,
 	period BudgetPeriod,
 	startDate time.Time,
 ) (*Budget, error) {
@@ -402,6 +404,8 @@ func (s *BudgetService) CreateBudget(
 		userID,
 		categoryID,
 		amount,
+		limitType,
+		percent,
 		period,
 		startDate,
 	)
@@ -461,6 +465,8 @@ func (s *BudgetService) UpdateBudget(
 	userID UserID,
 	categoryID CategoryID,
 	amount Money,
+	limitType BudgetLimitType,
+	percent *float64,
 	period BudgetPeriod,
 	startDate time.Time,
 	endDate time.Time,
@@ -490,7 +496,7 @@ func (s *BudgetService) UpdateBudget(
 		targetCategoryID = categoryID
 	}
 
-	if err := budget.UpdateAmount(amount); err != nil {
+	if err := budget.UpdateLimit(limitType, amount, percent); err != nil {
 		return nil, err
 	}
 

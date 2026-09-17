@@ -80,6 +80,7 @@ func NewApp(db *gorm.DB) *App {
 	deleteCategoryUseCase := appFinance.NewDeleteCategoryUseCase(categoryService)
 	getCategoriesUseCase := appFinance.NewGetCategoriesUseCase(categoryService)
 	getAnalyticsUseCase := appFinance.NewGetAnalyticsUseCase(transactionService, categoryService)
+	getHealthScoreUseCase := appFinance.NewGetHealthScoreUseCase(budgetService, categoryService, transactionService, getAnalyticsUseCase)
 	createBudgetUseCase := appFinance.NewCreateBudgetUseCase(budgetService, currencyService, categoryService, transactionService)
 	getBudgetsUseCase := appFinance.NewGetBudgetsUseCase(budgetService, categoryService, transactionService)
 	updateBudgetUseCase := appFinance.NewUpdateBudgetUseCase(budgetService, categoryService, transactionService)
@@ -125,6 +126,7 @@ func NewApp(db *gorm.DB) *App {
 	archiveWalletUseCase := appFinance.NewArchiveWalletUseCase(walletService)
 	unarchiveWalletUseCase := appFinance.NewUnarchiveWalletUseCase(walletService)
 	getWalletBalanceUseCase := appFinance.NewGetWalletBalanceUseCase(walletService)
+	getWalletSummaryUseCase := appFinance.NewGetWalletSummaryUseCase(walletService, currencyService)
 	createTransferUseCase := appFinance.NewCreateTransferUseCase(transferService)
 	getTransfersUseCase := appFinance.NewGetTransfersUseCase(transferService)
 
@@ -177,6 +179,8 @@ func NewApp(db *gorm.DB) *App {
 		archiveWalletUseCase,
 		unarchiveWalletUseCase,
 		getWalletBalanceUseCase,
+		getWalletSummaryUseCase,
+		getHealthScoreUseCase,
 		createTransferUseCase,
 		getTransfersUseCase,
 	)
@@ -266,6 +270,7 @@ func (app *App) SetupRoutes() *gin.Engine {
 			protected.DELETE("/currencies/:id", app.FinanceHandlers.DeleteCurrency)
 
 			protected.GET("/analytics", app.FinanceHandlers.GetAnalytics)
+			protected.GET("/health-score", app.FinanceHandlers.GetHealthScore)
 
 			protected.GET("/preferences", app.IdentityHandlers.GetPreferences)
 			protected.PUT("/preferences", app.IdentityHandlers.UpdatePreferences)
@@ -284,6 +289,7 @@ func (app *App) SetupRoutes() *gin.Engine {
 
 			protected.GET("/wallets", app.FinanceHandlers.GetWallets)
 			protected.POST("/wallets", app.FinanceHandlers.CreateWallet)
+			protected.GET("/wallets/summary", app.FinanceHandlers.GetWalletSummary)
 			protected.GET("/wallets/:id", app.FinanceHandlers.GetWallet)
 			protected.PUT("/wallets/:id", app.FinanceHandlers.UpdateWallet)
 			protected.POST("/wallets/:id/default", app.FinanceHandlers.SetDefaultWallet)

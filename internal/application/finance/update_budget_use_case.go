@@ -10,11 +10,13 @@ import (
 
 // UpdateBudgetRequest represents the request for updating a budget
 type UpdateBudgetRequest struct {
-	CategoryID int     `json:"category_id" binding:"required"`
-	Amount     float64 `json:"amount" binding:"required,gt=0"`
-	Period     string  `json:"period" binding:"required,oneof=weekly monthly yearly"`
-	StartDate  string  `json:"start_date" binding:"required"`
-	EndDate    string  `json:"end_date" binding:"required"`
+	CategoryID int      `json:"category_id" binding:"required"`
+	Amount     float64  `json:"amount"`
+	LimitType  string   `json:"limit_type"`
+	Percent    *float64 `json:"percent"`
+	Period     string   `json:"period" binding:"required,oneof=weekly monthly yearly"`
+	StartDate  string   `json:"start_date" binding:"required"`
+	EndDate    string   `json:"end_date" binding:"required"`
 }
 
 // UpdateBudgetUseCase handles budget updates
@@ -74,7 +76,26 @@ func (uc *UpdateBudgetUseCase) Execute(
 		return nil, errors.New("budget not found")
 	}
 
-	amountDomain, err := finance.NewMoney(req.Amount, existingBudget.Amount().Currency())
+	limitType, err := finance.ParseBudgetLimitType(req.LimitType)
+	if err != nil {
+		return nil, err
+	}
+	if req.LimitType == "" {
+		limitType = existingBudget.LimitType()
+	}
+
+	amountValue := req.Amount
+	percent := req.Percent
+	if limitType == finance.BudgetLimitPercent {
+		amountValue = 0
+		if percent == nil {
+			percent = existingBudget.Percent()
+		}
+	} else if amountValue <= 0 {
+		return nil, errors.New("budget amount must be positive")
+	}
+
+	amountDomain, err := finance.NewMoney(amountValue, existingBudget.Amount().Currency())
 	if err != nil {
 		return nil, err
 	}
@@ -85,6 +106,8 @@ func (uc *UpdateBudgetUseCase) Execute(
 		userIDDomain,
 		finance.NewCategoryID(req.CategoryID),
 		amountDomain,
+		limitType,
+		percent,
 		finance.BudgetPeriod(req.Period),
 		startDate,
 		endDate,

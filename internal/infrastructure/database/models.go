@@ -148,7 +148,9 @@ type Budget struct {
 	UserID     uint      `gorm:"not null;index" json:"user_id"`
 	CategoryID uint      `gorm:"not null;index" json:"category_id"`
 	CurrencyID uint      `gorm:"not null;index;default:1" json:"currency_id"`
-	Amount     float64   `gorm:"type:decimal(10,2);not null" json:"amount"`
+	Amount     float64   `gorm:"type:decimal(10,2);not null;default:0" json:"amount"`
+	LimitType  string    `gorm:"not null;default:'fixed';check:limit_type IN ('fixed', 'percent')" json:"limit_type"`
+	Percent    *float64  `gorm:"type:decimal(5,2)" json:"percent,omitempty"`
 	Period     string    `gorm:"not null;check:period IN ('weekly', 'monthly', 'yearly')" json:"period"`
 	StartDate  time.Time `gorm:"type:date;not null" json:"start_date"`
 	EndDate    time.Time `gorm:"type:date;not null" json:"end_date"`

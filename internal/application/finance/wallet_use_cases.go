@@ -352,3 +352,63 @@ func (uc *GetTransfersUseCase) Execute(ctx context.Context, userID int, walletID
 	}
 	return result, nil
 }
+
+type WalletSummaryResponse struct {
+	CurrencyID          int     `json:"currency_id"`
+	LiquidNetWorth      float64 `json:"liquid_net_worth"`
+	WalletCount         int     `json:"wallet_count"`
+	ExcludedWalletCount int     `json:"excluded_wallet_count"`
+}
+
+type GetWalletSummaryUseCase struct {
+	walletService   *finance.WalletService
+	currencyService *finance.CurrencyService
+}
+
+func NewGetWalletSummaryUseCase(
+	walletService *finance.WalletService,
+	currencyService *finance.CurrencyService,
+) *GetWalletSummaryUseCase {
+	return &GetWalletSummaryUseCase{
+		walletService:   walletService,
+		currencyService: currencyService,
+	}
+}
+
+func (uc *GetWalletSummaryUseCase) Execute(ctx context.Context, userID int) (*WalletSummaryResponse, error) {
+	user := finance.NewUserID(userID)
+	primary, err := uc.currencyService.GetPrimaryCurrency(ctx, user)
+	if err != nil {
+		return nil, err
+	}
+	primaryCurrencyID := primary.ID().Value()
+
+	wallets, err := uc.walletService.GetWallets(ctx, user, false)
+	if err != nil {
+		return nil, err
+	}
+
+	var liquidNetWorth float64
+	walletCount := 0
+	excludedCount := 0
+
+	for _, wallet := range wallets {
+		if wallet.CurrencyID().Value() != primaryCurrencyID {
+			excludedCount++
+			continue
+		}
+		breakdown, balanceErr := uc.walletService.GetBalance(ctx, user, wallet.ID())
+		if balanceErr != nil {
+			continue
+		}
+		liquidNetWorth += breakdown.Balance
+		walletCount++
+	}
+
+	return &WalletSummaryResponse{
+		CurrencyID:          primaryCurrencyID,
+		LiquidNetWorth:      liquidNetWorth,
+		WalletCount:         walletCount,
+		ExcludedWalletCount: excludedCount,
+	}, nil
+}

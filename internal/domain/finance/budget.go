@@ -14,12 +14,33 @@ const (
 	BudgetPeriodYearly  BudgetPeriod = "yearly"
 )
 
+// BudgetLimitType is how the budget cap is expressed.
+type BudgetLimitType string
+
+const (
+	BudgetLimitFixed   BudgetLimitType = "fixed"
+	BudgetLimitPercent BudgetLimitType = "percent"
+)
+
+func ParseBudgetLimitType(value string) (BudgetLimitType, error) {
+	switch BudgetLimitType(value) {
+	case BudgetLimitFixed, BudgetLimitPercent:
+		return BudgetLimitType(value), nil
+	case "":
+		return BudgetLimitFixed, nil
+	default:
+		return "", errors.New("invalid budget limit type")
+	}
+}
+
 // Budget represents a budget
 type Budget struct {
 	id         BudgetID
 	userID     UserID
 	categoryID CategoryID
 	amount     Money
+	limitType  BudgetLimitType
+	percent    *float64
 	period     BudgetPeriod
 	startDate  time.Time
 	endDate    time.Time
@@ -58,11 +79,18 @@ func NewBudget(
 	userID UserID,
 	categoryID CategoryID,
 	amount Money,
+	limitType BudgetLimitType,
+	percent *float64,
 	period BudgetPeriod,
 	startDate time.Time,
 ) (*Budget, error) {
-	if amount.Amount() <= 0 {
-		return nil, errors.New("budget amount must be positive")
+	parsedType, err := ParseBudgetLimitType(string(limitType))
+	if err != nil {
+		return nil, err
+	}
+	limitType = parsedType
+	if err := validateBudgetLimit(amount, limitType, percent); err != nil {
+		return nil, err
 	}
 
 	endDate, err := calculateBudgetEndDate(period, startDate)
@@ -75,11 +103,34 @@ func NewBudget(
 		userID:     userID,
 		categoryID: categoryID,
 		amount:     amount,
+		limitType:  limitType,
+		percent:    percent,
 		period:     period,
 		startDate:  startDate,
 		endDate:    endDate,
 		createdAt:  time.Now(),
 	}, nil
+}
+
+func validateBudgetLimit(amount Money, limitType BudgetLimitType, percent *float64) error {
+	parsed, err := ParseBudgetLimitType(string(limitType))
+	if err != nil {
+		return err
+	}
+	switch parsed {
+	case BudgetLimitFixed:
+		if amount.Amount() <= 0 {
+			return errors.New("budget amount must be positive")
+		}
+	case BudgetLimitPercent:
+		if percent == nil {
+			return errors.New("budget percent is required")
+		}
+		if *percent < 1 || *percent > 100 {
+			return errors.New("budget percent must be between 1 and 100")
+		}
+	}
+	return nil
 }
 
 // ReconstituteBudget rebuilds a budget from persisted state without recalculating dates
@@ -88,13 +139,18 @@ func ReconstituteBudget(
 	userID UserID,
 	categoryID CategoryID,
 	amount Money,
+	limitType BudgetLimitType,
+	percent *float64,
 	period BudgetPeriod,
 	startDate time.Time,
 	endDate time.Time,
 	createdAt time.Time,
 ) (*Budget, error) {
-	if amount.Amount() <= 0 {
-		return nil, errors.New("budget amount must be positive")
+	if limitType == "" {
+		limitType = BudgetLimitFixed
+	}
+	if err := validateBudgetLimit(amount, limitType, percent); err != nil {
+		return nil, err
 	}
 
 	switch period {
@@ -112,6 +168,8 @@ func ReconstituteBudget(
 		userID:     userID,
 		categoryID: categoryID,
 		amount:     amount,
+		limitType:  limitType,
+		percent:    percent,
 		period:     period,
 		startDate:  startDate,
 		endDate:    endDate,
@@ -141,6 +199,17 @@ func (b *Budget) Amount() Money {
 	return b.amount
 }
 
+func (b *Budget) LimitType() BudgetLimitType {
+	if b.limitType == "" {
+		return BudgetLimitFixed
+	}
+	return b.limitType
+}
+
+func (b *Budget) Percent() *float64 {
+	return b.percent
+}
+
 func (b *Budget) Period() BudgetPeriod {
 	return b.period
 }
@@ -159,13 +228,27 @@ func (b *Budget) CreatedAt() time.Time {
 
 // UpdateAmount updates the budget amount
 func (b *Budget) UpdateAmount(newAmount Money) error {
-	if newAmount.Amount() <= 0 {
+	if b.LimitType() == BudgetLimitFixed && newAmount.Amount() <= 0 {
 		return errors.New("budget amount must be positive")
 	}
 	if newAmount.Currency() != b.amount.Currency() {
 		return errors.New("cannot change currency of existing budget")
 	}
 	b.amount = newAmount
+	return nil
+}
+
+// UpdateLimit updates limit type and percent/amount together.
+func (b *Budget) UpdateLimit(limitType BudgetLimitType, amount Money, percent *float64) error {
+	if err := validateBudgetLimit(amount, limitType, percent); err != nil {
+		return err
+	}
+	if amount.Currency() != b.amount.Currency() {
+		return errors.New("cannot change currency of existing budget")
+	}
+	b.limitType = limitType
+	b.amount = amount
+	b.percent = percent
 	return nil
 }
 

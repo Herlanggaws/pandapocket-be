@@ -48,6 +48,8 @@ func TestReconstituteBudgetPreservesPersistedFields(t *testing.T) {
 		NewUserID(7),
 		NewCategoryID(3),
 		amount,
+		BudgetLimitFixed,
+		nil,
 		BudgetPeriodMonthly,
 		startDate,
 		endDate,
@@ -78,6 +80,8 @@ func TestBudgetAssignID(t *testing.T) {
 		NewUserID(1),
 		NewCategoryID(1),
 		amount,
+		BudgetLimitFixed,
+		nil,
 		BudgetPeriodWeekly,
 		time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 	)
@@ -98,6 +102,8 @@ func TestBudgetOverlapsWith(t *testing.T) {
 		NewUserID(1),
 		NewCategoryID(1),
 		amount,
+		BudgetLimitFixed,
+		nil,
 		BudgetPeriodMonthly,
 		time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 	)
@@ -124,6 +130,8 @@ func TestUpdateEndDateRejectsBeforeStart(t *testing.T) {
 		NewUserID(1),
 		NewCategoryID(1),
 		amount,
+		BudgetLimitFixed,
+		nil,
 		BudgetPeriodMonthly,
 		time.Date(2024, 1, 10, 0, 0, 0, 0, time.UTC),
 	)

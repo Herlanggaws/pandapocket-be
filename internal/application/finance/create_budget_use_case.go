@@ -2,16 +2,19 @@ package finance
 
 import (
 	"context"
+	"errors"
 	"panda-pocket/internal/domain/finance"
 	"time"
 )
 
 // CreateBudgetRequest represents the request for creating a budget
 type CreateBudgetRequest struct {
-	CategoryID int     `json:"category_id" binding:"required"`
-	Amount     float64 `json:"amount" binding:"required,gt=0"`
-	Period     string  `json:"period" binding:"required,oneof=weekly monthly yearly"`
-	StartDate  string  `json:"start_date" binding:"required"`
+	CategoryID int      `json:"category_id" binding:"required"`
+	Amount     float64  `json:"amount"`
+	LimitType  string   `json:"limit_type"`
+	Percent    *float64 `json:"percent"`
+	Period     string   `json:"period" binding:"required,oneof=weekly monthly yearly"`
+	StartDate  string   `json:"start_date" binding:"required"`
 }
 
 // CreateBudgetUseCase handles budget creation
@@ -44,14 +47,28 @@ func (uc *CreateBudgetUseCase) Execute(ctx context.Context, userID int, req Crea
 		return nil, err
 	}
 
+	limitType, err := finance.ParseBudgetLimitType(req.LimitType)
+	if err != nil {
+		return nil, err
+	}
+
 	currency, err := uc.currencyService.GetPrimaryCurrency(ctx, finance.NewUserID(userID))
 	if err != nil {
 		return nil, err
 	}
 
-	money, err := finance.NewMoney(req.Amount, currency.ID())
+	amountValue := req.Amount
+	if limitType == finance.BudgetLimitPercent {
+		amountValue = 0
+	}
+
+	money, err := finance.NewMoney(amountValue, currency.ID())
 	if err != nil {
 		return nil, err
+	}
+
+	if limitType == finance.BudgetLimitFixed && req.Amount <= 0 {
+		return nil, errors.New("budget amount must be positive")
 	}
 
 	budget, err := uc.budgetService.CreateBudget(
@@ -59,6 +76,8 @@ func (uc *CreateBudgetUseCase) Execute(ctx context.Context, userID int, req Crea
 		finance.NewUserID(userID),
 		finance.NewCategoryID(req.CategoryID),
 		money,
+		limitType,
+		req.Percent,
 		finance.BudgetPeriod(req.Period),
 		startDate,
 	)

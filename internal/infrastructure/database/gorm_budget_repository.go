@@ -25,11 +25,18 @@ func (r *GormBudgetRepository) toDomain(budgetModel Budget) (*finance.Budget, er
 		return nil, err
 	}
 
+	limitType := finance.BudgetLimitType(budgetModel.LimitType)
+	if limitType == "" {
+		limitType = finance.BudgetLimitFixed
+	}
+
 	return finance.ReconstituteBudget(
 		finance.NewBudgetID(int(budgetModel.ID)),
 		finance.NewUserID(int(budgetModel.UserID)),
 		finance.NewCategoryID(int(budgetModel.CategoryID)),
 		amount,
+		limitType,
+		budgetModel.Percent,
 		finance.BudgetPeriod(budgetModel.Period),
 		budgetModel.StartDate,
 		budgetModel.EndDate,
@@ -44,6 +51,8 @@ func (r *GormBudgetRepository) Save(ctx context.Context, budget *finance.Budget)
 		CategoryID: uint(budget.CategoryID().Value()),
 		CurrencyID: uint(budget.Amount().Currency().Value()),
 		Amount:     budget.Amount().Amount(),
+		LimitType:  string(budget.LimitType()),
+		Percent:    budget.Percent(),
 		Period:     string(budget.Period()),
 		StartDate:  budget.StartDate(),
 		EndDate:    budget.EndDate(),
@@ -55,6 +64,8 @@ func (r *GormBudgetRepository) Save(ctx context.Context, budget *finance.Budget)
 			"category_id": budgetModel.CategoryID,
 			"currency_id": budgetModel.CurrencyID,
 			"amount":      budgetModel.Amount,
+			"limit_type":  budgetModel.LimitType,
+			"percent":     budgetModel.Percent,
 			"period":      budgetModel.Period,
 			"start_date":  budgetModel.StartDate,
 			"end_date":    budgetModel.EndDate,

@@ -48,6 +48,8 @@ type FinanceHandlers struct {
 	archiveWalletUseCase      *finance.ArchiveWalletUseCase
 	unarchiveWalletUseCase    *finance.UnarchiveWalletUseCase
 	getWalletBalanceUseCase   *finance.GetWalletBalanceUseCase
+	getWalletSummaryUseCase   *finance.GetWalletSummaryUseCase
+	getHealthScoreUseCase     *finance.GetHealthScoreUseCase
 	createTransferUseCase     *finance.CreateTransferUseCase
 	getTransfersUseCase       *finance.GetTransfersUseCase
 }
@@ -89,6 +91,8 @@ func NewFinanceHandlers(
 	archiveWalletUseCase *finance.ArchiveWalletUseCase,
 	unarchiveWalletUseCase *finance.UnarchiveWalletUseCase,
 	getWalletBalanceUseCase *finance.GetWalletBalanceUseCase,
+	getWalletSummaryUseCase *finance.GetWalletSummaryUseCase,
+	getHealthScoreUseCase *finance.GetHealthScoreUseCase,
 	createTransferUseCase *finance.CreateTransferUseCase,
 	getTransfersUseCase *finance.GetTransfersUseCase,
 ) *FinanceHandlers {
@@ -128,6 +132,8 @@ func NewFinanceHandlers(
 		archiveWalletUseCase:      archiveWalletUseCase,
 		unarchiveWalletUseCase:    unarchiveWalletUseCase,
 		getWalletBalanceUseCase:   getWalletBalanceUseCase,
+		getWalletSummaryUseCase:   getWalletSummaryUseCase,
+		getHealthScoreUseCase:     getHealthScoreUseCase,
 		createTransferUseCase:     createTransferUseCase,
 		getTransfersUseCase:       getTransfersUseCase,
 	}
@@ -818,6 +824,27 @@ func (h *FinanceHandlers) RejectPendingTransaction(c *gin.Context) {
 		"message":             "Pending transaction rejected",
 		"pending_transaction": response,
 	})
+}
+
+
+func (h *FinanceHandlers) GetHealthScore(c *gin.Context) {
+	userID := c.GetInt("user_id")
+	response, err := h.getHealthScoreUseCase.Execute(c.Request.Context(), userID)
+	if err != nil {
+		InternalServerErrorResponse(c, "HEALTH_SCORE_ERROR", "Failed to compute health score")
+		return
+	}
+	SuccessResponse(c, http.StatusOK, response)
+}
+
+func (h *FinanceHandlers) GetWalletSummary(c *gin.Context) {
+	userID := c.GetInt("user_id")
+	response, err := h.getWalletSummaryUseCase.Execute(c.Request.Context(), userID)
+	if err != nil {
+		HandleError(c, err, http.StatusBadRequest)
+		return
+	}
+	SuccessResponse(c, http.StatusOK, response)
 }
 
 func (h *FinanceHandlers) CreateWallet(c *gin.Context) {

@@ -66,6 +66,11 @@ func InitDB() (*gorm.DB, error) {
 		return nil, err
 	}
 
+	err = backfillBudgetLimitTypes(db)
+	if err != nil {
+		return nil, err
+	}
+
 	log.Printf("Database initialized successfully with GORM and PostgreSQL")
 	return db, nil
 }
@@ -335,4 +340,11 @@ func backfillDefaultWallets(db *gorm.DB) error {
 	}
 
 	return nil
+}
+
+// backfillBudgetLimitTypes sets limit_type=fixed for legacy budget rows.
+func backfillBudgetLimitTypes(db *gorm.DB) error {
+	return db.Model(&Budget{}).
+		Where("limit_type = '' OR limit_type IS NULL").
+		Update("limit_type", "fixed").Error
 }

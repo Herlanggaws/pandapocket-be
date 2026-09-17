@@ -73,13 +73,14 @@ CORS currently allows all origins (`*`). Allowed request headers: `Origin`, `Con
 | GET/POST | `/api/incomes` | Yes | |
 | PUT/DELETE | `/api/incomes/:id` | Yes | |
 | GET | `/api/transactions` | Yes | Filtered/paginated list |
-| GET/POST | `/api/budgets` | Yes | |
+| GET/POST | `/api/budgets` | Yes | `limit_type` fixed\|percent |
 | PUT/DELETE | `/api/budgets/:id` | Yes | |
 | GET/POST | `/api/currencies` | Yes | |
 | GET | `/api/currencies/default` | Yes | |
 | PUT | `/api/currencies/:id/set-default` | Yes | |
 | PUT/DELETE | `/api/currencies/:id` | Yes | |
 | GET | `/api/analytics` | Yes | |
+| GET | `/api/health-score` | Yes | Financial health score 0–100 |
 | GET/PUT | `/api/preferences` | Yes | User preferences & onboarding |
 | GET | `/api/notifications` | Yes | In-app notifications |
 | PUT | `/api/notifications/:id/read` | Yes | Mark notification read |
@@ -90,6 +91,7 @@ CORS currently allows all origins (`*`). Allowed request headers: `Origin`, `Con
 | POST | `/api/pending-transactions/:id/confirm` | Yes | Confirm pending → create real expense/income |
 | POST | `/api/pending-transactions/:id/reject` | Yes | Reject pending (no transaction) |
 | GET/POST | `/api/wallets` | Yes | List/create wallets (`include_archived` query on GET) |
+| GET | `/api/wallets/summary` | Yes | Liquid net worth (primary currency) |
 | GET/PUT | `/api/wallets/:id` | Yes | Get/update wallet |
 | POST | `/api/wallets/:id/default` | Yes | Set default wallet |
 | POST | `/api/wallets/:id/archive` | Yes | Archive wallet |
@@ -977,6 +979,12 @@ Get all transactions (both income and expense) for the authenticated user with a
 
 Budgets are limited to **expense** categories. Date windows are inclusive. Create auto-calculates `end_date` from `period` + `start_date` (weekly = 7 days, monthly/yearly = calendar period minus one day). Overlapping budgets for the same user and category are rejected. Spending reports only sum expenses in the budget's currency.
 
+**Limit types:**
+- `fixed` (default): cap is `amount`
+- `percent`: cap is `percent`% of **income** in the budget date range (same currency). Stored `amount` is `0`; use `effective_amount` for the resolved limit. If period income is `0`, `effective_amount` is `0` (exceeded only if spent > 0).
+
+Report fields (`percentage_used`, `remaining`, `is_on_track`) are computed against `effective_amount`. Budget alerts (≥80%) also use `effective_amount`.
+
 ### GET /api/budgets
 
 Get all budgets for the authenticated user.
@@ -990,6 +998,8 @@ Get all budgets for the authenticated user.
       "id": 8,
       "user_id": 1,
       "amount": 500,
+      "limit_type": "fixed",
+      "effective_amount": 500,
       "period": "monthly",
       "start_date": "2024-01-01",
       "end_date": "2024-01-31",
@@ -1015,7 +1025,10 @@ Get all budgets for the authenticated user.
 **Response Fields:**
 - `id` (integer): Budget ID
 - `user_id` (integer): User ID who owns the budget
-- `amount` (number): Budget amount
+- `amount` (number): Stored fixed amount (`0` when `limit_type` is `percent`)
+- `limit_type` (string): `fixed` or `percent`
+- `percent` (number, optional): 1–100 when `limit_type` is `percent`
+- `effective_amount` (number): Resolved spending cap for the period
 - `period` (string): Budget period (`weekly`, `monthly`, `yearly`)
 - `start_date` (string): Budget start date (YYYY-MM-DD)
 - `end_date` (string): Budget end date (YYYY-MM-DD), inclusive
@@ -1026,24 +1039,40 @@ Get all budgets for the authenticated user.
   - `color` (string): Category color (hex code)
   - `type` (string): Category type (`expense`)
 - `report` (object, optional): Spending vs budget for the window
-  - `is_on_track` (boolean): `true` when spent ≤ amount
+  - `is_on_track` (boolean): `true` when spent ≤ effective amount
   - `total_spent` (number): Expense total in the same currency
-  - `remaining` (number): Amount minus total spent
-  - `percentage_used` (number): Percent of budget used
+  - `remaining` (number): Effective amount minus total spent
+  - `percentage_used` (number): Percent of effective amount used
 
 ### POST /api/budgets
 
 Create a new budget. `end_date` is computed server-side from `period` and `start_date` (client-sent `end_date` is ignored if present).
 
-**Request Body:**
+**Request Body (fixed):**
 ```json
 {
   "category_id": 1,
+  "limit_type": "fixed",
   "amount": 500.00,
   "period": "monthly",
   "start_date": "2024-01-01"
 }
 ```
+
+**Request Body (percent of income):**
+```json
+{
+  "category_id": 1,
+  "limit_type": "percent",
+  "percent": 30,
+  "period": "monthly",
+  "start_date": "2024-01-01"
+}
+```
+
+- `limit_type` (optional): defaults to `fixed`
+- `amount` (required when `fixed`): must be > 0
+- `percent` (required when `percent`): 1–100
 
 **Response:**
 ```json
@@ -1053,6 +1082,8 @@ Create a new budget. `end_date` is computed server-side from `period` and `start
     "id": 8,
     "user_id": 1,
     "amount": 500,
+    "limit_type": "fixed",
+    "effective_amount": 500,
     "period": "monthly",
     "start_date": "2024-01-01",
     "end_date": "2024-01-31",
@@ -1076,12 +1107,13 @@ Create a new budget. `end_date` is computed server-side from `period` and `start
 
 ### PUT /api/budgets/:id
 
-Update an existing budget. `end_date` must be on or after `start_date`.
+Update an existing budget. `end_date` must be on or after `start_date`. Supports the same `limit_type` / `amount` / `percent` rules as create.
 
 **Request Body:**
 ```json
 {
   "category_id": 1,
+  "limit_type": "fixed",
   "amount": 750.00,
   "period": "monthly",
   "start_date": "2024-01-01",
@@ -1089,34 +1121,7 @@ Update an existing budget. `end_date` must be on or after `start_date`.
 }
 ```
 
-**Response:**
-```json
-{
-  "status": "success",
-  "data": {
-    "id": 8,
-    "user_id": 1,
-    "amount": 750,
-    "period": "monthly",
-    "start_date": "2024-01-01",
-    "end_date": "2024-01-31",
-    "created_at": "2025-09-30T09:51:35+07:00",
-    "category": {
-      "id": 1,
-      "name": "Food",
-      "color": "#EF4444",
-      "type": "expense"
-    },
-    "report": {
-      "is_on_track": true,
-      "total_spent": 120.5,
-      "remaining": 629.5,
-      "percentage_used": 16.07
-    }
-  },
-  "error": null
-}
-```
+**Response:** same shape as GET/POST budget items (includes `limit_type`, `percent`, `effective_amount`, `report`).
 
 ### DELETE /api/budgets/:id
 
@@ -1321,6 +1326,38 @@ Get spending analytics and reports for the authenticated user.
 
 ---
 
+## Financial Health Score
+
+### GET /api/health-score
+
+Server-computed score for the current calendar month (aligned with dashboard analytics).
+
+**Formula (v0):**
+- Budget adherence (50%): average of `max(0, 100 - min(percentage_used, 150))` across budgets overlapping this month; no budgets ⇒ 50
+- Cashflow (30%): if monthly `total_income > 0` → `clamp(100 * (1 - total_spent/total_income), 0, 100)`; else 50
+- Coverage (20%): ≥1 overlapping budget ⇒ 100; else 40
+
+`score = round(0.5*A + 0.3*C + 0.2*Cov)`
+
+**Response:**
+```json
+{
+  "status": "success",
+  "data": {
+    "score": 72,
+    "components": {
+      "budget_adherence": 80,
+      "cashflow": 65,
+      "coverage": 70
+    },
+    "period": "monthly"
+  },
+  "error": null
+}
+```
+
+---
+
 ## Preferences
 
 ### GET /api/preferences
@@ -1472,6 +1509,25 @@ List wallets for the authenticated user. Each item includes computed `balance`.
 ```
 
 `type`: `cash` | `bank` | `e_wallet`
+
+### GET /api/wallets/summary
+
+Liquid net worth in the user's **primary** currency: sum of balances for non-archived wallets with matching `currency_id`. Other-currency active wallets are counted in `excluded_wallet_count` (not converted; no FX).
+
+Register this route **before** `/wallets/:id`.
+
+```json
+{
+  "status": "success",
+  "data": {
+    "currency_id": 1,
+    "liquid_net_worth": 1250000,
+    "wallet_count": 3,
+    "excluded_wallet_count": 1
+  },
+  "error": null
+}
+```
 
 ### GET /api/wallets/:id
 
@@ -1627,6 +1683,12 @@ Keep this file in sync with the running API. When routes, request/response shape
 ---
 
 ## Version History
+
+- **v2.8.0**: **Budget %, health score, liquid net worth**
+  - Budgets support `limit_type` `fixed` | `percent`; responses include `effective_amount`
+  - Percent budgets use share of same-currency income in the budget date range
+  - `GET /api/health-score` — monthly Financial Health Score (0–100)
+  - `GET /api/wallets/summary` — liquid net worth in primary currency (no FX)
 
 - **v2.7.0**: **Multi-wallet**
   - New `wallets` and `transfers` resources (types: `cash` | `bank` | `e_wallet`; default, archive, opening balance)
