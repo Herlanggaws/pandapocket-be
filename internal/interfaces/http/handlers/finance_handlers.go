@@ -50,6 +50,23 @@ type FinanceHandlers struct {
 	getWalletBalanceUseCase   *finance.GetWalletBalanceUseCase
 	getWalletSummaryUseCase   *finance.GetWalletSummaryUseCase
 	getHealthScoreUseCase     *finance.GetHealthScoreUseCase
+	getHealthScoreHistoryUseCase *finance.GetHealthScoreHistoryUseCase
+	createGoalUseCase         *finance.CreateGoalUseCase
+	getGoalsUseCase           *finance.GetGoalsUseCase
+	getGoalUseCase            *finance.GetGoalUseCase
+	updateGoalUseCase         *finance.UpdateGoalUseCase
+	deleteGoalUseCase         *finance.DeleteGoalUseCase
+	createAssetUseCase        *finance.CreateAssetUseCase
+	getAssetsUseCase          *finance.GetAssetsUseCase
+	updateAssetUseCase        *finance.UpdateAssetUseCase
+	archiveAssetUseCase       *finance.ArchiveAssetUseCase
+	unarchiveAssetUseCase     *finance.UnarchiveAssetUseCase
+	createLiabilityUseCase    *finance.CreateLiabilityUseCase
+	getLiabilitiesUseCase     *finance.GetLiabilitiesUseCase
+	updateLiabilityUseCase    *finance.UpdateLiabilityUseCase
+	archiveLiabilityUseCase   *finance.ArchiveLiabilityUseCase
+	unarchiveLiabilityUseCase *finance.UnarchiveLiabilityUseCase
+	getNetWorthSummaryUseCase *finance.GetNetWorthSummaryUseCase
 	createTransferUseCase     *finance.CreateTransferUseCase
 	getTransfersUseCase       *finance.GetTransfersUseCase
 }
@@ -93,6 +110,23 @@ func NewFinanceHandlers(
 	getWalletBalanceUseCase *finance.GetWalletBalanceUseCase,
 	getWalletSummaryUseCase *finance.GetWalletSummaryUseCase,
 	getHealthScoreUseCase *finance.GetHealthScoreUseCase,
+	getHealthScoreHistoryUseCase *finance.GetHealthScoreHistoryUseCase,
+	createGoalUseCase *finance.CreateGoalUseCase,
+	getGoalsUseCase *finance.GetGoalsUseCase,
+	getGoalUseCase *finance.GetGoalUseCase,
+	updateGoalUseCase *finance.UpdateGoalUseCase,
+	deleteGoalUseCase *finance.DeleteGoalUseCase,
+	createAssetUseCase *finance.CreateAssetUseCase,
+	getAssetsUseCase *finance.GetAssetsUseCase,
+	updateAssetUseCase *finance.UpdateAssetUseCase,
+	archiveAssetUseCase *finance.ArchiveAssetUseCase,
+	unarchiveAssetUseCase *finance.UnarchiveAssetUseCase,
+	createLiabilityUseCase *finance.CreateLiabilityUseCase,
+	getLiabilitiesUseCase *finance.GetLiabilitiesUseCase,
+	updateLiabilityUseCase *finance.UpdateLiabilityUseCase,
+	archiveLiabilityUseCase *finance.ArchiveLiabilityUseCase,
+	unarchiveLiabilityUseCase *finance.UnarchiveLiabilityUseCase,
+	getNetWorthSummaryUseCase *finance.GetNetWorthSummaryUseCase,
 	createTransferUseCase *finance.CreateTransferUseCase,
 	getTransfersUseCase *finance.GetTransfersUseCase,
 ) *FinanceHandlers {
@@ -134,6 +168,23 @@ func NewFinanceHandlers(
 		getWalletBalanceUseCase:   getWalletBalanceUseCase,
 		getWalletSummaryUseCase:   getWalletSummaryUseCase,
 		getHealthScoreUseCase:     getHealthScoreUseCase,
+		getHealthScoreHistoryUseCase: getHealthScoreHistoryUseCase,
+		createGoalUseCase:         createGoalUseCase,
+		getGoalsUseCase:           getGoalsUseCase,
+		getGoalUseCase:            getGoalUseCase,
+		updateGoalUseCase:         updateGoalUseCase,
+		deleteGoalUseCase:         deleteGoalUseCase,
+		createAssetUseCase:        createAssetUseCase,
+		getAssetsUseCase:          getAssetsUseCase,
+		updateAssetUseCase:        updateAssetUseCase,
+		archiveAssetUseCase:       archiveAssetUseCase,
+		unarchiveAssetUseCase:     unarchiveAssetUseCase,
+		createLiabilityUseCase:    createLiabilityUseCase,
+		getLiabilitiesUseCase:     getLiabilitiesUseCase,
+		updateLiabilityUseCase:    updateLiabilityUseCase,
+		archiveLiabilityUseCase:   archiveLiabilityUseCase,
+		unarchiveLiabilityUseCase: unarchiveLiabilityUseCase,
+		getNetWorthSummaryUseCase: getNetWorthSummaryUseCase,
 		createTransferUseCase:     createTransferUseCase,
 		getTransfersUseCase:       getTransfersUseCase,
 	}

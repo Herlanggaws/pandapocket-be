@@ -80,7 +80,19 @@ CORS currently allows all origins (`*`). Allowed request headers: `Origin`, `Con
 | PUT | `/api/currencies/:id/set-default` | Yes | |
 | PUT/DELETE | `/api/currencies/:id` | Yes | |
 | GET | `/api/analytics` | Yes | |
-| GET | `/api/health-score` | Yes | Financial health score 0–100 |
+| GET | `/api/health-score` | Yes | Financial health score 0–100 (+ monthly snapshot upsert) |
+| GET | `/api/health-score/history` | Yes | Monthly score history (`limit`, default 12) |
+| GET/POST | `/api/goals` | Yes | Savings goals with deadline |
+| GET/PUT/DELETE | `/api/goals/:id` | Yes | |
+| GET/POST | `/api/assets` | Yes | Non-wallet assets |
+| PUT | `/api/assets/:id` | Yes | |
+| POST | `/api/assets/:id/archive` | Yes | |
+| POST | `/api/assets/:id/unarchive` | Yes | |
+| GET/POST | `/api/liabilities` | Yes | Liabilities / debts |
+| PUT | `/api/liabilities/:id` | Yes | |
+| POST | `/api/liabilities/:id/archive` | Yes | |
+| POST | `/api/liabilities/:id/unarchive` | Yes | |
+| GET | `/api/net-worth/summary` | Yes | Liquid + assets − liabilities (primary currency) |
 | GET/PUT | `/api/preferences` | Yes | User preferences & onboarding |
 | GET | `/api/notifications` | Yes | In-app notifications |
 | PUT | `/api/notifications/:id/read` | Yes | Mark notification read |
@@ -1339,6 +1351,8 @@ Server-computed score for the current calendar month (aligned with dashboard ana
 
 `score = round(0.5*A + 0.3*C + 0.2*Cov)`
 
+On `GET /api/health-score`, the current month score is **upserted** into `health_score_snapshots` (`user_id` + `year_month`).
+
 **Response:**
 ```json
 {
@@ -1350,11 +1364,122 @@ Server-computed score for the current calendar month (aligned with dashboard ana
       "cashflow": 65,
       "coverage": 70
     },
-    "period": "monthly"
+    "period": "monthly",
+    "year_month": "2026-09",
+    "as_of": "2026-09-17T15:00:00Z"
   },
   "error": null
 }
 ```
+
+### GET /api/health-score/history
+
+Newest-first monthly snapshots. Query `limit` (default 12, max 24).
+
+```json
+{
+  "status": "success",
+  "data": {
+    "history": [
+      {
+        "year_month": "2026-09",
+        "score": 72,
+        "budget_adherence": 80,
+        "cashflow": 65,
+        "coverage": 70,
+        "computed_at": "2026-09-17T15:00:00Z"
+      }
+    ]
+  },
+  "error": null
+}
+```
+
+---
+
+## Goals
+
+Savings goals with a required deadline. Progress is manual (`current_amount`). Auto-`completed` when `current_amount >= target_amount`. Currency = user primary on create.
+
+### GET /api/goals
+
+Query: `include_archived=true` to include archived goals.
+
+### POST /api/goals
+
+```json
+{
+  "name": "Emergency fund",
+  "target_amount": 10000000,
+  "current_amount": 1500000,
+  "target_date": "2026-12-31"
+}
+```
+
+### GET /api/goals/:id
+
+### PUT /api/goals/:id
+
+```json
+{
+  "name": "Emergency fund",
+  "target_amount": 10000000,
+  "current_amount": 2000000,
+  "target_date": "2026-12-31",
+  "status": "active"
+}
+```
+
+`status`: `active` | `completed` | `archived`
+
+### DELETE /api/goals/:id
+
+---
+
+## Assets & Liabilities
+
+Manual balance-sheet positions (no market feeds). Wallets remain liquid assets.
+
+### Assets
+
+`type`: `property` | `vehicle` | `investment` | `other`
+
+- `GET/POST /api/assets` (`include_archived` on GET)
+- `PUT /api/assets/:id`
+- `POST /api/assets/:id/archive`
+- `POST /api/assets/:id/unarchive`
+
+### Liabilities
+
+`type`: `loan` | `credit_card` | `mortgage` | `other`
+
+- `GET/POST /api/liabilities`
+- `PUT /api/liabilities/:id`
+- `POST /api/liabilities/:id/archive`
+- `POST /api/liabilities/:id/unarchive`
+
+### GET /api/net-worth/summary
+
+Primary-currency only (no FX). Other-currency wallets/assets/liabilities are counted in `excluded_*` fields.
+
+```json
+{
+  "status": "success",
+  "data": {
+    "currency_id": 1,
+    "liquid_net_worth": 1250000,
+    "assets_total": 500000000,
+    "liabilities_total": 200000000,
+    "net_worth": 301250000,
+    "excluded_asset_count": 0,
+    "excluded_liability_count": 0,
+    "excluded_wallet_count": 1
+  },
+  "error": null
+}
+```
+
+`net_worth = liquid_net_worth + assets_total − liabilities_total`
 
 ---
 
@@ -1683,6 +1808,11 @@ Keep this file in sync with the running API. When routes, request/response shape
 ---
 
 ## Version History
+
+- **v2.9.0**: **Goals, full net worth, health history**
+  - Savings goals CRUD with deadline and manual progress
+  - Assets + liabilities CRUD; `GET /api/net-worth/summary` (liquid + assets − liabilities, no FX)
+  - Health score upserts monthly snapshots; `GET /api/health-score/history`
 
 - **v2.8.0**: **Budget %, health score, liquid net worth**
   - Budgets support `limit_type` `fixed` | `percent`; responses include `effective_amount`

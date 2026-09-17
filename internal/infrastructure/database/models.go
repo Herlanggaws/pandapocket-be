@@ -163,6 +163,75 @@ type Budget struct {
 	Currency *Currency `gorm:"foreignKey:CurrencyID" json:"currency,omitempty"`
 }
 
+// FinancialGoal represents a savings goal with a deadline
+type FinancialGoal struct {
+	ID            uint      `gorm:"primaryKey" json:"id"`
+	UserID        uint      `gorm:"not null;index" json:"user_id"`
+	Name          string    `gorm:"not null" json:"name"`
+	TargetAmount  float64   `gorm:"type:decimal(14,2);not null" json:"target_amount"`
+	CurrencyID    uint      `gorm:"not null;index" json:"currency_id"`
+	CurrentAmount float64   `gorm:"type:decimal(14,2);not null;default:0" json:"current_amount"`
+	TargetDate    time.Time `gorm:"type:date;not null" json:"target_date"`
+	Status        string    `gorm:"not null;default:'active';check:status IN ('active', 'completed', 'archived')" json:"status"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
+
+	User     *User     `gorm:"foreignKey:UserID" json:"user,omitempty"`
+	Currency *Currency `gorm:"foreignKey:CurrencyID" json:"currency,omitempty"`
+}
+
+// Asset represents a non-wallet asset position
+type Asset struct {
+	ID           uint       `gorm:"primaryKey" json:"id"`
+	UserID       uint       `gorm:"not null;index" json:"user_id"`
+	Name         string     `gorm:"not null" json:"name"`
+	Type         string     `gorm:"not null;default:'other';check:type IN ('property', 'vehicle', 'investment', 'other')" json:"type"`
+	CurrencyID   uint       `gorm:"not null;index" json:"currency_id"`
+	CurrentValue float64    `gorm:"type:decimal(14,2);not null;default:0" json:"current_value"`
+	Notes        string     `gorm:"type:text" json:"notes"`
+	IsArchived   bool       `gorm:"default:false;index" json:"is_archived"`
+	AsOfDate     *time.Time `gorm:"type:date" json:"as_of_date,omitempty"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
+
+	User     *User     `gorm:"foreignKey:UserID" json:"user,omitempty"`
+	Currency *Currency `gorm:"foreignKey:CurrencyID" json:"currency,omitempty"`
+}
+
+// Liability represents an amount owed
+type Liability struct {
+	ID             uint       `gorm:"primaryKey" json:"id"`
+	UserID         uint       `gorm:"not null;index" json:"user_id"`
+	Name           string     `gorm:"not null" json:"name"`
+	Type           string     `gorm:"not null;default:'other';check:type IN ('loan', 'credit_card', 'mortgage', 'other')" json:"type"`
+	CurrencyID     uint       `gorm:"not null;index" json:"currency_id"`
+	CurrentBalance float64    `gorm:"type:decimal(14,2);not null;default:0" json:"current_balance"`
+	Notes          string     `gorm:"type:text" json:"notes"`
+	IsArchived     bool       `gorm:"default:false;index" json:"is_archived"`
+	AsOfDate       *time.Time `gorm:"type:date" json:"as_of_date,omitempty"`
+	CreatedAt      time.Time  `json:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at"`
+
+	User     *User     `gorm:"foreignKey:UserID" json:"user,omitempty"`
+	Currency *Currency `gorm:"foreignKey:CurrencyID" json:"currency,omitempty"`
+}
+
+// HealthScoreSnapshot stores monthly health score history
+type HealthScoreSnapshot struct {
+	ID              uint      `gorm:"primaryKey" json:"id"`
+	UserID          uint      `gorm:"not null;uniqueIndex:idx_health_user_month" json:"user_id"`
+	YearMonth       string    `gorm:"size:7;not null;uniqueIndex:idx_health_user_month" json:"year_month"`
+	Score           int       `gorm:"not null" json:"score"`
+	BudgetAdherence float64   `gorm:"type:decimal(6,2);not null" json:"budget_adherence"`
+	Cashflow        float64   `gorm:"type:decimal(6,2);not null" json:"cashflow"`
+	Coverage        float64   `gorm:"type:decimal(6,2);not null" json:"coverage"`
+	ComputedAt      time.Time `gorm:"not null" json:"computed_at"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
+
+	User *User `gorm:"foreignKey:UserID" json:"user,omitempty"`
+}
+
 // RecurringTransaction represents a recurring transaction in the database
 type RecurringTransaction struct {
 	ID           uint      `gorm:"primaryKey" json:"id"`

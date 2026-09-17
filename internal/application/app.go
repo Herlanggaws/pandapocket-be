@@ -41,6 +41,10 @@ func NewApp(db *gorm.DB) *App {
 	notificationRepo := database.NewGormNotificationRepository(db)
 	walletRepo := database.NewGormWalletRepository(db)
 	transferRepo := database.NewGormTransferRepository(db)
+	goalRepo := database.NewGormGoalRepository(db)
+	assetRepo := database.NewGormAssetRepository(db)
+	liabilityRepo := database.NewGormLiabilityRepository(db)
+	healthSnapshotRepo := database.NewGormHealthScoreSnapshotRepository(db)
 	recurringRepo := database.NewGormRecurringTransactionRepository(db)
 	pendingRepo := database.NewGormPendingTransactionRepository(db)
 
@@ -52,6 +56,9 @@ func NewApp(db *gorm.DB) *App {
 	budgetService := domainFinance.NewBudgetService(budgetRepo, categoryRepo)
 	walletService := domainFinance.NewWalletService(walletRepo, currencyRepo)
 	transferService := domainFinance.NewTransferService(transferRepo, walletRepo)
+	goalService := domainFinance.NewGoalService(goalRepo)
+	assetService := domainFinance.NewAssetService(assetRepo)
+	liabilityService := domainFinance.NewLiabilityService(liabilityRepo)
 
 	// Application layer - use cases
 	tokenService := appIdentity.NewTokenService(authTokenRepo)
@@ -80,7 +87,8 @@ func NewApp(db *gorm.DB) *App {
 	deleteCategoryUseCase := appFinance.NewDeleteCategoryUseCase(categoryService)
 	getCategoriesUseCase := appFinance.NewGetCategoriesUseCase(categoryService)
 	getAnalyticsUseCase := appFinance.NewGetAnalyticsUseCase(transactionService, categoryService)
-	getHealthScoreUseCase := appFinance.NewGetHealthScoreUseCase(budgetService, categoryService, transactionService, getAnalyticsUseCase)
+	getHealthScoreUseCase := appFinance.NewGetHealthScoreUseCase(budgetService, categoryService, transactionService, getAnalyticsUseCase, healthSnapshotRepo)
+	getHealthScoreHistoryUseCase := appFinance.NewGetHealthScoreHistoryUseCase(healthSnapshotRepo)
 	createBudgetUseCase := appFinance.NewCreateBudgetUseCase(budgetService, currencyService, categoryService, transactionService)
 	getBudgetsUseCase := appFinance.NewGetBudgetsUseCase(budgetService, categoryService, transactionService)
 	updateBudgetUseCase := appFinance.NewUpdateBudgetUseCase(budgetService, categoryService, transactionService)
@@ -127,6 +135,22 @@ func NewApp(db *gorm.DB) *App {
 	unarchiveWalletUseCase := appFinance.NewUnarchiveWalletUseCase(walletService)
 	getWalletBalanceUseCase := appFinance.NewGetWalletBalanceUseCase(walletService)
 	getWalletSummaryUseCase := appFinance.NewGetWalletSummaryUseCase(walletService, currencyService)
+	createGoalUseCase := appFinance.NewCreateGoalUseCase(goalService, currencyService)
+	getGoalsUseCase := appFinance.NewGetGoalsUseCase(goalService)
+	getGoalUseCase := appFinance.NewGetGoalUseCase(goalService)
+	updateGoalUseCase := appFinance.NewUpdateGoalUseCase(goalService)
+	deleteGoalUseCase := appFinance.NewDeleteGoalUseCase(goalService)
+	createAssetUseCase := appFinance.NewCreateAssetUseCase(assetService)
+	getAssetsUseCase := appFinance.NewGetAssetsUseCase(assetService)
+	updateAssetUseCase := appFinance.NewUpdateAssetUseCase(assetService)
+	archiveAssetUseCase := appFinance.NewArchiveAssetUseCase(assetService)
+	unarchiveAssetUseCase := appFinance.NewUnarchiveAssetUseCase(assetService)
+	createLiabilityUseCase := appFinance.NewCreateLiabilityUseCase(liabilityService)
+	getLiabilitiesUseCase := appFinance.NewGetLiabilitiesUseCase(liabilityService)
+	updateLiabilityUseCase := appFinance.NewUpdateLiabilityUseCase(liabilityService)
+	archiveLiabilityUseCase := appFinance.NewArchiveLiabilityUseCase(liabilityService)
+	unarchiveLiabilityUseCase := appFinance.NewUnarchiveLiabilityUseCase(liabilityService)
+	getNetWorthSummaryUseCase := appFinance.NewGetNetWorthSummaryUseCase(getWalletSummaryUseCase, assetService, liabilityService, currencyService)
 	createTransferUseCase := appFinance.NewCreateTransferUseCase(transferService)
 	getTransfersUseCase := appFinance.NewGetTransfersUseCase(transferService)
 
@@ -181,6 +205,23 @@ func NewApp(db *gorm.DB) *App {
 		getWalletBalanceUseCase,
 		getWalletSummaryUseCase,
 		getHealthScoreUseCase,
+		getHealthScoreHistoryUseCase,
+		createGoalUseCase,
+		getGoalsUseCase,
+		getGoalUseCase,
+		updateGoalUseCase,
+		deleteGoalUseCase,
+		createAssetUseCase,
+		getAssetsUseCase,
+		updateAssetUseCase,
+		archiveAssetUseCase,
+		unarchiveAssetUseCase,
+		createLiabilityUseCase,
+		getLiabilitiesUseCase,
+		updateLiabilityUseCase,
+		archiveLiabilityUseCase,
+		unarchiveLiabilityUseCase,
+		getNetWorthSummaryUseCase,
 		createTransferUseCase,
 		getTransfersUseCase,
 	)
@@ -271,6 +312,27 @@ func (app *App) SetupRoutes() *gin.Engine {
 
 			protected.GET("/analytics", app.FinanceHandlers.GetAnalytics)
 			protected.GET("/health-score", app.FinanceHandlers.GetHealthScore)
+			protected.GET("/health-score/history", app.FinanceHandlers.GetHealthScoreHistory)
+
+			protected.GET("/goals", app.FinanceHandlers.GetGoals)
+			protected.POST("/goals", app.FinanceHandlers.CreateGoal)
+			protected.GET("/goals/:id", app.FinanceHandlers.GetGoal)
+			protected.PUT("/goals/:id", app.FinanceHandlers.UpdateGoal)
+			protected.DELETE("/goals/:id", app.FinanceHandlers.DeleteGoal)
+
+			protected.GET("/assets", app.FinanceHandlers.GetAssets)
+			protected.POST("/assets", app.FinanceHandlers.CreateAsset)
+			protected.PUT("/assets/:id", app.FinanceHandlers.UpdateAsset)
+			protected.POST("/assets/:id/archive", app.FinanceHandlers.ArchiveAsset)
+			protected.POST("/assets/:id/unarchive", app.FinanceHandlers.UnarchiveAsset)
+
+			protected.GET("/liabilities", app.FinanceHandlers.GetLiabilities)
+			protected.POST("/liabilities", app.FinanceHandlers.CreateLiability)
+			protected.PUT("/liabilities/:id", app.FinanceHandlers.UpdateLiability)
+			protected.POST("/liabilities/:id/archive", app.FinanceHandlers.ArchiveLiability)
+			protected.POST("/liabilities/:id/unarchive", app.FinanceHandlers.UnarchiveLiability)
+
+			protected.GET("/net-worth/summary", app.FinanceHandlers.GetNetWorthSummary)
 
 			protected.GET("/preferences", app.IdentityHandlers.GetPreferences)
 			protected.PUT("/preferences", app.IdentityHandlers.UpdatePreferences)
