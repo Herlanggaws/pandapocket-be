@@ -230,6 +230,7 @@ func (r *GormCurrencyRepository) SetUserDefaultCurrency(ctx context.Context, use
 				EmailNotifications: true,
 				BudgetAlerts:       true,
 				RecurringReminders: true,
+				Onboarding:         JSONRaw("{}"),
 			}
 			return r.db.WithContext(ctx).Create(&preferences).Error
 		}

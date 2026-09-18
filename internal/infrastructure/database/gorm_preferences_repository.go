@@ -19,7 +19,7 @@ func NewGormPreferencesRepository(db *gorm.DB) *GormPreferencesRepository {
 }
 
 func (r *GormPreferencesRepository) toDomain(model UserPreferences) *identity.UserPreferences {
-	onboarding := model.Onboarding
+	onboarding := json.RawMessage(model.Onboarding)
 	if len(onboarding) == 0 {
 		onboarding = json.RawMessage("{}")
 	}
@@ -48,7 +48,7 @@ func (r *GormPreferencesRepository) Save(ctx context.Context, prefs *identity.Us
 		EmailNotifications: prefs.EmailNotifications(),
 		BudgetAlerts:       prefs.BudgetAlerts(),
 		RecurringReminders: prefs.RecurringReminders(),
-		Onboarding:         onboarding,
+		Onboarding:         JSONRaw(onboarding),
 	}
 
 	if prefs.ID().Value() != 0 {

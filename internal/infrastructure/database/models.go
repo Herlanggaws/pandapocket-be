@@ -1,7 +1,6 @@
 package database
 
 import (
-	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -313,7 +312,7 @@ type UserPreferences struct {
 	EmailNotifications bool            `gorm:"default:true" json:"email_notifications"`
 	BudgetAlerts       bool            `gorm:"default:true" json:"budget_alerts"`
 	RecurringReminders bool            `gorm:"default:true" json:"recurring_reminders"`
-	Onboarding         json.RawMessage `gorm:"type:text;default:'{}'" json:"onboarding"`
+	Onboarding         JSONRaw         `gorm:"type:text;default:'{}'" json:"onboarding"`
 	CreatedAt          time.Time       `json:"created_at"`
 	UpdatedAt          time.Time       `json:"updated_at"`
 
