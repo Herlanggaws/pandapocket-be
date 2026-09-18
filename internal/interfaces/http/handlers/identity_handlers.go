@@ -11,16 +11,17 @@ import (
 
 // IdentityHandlers handles identity-related HTTP requests
 type IdentityHandlers struct {
-	registerUserUseCase     *identity.RegisterUserUseCase
-	loginUserUseCase        *identity.LoginUserUseCase
-	getUsersUseCase         *identity.GetUsersUseCase
-	forgotPasswordUseCase   *identity.ForgotPasswordUseCase
-	resetPasswordUseCase    *identity.ResetPasswordUseCase
-	refreshTokenUseCase     *identity.RefreshTokenUseCase
-	tokenService            identity.TokenService
-	changePasswordUseCase   *identity.ChangePasswordUseCase
-	getPreferencesUseCase   *identity.GetPreferencesUseCase
+	registerUserUseCase      *identity.RegisterUserUseCase
+	loginUserUseCase         *identity.LoginUserUseCase
+	getUsersUseCase          *identity.GetUsersUseCase
+	forgotPasswordUseCase    *identity.ForgotPasswordUseCase
+	resetPasswordUseCase     *identity.ResetPasswordUseCase
+	refreshTokenUseCase      *identity.RefreshTokenUseCase
+	tokenService             identity.TokenService
+	changePasswordUseCase    *identity.ChangePasswordUseCase
+	getPreferencesUseCase    *identity.GetPreferencesUseCase
 	updatePreferencesUseCase *identity.UpdatePreferencesUseCase
+	resetAccountDataUseCase  *identity.ResetAccountDataUseCase
 }
 
 // NewIdentityHandlers creates a new identity handlers instance
@@ -35,6 +36,7 @@ func NewIdentityHandlers(
 	changePasswordUseCase *identity.ChangePasswordUseCase,
 	getPreferencesUseCase *identity.GetPreferencesUseCase,
 	updatePreferencesUseCase *identity.UpdatePreferencesUseCase,
+	resetAccountDataUseCase *identity.ResetAccountDataUseCase,
 ) *IdentityHandlers {
 	return &IdentityHandlers{
 		registerUserUseCase:      registerUserUseCase,
@@ -47,6 +49,7 @@ func NewIdentityHandlers(
 		changePasswordUseCase:    changePasswordUseCase,
 		getPreferencesUseCase:    getPreferencesUseCase,
 		updatePreferencesUseCase: updatePreferencesUseCase,
+		resetAccountDataUseCase:  resetAccountDataUseCase,
 	}
 }
 
@@ -269,6 +272,35 @@ func (h *IdentityHandlers) UpdatePreferences(c *gin.Context) {
 		return
 	}
 	response, err := h.updatePreferencesUseCase.Execute(c.Request.Context(), userID, req)
+	if err != nil {
+		HandleError(c, err, http.StatusBadRequest)
+		return
+	}
+	SuccessResponse(c, http.StatusOK, response)
+}
+
+// CreateAccountResetChallenge issues a one-time confirmation string for account data reset.
+func (h *IdentityHandlers) CreateAccountResetChallenge(c *gin.Context) {
+	userID := c.GetInt("user_id")
+	response, err := h.resetAccountDataUseCase.CreateChallenge(c.Request.Context(), userID)
+	if err != nil {
+		HandleError(c, err, http.StatusInternalServerError)
+		return
+	}
+	SuccessResponse(c, http.StatusOK, response)
+}
+
+// ResetAccountData wipes the authenticated user's financial data after challenge confirmation.
+func (h *IdentityHandlers) ResetAccountData(c *gin.Context) {
+	userID := c.GetInt("user_id")
+	var req identity.ResetAccountDataRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		ValidationErrorResponse(c, formatValidationError(err))
+		return
+	}
+	req.UserID = userID
+
+	response, err := h.resetAccountDataUseCase.Execute(c.Request.Context(), req)
 	if err != nil {
 		HandleError(c, err, http.StatusBadRequest)
 		return

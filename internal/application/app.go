@@ -74,6 +74,9 @@ func NewApp(db *gorm.DB) *App {
 	changePasswordUseCase := appIdentity.NewChangePasswordUseCase(userRepo)
 	getPreferencesUseCase := appIdentity.NewGetPreferencesUseCase(prefsRepo, prefsRepo)
 	updatePreferencesUseCase := appIdentity.NewUpdatePreferencesUseCase(prefsRepo, prefsRepo)
+	accountResetChallengeRepo := database.NewGormAccountResetChallengeRepository(db)
+	userDataWiper := database.NewGormUserDataWiper(db)
+	resetAccountDataUseCase := appIdentity.NewResetAccountDataUseCase(accountResetChallengeRepo, userDataWiper)
 	getNotificationsUseCase := appNotification.NewGetNotificationsUseCase(notificationRepo)
 	markNotificationReadUseCase := appNotification.NewMarkNotificationReadUseCase(notificationRepo)
 	deleteNotificationUseCase := appNotification.NewDeleteNotificationUseCase(notificationRepo)
@@ -179,6 +182,7 @@ func NewApp(db *gorm.DB) *App {
 		changePasswordUseCase,
 		getPreferencesUseCase,
 		updatePreferencesUseCase,
+		resetAccountDataUseCase,
 	)
 	financeHandlers := handlers.NewFinanceHandlers(
 		createTransactionUseCase,
@@ -354,6 +358,8 @@ func (app *App) SetupRoutes() *gin.Engine {
 
 			protected.GET("/preferences", app.IdentityHandlers.GetPreferences)
 			protected.PUT("/preferences", app.IdentityHandlers.UpdatePreferences)
+			protected.POST("/account/reset/challenge", app.IdentityHandlers.CreateAccountResetChallenge)
+			protected.POST("/account/reset", app.IdentityHandlers.ResetAccountData)
 			protected.POST("/onboarding/complete", app.FinanceHandlers.CompleteOnboarding)
 
 			protected.GET("/notifications", app.NotificationHandlers.GetNotifications)

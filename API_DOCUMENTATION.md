@@ -20,6 +20,7 @@ PandaPocket (product brand: **Berbudget**) is a personal finance management API 
 - **Budgets**: Full CRUD operations
 - **Currencies**: Full CRUD operations
 - **Preferences**: GET/PUT user preferences and onboarding
+- **Account reset**: Challenge + wipe user financial data (login kept)
 - **Notifications**: In-app list, mark read, delete
 - **Recurring Transactions**: Create/list/delete; due items enqueue as pending for confirm/reject
 - **Analytics**: Totals plus spending by category and period
@@ -95,6 +96,8 @@ CORS currently allows all origins (`*`). Allowed request headers: `Origin`, `Con
 | GET/POST | `/api/liabilities/:id/payments` | Yes | Payment history / record payment |
 | GET | `/api/net-worth/summary` | Yes | Liquid + assets − liabilities (primary currency) |
 | GET/PUT | `/api/preferences` | Yes | User preferences & onboarding |
+| POST | `/api/account/reset/challenge` | Yes | Issue one-time confirmation string for data reset |
+| POST | `/api/account/reset` | Yes | Wipe user financial data after typing confirmation |
 | POST | `/api/onboarding/complete` | Yes | Finish onboarding; seed income/expense/budget/(debt) |
 | GET | `/api/notifications` | Yes | In-app notifications |
 | PUT | `/api/notifications/:id/read` | Yes | Mark notification read |
@@ -1585,6 +1588,54 @@ Partial update. Accepts any of:
 
 ---
 
+## Account data reset
+
+Resets all financial data for the authenticated user while **keeping** the login (email/password). Session stays valid. After reset, the client should send the user through onboarding again.
+
+Does **not** delete the `users` row or system-wide categories/currencies (`user_id IS NULL`).
+
+### POST /api/account/reset/challenge
+
+Authenticated. Issues a random confirmation string (TTL ~5 minutes). Previous challenges for the user are replaced.
+
+**Response:**
+```json
+{
+  "status": "success",
+  "data": {
+    "confirmation_text": "AFkLJdl9879x",
+    "expires_at": "2026-09-18T03:00:00Z"
+  },
+  "error": null
+}
+```
+
+### POST /api/account/reset
+
+Authenticated. Requires exact match of `confirmation_text` from the active challenge (case-sensitive). On success, hard-deletes user-owned rows: pending transactions, liability payments, recurring, transfers, expenses, incomes, budgets, goals, assets, liabilities, wallets, health snapshots, notifications, user-owned categories/currencies, preferences, password-reset tokens, and the challenge itself.
+
+**Body:**
+```json
+{
+  "confirmation_text": "AFkLJdl9879x"
+}
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "data": {
+    "message": "Account data reset successfully"
+  },
+  "error": null
+}
+```
+
+**Errors (400):** missing/expired challenge, confirmation mismatch, or too many failed attempts (max 5).
+
+---
+
 ## Notifications
 
 ### GET /api/notifications
@@ -1874,6 +1925,10 @@ Keep this file in sync with the running API. When routes, request/response shape
 ---
 
 ## Version History
+
+- **v2.11.0**: **Account data reset**
+  - `POST /api/account/reset/challenge` issues a one-time confirmation string (TTL 5m)
+  - `POST /api/account/reset` wipes user financial data after exact confirmation match; login and session kept
 
 - **v2.10.1**: **Idempotent onboarding complete**
   - `POST /api/onboarding/complete` skips re-seeding when already completed and ignores overlapping budget on retry/redo
