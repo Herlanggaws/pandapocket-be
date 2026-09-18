@@ -81,10 +81,17 @@ func (r *GormPreferencesRepository) FindByUserID(ctx context.Context, userID ide
 	return r.toDomain(model), nil
 }
 
-// FindDefaultCurrencyID returns the first seeded/default currency ID for bootstrapping prefs
+// FindDefaultCurrencyID returns a seeded system currency ID for bootstrapping prefs (prefers IDR).
 func (r *GormPreferencesRepository) FindDefaultCurrencyID(ctx context.Context) (int, error) {
 	var currency Currency
-	err := r.db.WithContext(ctx).Where("is_default = ?", true).First(&currency).Error
+	err := r.db.WithContext(ctx).
+		Where("code = ? AND user_id IS NULL", "IDR").
+		First(&currency).Error
+	if err == nil {
+		return int(currency.ID), nil
+	}
+
+	err = r.db.WithContext(ctx).Where("is_default = ? AND user_id IS NULL", true).First(&currency).Error
 	if err != nil {
 		err = r.db.WithContext(ctx).First(&currency).Error
 		if err != nil {

@@ -21,6 +21,9 @@ func NewGormTokenRepository(db *gorm.DB) identity.TokenRepository {
 
 // Save saves a new token to the database
 func (r *GormTokenRepository) Save(ctx context.Context, userID int, accessToken, refreshToken string, expiresAt int64) error {
+	if userID <= 0 {
+		return errors.New("invalid token user_id")
+	}
 	token := &Token{
 		UserID:       uint(userID),
 		AccessToken:  accessToken,

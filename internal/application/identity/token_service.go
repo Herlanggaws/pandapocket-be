@@ -87,6 +87,10 @@ func getEnv(key, defaultValue string) string {
 
 // GenerateToken generates a JWT token pair for a user
 func (s *tokenService) GenerateToken(ctx context.Context, userID int, email string, role string) (string, string, error) {
+	if userID <= 0 {
+		return "", "", errors.New("invalid token user")
+	}
+
 	// Generate Access Token
 	accessToken, err := s.GenerateAccessTokenResult(userID, email, role)
 	if err != nil {
@@ -147,7 +151,7 @@ func (s *tokenService) ValidateToken(tokenString string) (*Claims, error) {
 		return nil, err
 	}
 
-		if claims, ok := token.Claims.(*Claims); ok && token.Valid {
+	if claims, ok := token.Claims.(*Claims); ok && token.Valid {
 		if claims.UserID <= 0 {
 			return nil, errors.New("invalid token user")
 		}
@@ -170,6 +174,9 @@ func (s *tokenService) ValidateRefreshToken(ctx context.Context, tokenString str
 	claims, ok := token.Claims.(*RefreshTokenClaims)
 	if !ok || !token.Valid {
 		return nil, errors.New("invalid refresh token")
+	}
+	if claims.UserID <= 0 {
+		return nil, errors.New("invalid refresh token user")
 	}
 
 	// Check against database
