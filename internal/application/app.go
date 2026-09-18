@@ -12,8 +12,8 @@ import (
 	appNotification "panda-pocket/internal/application/notification"
 	appTicket "panda-pocket/internal/application/ticket"
 	domainFinance "panda-pocket/internal/domain/finance"
+	"panda-pocket/internal/domain/entitlement"
 	domainIdentity "panda-pocket/internal/domain/identity"
-	domainTicket "panda-pocket/internal/domain/ticket"
 	"panda-pocket/internal/infrastructure/database"
 	"panda-pocket/internal/infrastructure/notification"
 	"panda-pocket/internal/interfaces/http/handlers"
@@ -29,6 +29,7 @@ type App struct {
 	DB                          *gorm.DB
 	IdentityHandlers            *handlers.IdentityHandlers
 	FinanceHandlers             *handlers.FinanceHandlers
+	ExportHandlers              *handlers.ExportHandlers
 	DashboardHandlers           *handlers.DashboardHandlers
 	NotificationHandlers        *handlers.NotificationHandlers
 	FeedbackHandlers            *handlers.FeedbackHandlers
@@ -95,7 +96,7 @@ func NewApp(db *gorm.DB) *App {
 	markNotificationReadUseCase := appNotification.NewMarkNotificationReadUseCase(notificationRepo)
 	deleteNotificationUseCase := appNotification.NewDeleteNotificationUseCase(notificationRepo)
 	submitFeedbackUseCase := appFeedback.NewSubmitFeedbackUseCase(feedbackRepo)
-	entitlementChecker := domainTicket.NewInterimEntitlementChecker()
+	entitlementChecker := entitlement.NewInterimChecker()
 	createTicketUseCase := appTicket.NewCreateTicketUseCase(ticketRepo, entitlementChecker)
 	listTicketsUseCase := appTicket.NewListTicketsUseCase(ticketRepo)
 	getTicketUseCase := appTicket.NewGetTicketUseCase(ticketRepo)
@@ -107,6 +108,7 @@ func NewApp(db *gorm.DB) *App {
 	createTransactionUseCase := appFinance.NewCreateTransactionUseCase(transactionService, walletService)
 	getTransactionsUseCase := appFinance.NewGetTransactionsUseCase(transactionService, categoryService)
 	getAllTransactionsUseCase := appFinance.NewGetAllTransactionsUseCase(transactionService, categoryService)
+	exportTransactionsUseCase := appFinance.NewExportTransactionsUseCase(transactionService, categoryService, entitlementChecker)
 	updateTransactionUseCase := appFinance.NewUpdateTransactionUseCase(transactionService)
 	deleteTransactionUseCase := appFinance.NewDeleteTransactionUseCase(transactionService)
 	createCategoryUseCase := appFinance.NewCreateCategoryUseCase(categoryService)
@@ -270,6 +272,7 @@ func NewApp(db *gorm.DB) *App {
 		createTransferUseCase,
 		getTransfersUseCase,
 	)
+	exportHandlers := handlers.NewExportHandlers(exportTransactionsUseCase)
 	dashboardHandlers := handlers.NewDashboardHandlers(getDashboardStatsUseCase)
 	notificationHandlers := handlers.NewNotificationHandlers(
 		getNotificationsUseCase,
@@ -292,6 +295,7 @@ func NewApp(db *gorm.DB) *App {
 		DB:                          db,
 		IdentityHandlers:            identityHandlers,
 		FinanceHandlers:             financeHandlers,
+		ExportHandlers:              exportHandlers,
 		DashboardHandlers:           dashboardHandlers,
 		NotificationHandlers:        notificationHandlers,
 		FeedbackHandlers:            feedbackHandlers,
@@ -359,6 +363,7 @@ func (app *App) SetupRoutes() *gin.Engine {
 			protected.DELETE("/incomes/:id", app.FinanceHandlers.DeleteIncome)
 
 			protected.GET("/transactions", app.FinanceHandlers.GetAllTransactions)
+			protected.GET("/export/transactions", app.ExportHandlers.ExportTransactions)
 
 			protected.GET("/budgets", app.FinanceHandlers.GetBudgets)
 			protected.POST("/budgets", app.FinanceHandlers.CreateBudget)

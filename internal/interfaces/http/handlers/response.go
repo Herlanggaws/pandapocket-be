@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -69,6 +70,12 @@ func InternalServerErrorResponse(c *gin.Context, errorCode string, errorMessage 
 // ValidationErrorResponse sends a 400 Bad Request for validation errors
 func ValidationErrorResponse(c *gin.Context, errorMessage string) {
 	BadRequestResponse(c, "VALIDATION_ERROR", errorMessage)
+}
+
+// FileDownloadResponse sends a binary file download (not JSON envelope).
+func FileDownloadResponse(c *gin.Context, contentType, filename string, body []byte) {
+	c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
+	c.Data(http.StatusOK, contentType, body)
 }
 
 // getErrorCodeFromMessage maps error messages to standardized error codes

@@ -75,6 +75,7 @@ CORS currently allows all origins (`*`). Allowed request headers: `Origin`, `Con
 | GET/POST | `/api/incomes` | Yes | |
 | PUT/DELETE | `/api/incomes/:id` | Yes | |
 | GET | `/api/transactions` | Yes | Filtered/paginated list |
+| GET | `/api/export/transactions` | Yes (Pro) | Download CSV or PDF (max 5000 rows) |
 | GET/POST | `/api/budgets` | Yes | `limit_type` fixed\|percent |
 | PUT/DELETE | `/api/budgets/:id` | Yes | |
 | GET/POST | `/api/currencies` | Yes | |
@@ -949,6 +950,50 @@ Get all transactions (both income and expense) for the authenticated user with a
 - Combined filters: `GET /api/transactions?type=expense&start_date=2024-01-01&end_date=2024-12-31&category_ids=1,2`
 - Paginated results: `GET /api/transactions?page=2&limit=10`
 - Paginated with filters: `GET /api/transactions?type=expense&page=1&limit=5`
+
+---
+
+### GET /api/export/transactions
+
+Export transactions for the authenticated user as a **CSV** or **PDF** file download (Pro-gated via entitlement checker).
+
+**Auth:** Bearer token required.  
+**Premium:** Returns `403` with `PREMIUM_REQUIRED` when the user is not Pro (when `BILLING_ENTITLEMENTS_ENABLED=true`, interim checker treats everyone as Free).
+
+**Query Parameters:**
+- `format` (required): `csv` or `pdf`
+- `type` (optional): `expense` or `income`
+- `category_ids` (optional): comma-separated category IDs
+- `wallet_id` (optional): wallet ID
+- `start_date` / `end_date` (optional): `YYYY-MM-DD` — same defaults as `GET /api/transactions` (last 30 days if both empty)
+
+**Limits:** Maximum **5000** rows. Over limit → `400` `EXPORT_TOO_LARGE`.
+
+**Success response:** Raw file body (not JSON envelope)
+- CSV: `Content-Type: text/csv; charset=utf-8`, `Content-Disposition: attachment; filename="berbudget-transactions-{start}-{end}.csv"`
+- PDF: `Content-Type: application/pdf`, same disposition pattern with `.pdf`
+
+**CSV columns:** `date,type,category,description,amount,currency_id,wallet_id`
+
+**Examples:**
+- `GET /api/export/transactions?format=csv`
+- `GET /api/export/transactions?format=pdf&start_date=2026-01-01&end_date=2026-01-31&type=expense`
+
+**Error examples:**
+```json
+{
+  "status": "error",
+  "data": null,
+  "error": {
+    "error_code": "PREMIUM_REQUIRED",
+    "error_message": "premium required"
+  }
+}
+```
+
+---
+
+## Transactions (list response)
 
 **Response:**
 ```json
@@ -2091,6 +2136,9 @@ Keep this file in sync with the running API. When routes, request/response shape
 
 ## Version History
 
+- **v2.17.0**: **Transaction export (CSV/PDF)**
+  - `GET /api/export/transactions?format=csv|pdf` with list filters; Pro-gated (`PREMIUM_REQUIRED`)
+  - Shared `domain/entitlement` package (interim checker + `ErrPremiumRequired`)
 - **v2.16.0**: **Support tickets**
   - User: `POST/GET /api/tickets`, `GET /api/tickets/:id`, `POST /api/tickets/:id/reopen`
   - Admin: `GET /api/admin/tickets`, `GET /api/admin/tickets/:id`, `PATCH /api/admin/tickets/:id/status`

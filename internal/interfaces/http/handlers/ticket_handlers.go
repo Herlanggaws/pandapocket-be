@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	appTicket "panda-pocket/internal/application/ticket"
+	"panda-pocket/internal/domain/entitlement"
 	domainTicket "panda-pocket/internal/domain/ticket"
 
 	"github.com/gin-gonic/gin"
@@ -138,7 +139,7 @@ func (h *TicketHandlers) UpdateTicketStatus(c *gin.Context) {
 
 func handleTicketError(c *gin.Context, err error) {
 	switch {
-	case errors.Is(err, domainTicket.ErrPremiumRequired):
+	case errors.Is(err, entitlement.ErrPremiumRequired):
 		ForbiddenResponse(c, "PREMIUM_REQUIRED", err.Error())
 	case errors.Is(err, domainTicket.ErrNotFound):
 		NotFoundResponse(c, "TICKET_NOT_FOUND", err.Error())

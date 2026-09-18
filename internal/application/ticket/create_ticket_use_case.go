@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"panda-pocket/internal/domain/entitlement"
 	domainTicket "panda-pocket/internal/domain/ticket"
 )
 
@@ -46,12 +47,12 @@ func ToTicketResponse(item *domainTicket.Ticket) TicketResponse {
 
 type CreateTicketUseCase struct {
 	repo         domainTicket.TicketRepository
-	entitlements domainTicket.EntitlementChecker
+	entitlements entitlement.Checker
 }
 
 func NewCreateTicketUseCase(
 	repo domainTicket.TicketRepository,
-	entitlements domainTicket.EntitlementChecker,
+	entitlements entitlement.Checker,
 ) *CreateTicketUseCase {
 	return &CreateTicketUseCase{repo: repo, entitlements: entitlements}
 }
@@ -62,7 +63,7 @@ func (uc *CreateTicketUseCase) Execute(ctx context.Context, userID int, req Crea
 		return nil, err
 	}
 	if !isPro {
-		return nil, domainTicket.ErrPremiumRequired
+		return nil, entitlement.ErrPremiumRequired
 	}
 
 	category, err := domainTicket.ParseCategory(req.Category)

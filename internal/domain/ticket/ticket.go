@@ -14,10 +14,9 @@ const (
 )
 
 var (
-	ErrPremiumRequired = errors.New("premium required to create support tickets")
-	ErrNotFound        = errors.New("ticket not found")
-	ErrAccessDenied    = errors.New("access denied to ticket")
-	ErrCannotReopen    = errors.New("only done tickets can be reopened")
+	ErrNotFound     = errors.New("ticket not found")
+	ErrAccessDenied = errors.New("access denied to ticket")
+	ErrCannotReopen = errors.New("only done tickets can be reopened")
 )
 
 type Category string
