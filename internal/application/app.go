@@ -10,8 +10,10 @@ import (
 	appFeedback "panda-pocket/internal/application/feedback"
 	appIdentity "panda-pocket/internal/application/identity"
 	appNotification "panda-pocket/internal/application/notification"
+	appTicket "panda-pocket/internal/application/ticket"
 	domainFinance "panda-pocket/internal/domain/finance"
 	domainIdentity "panda-pocket/internal/domain/identity"
+	domainTicket "panda-pocket/internal/domain/ticket"
 	"panda-pocket/internal/infrastructure/database"
 	"panda-pocket/internal/infrastructure/notification"
 	"panda-pocket/internal/interfaces/http/handlers"
@@ -30,6 +32,7 @@ type App struct {
 	DashboardHandlers           *handlers.DashboardHandlers
 	NotificationHandlers        *handlers.NotificationHandlers
 	FeedbackHandlers            *handlers.FeedbackHandlers
+	TicketHandlers              *handlers.TicketHandlers
 	AuthMiddleware              *middleware.AuthMiddleware
 	purgeDeletedAccountsUseCase *appIdentity.PurgeDeletedAccountsUseCase
 }
@@ -47,6 +50,7 @@ func NewApp(db *gorm.DB) *App {
 	prefsRepo := database.NewGormPreferencesRepository(db)
 	notificationRepo := database.NewGormNotificationRepository(db)
 	feedbackRepo := database.NewGormFeedbackRepository(db)
+	ticketRepo := database.NewGormTicketRepository(db)
 	walletRepo := database.NewGormWalletRepository(db)
 	transferRepo := database.NewGormTransferRepository(db)
 	goalRepo := database.NewGormGoalRepository(db)
@@ -91,6 +95,14 @@ func NewApp(db *gorm.DB) *App {
 	markNotificationReadUseCase := appNotification.NewMarkNotificationReadUseCase(notificationRepo)
 	deleteNotificationUseCase := appNotification.NewDeleteNotificationUseCase(notificationRepo)
 	submitFeedbackUseCase := appFeedback.NewSubmitFeedbackUseCase(feedbackRepo)
+	entitlementChecker := domainTicket.NewInterimEntitlementChecker()
+	createTicketUseCase := appTicket.NewCreateTicketUseCase(ticketRepo, entitlementChecker)
+	listTicketsUseCase := appTicket.NewListTicketsUseCase(ticketRepo)
+	getTicketUseCase := appTicket.NewGetTicketUseCase(ticketRepo)
+	reopenTicketUseCase := appTicket.NewReopenTicketUseCase(ticketRepo, userRepo, emailService)
+	listAdminTicketsUseCase := appTicket.NewListAdminTicketsUseCase(ticketRepo)
+	getAdminTicketUseCase := appTicket.NewGetAdminTicketUseCase(ticketRepo, userRepo)
+	updateTicketStatusUseCase := appTicket.NewUpdateTicketStatusUseCase(ticketRepo, userRepo, emailService)
 	getDashboardStatsUseCase := appIdentity.NewGetDashboardStatsUseCase(userRepo, budgetRepo, transactionRepo)
 	createTransactionUseCase := appFinance.NewCreateTransactionUseCase(transactionService, walletService)
 	getTransactionsUseCase := appFinance.NewGetTransactionsUseCase(transactionService, categoryService)
@@ -265,6 +277,15 @@ func NewApp(db *gorm.DB) *App {
 		deleteNotificationUseCase,
 	)
 	feedbackHandlers := handlers.NewFeedbackHandlers(submitFeedbackUseCase)
+	ticketHandlers := handlers.NewTicketHandlers(
+		createTicketUseCase,
+		listTicketsUseCase,
+		getTicketUseCase,
+		reopenTicketUseCase,
+		listAdminTicketsUseCase,
+		getAdminTicketUseCase,
+		updateTicketStatusUseCase,
+	)
 	authMiddleware := middleware.NewAuthMiddleware(tokenService, userRepo)
 
 	return &App{
@@ -274,6 +295,7 @@ func NewApp(db *gorm.DB) *App {
 		DashboardHandlers:           dashboardHandlers,
 		NotificationHandlers:        notificationHandlers,
 		FeedbackHandlers:            feedbackHandlers,
+		TicketHandlers:              ticketHandlers,
 		AuthMiddleware:              authMiddleware,
 		purgeDeletedAccountsUseCase: purgeDeletedAccountsUseCase,
 	}
@@ -288,7 +310,7 @@ func (app *App) SetupRoutes() *gin.Engine {
 	config.AllowOrigins = []string{
 		"*",
 	}
-	config.AllowMethods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}
+	config.AllowMethods = []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}
 	config.AllowHeaders = []string{"Origin", "Content-Type", "Accept", "Authorization"}
 	config.AllowCredentials = false
 	r.Use(cors.New(config))
@@ -316,6 +338,9 @@ func (app *App) SetupRoutes() *gin.Engine {
 			{
 				adminOnly.GET("/users", app.IdentityHandlers.GetUsers)
 				adminOnly.GET("/dashboard/stats", app.DashboardHandlers.GetDashboardStats)
+				adminOnly.GET("/admin/tickets", app.TicketHandlers.ListAdminTickets)
+				adminOnly.GET("/admin/tickets/:id", app.TicketHandlers.GetAdminTicket)
+				adminOnly.PATCH("/admin/tickets/:id/status", app.TicketHandlers.UpdateTicketStatus)
 			}
 
 			protected.GET("/categories", app.FinanceHandlers.GetCategories)
@@ -384,6 +409,11 @@ func (app *App) SetupRoutes() *gin.Engine {
 			protected.DELETE("/notifications/:id", app.NotificationHandlers.DeleteNotification)
 
 			protected.POST("/feedback", app.FeedbackHandlers.SubmitFeedback)
+
+			protected.POST("/tickets", app.TicketHandlers.CreateTicket)
+			protected.GET("/tickets", app.TicketHandlers.ListTickets)
+			protected.GET("/tickets/:id", app.TicketHandlers.GetTicket)
+			protected.POST("/tickets/:id/reopen", app.TicketHandlers.ReopenTicket)
 
 			protected.GET("/recurring-transactions", app.FinanceHandlers.GetRecurringTransactions)
 			protected.POST("/recurring-transactions", app.FinanceHandlers.CreateRecurringTransaction)

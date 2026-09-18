@@ -104,6 +104,13 @@ CORS currently allows all origins (`*`). Allowed request headers: `Origin`, `Con
 | PUT | `/api/notifications/:id/read` | Yes | Mark notification read |
 | DELETE | `/api/notifications/:id` | Yes | Delete notification |
 | POST | `/api/feedback` | Yes | Submit product feedback |
+| POST | `/api/tickets` | Yes (Pro) | Create support ticket |
+| GET | `/api/tickets` | Yes | List own support tickets |
+| GET | `/api/tickets/:id` | Yes | Get own support ticket |
+| POST | `/api/tickets/:id/reopen` | Yes | Reopen own done ticket |
+| GET | `/api/admin/tickets` | Admin | List all support tickets |
+| GET | `/api/admin/tickets/:id` | Admin | Get support ticket |
+| PATCH | `/api/admin/tickets/:id/status` | Admin | Update ticket status |
 | GET/POST | `/api/recurring-transactions` | Yes | Recurring rules (GET also enqueues due items as pending) |
 | DELETE | `/api/recurring-transactions/:id` | Yes | |
 | GET | `/api/pending-transactions` | Yes | List open pending recurring occurrences (also enqueues dues) |
@@ -1720,6 +1727,96 @@ Submit product feedback for the authenticated user. Stored in `user_feedbacks` (
 
 ---
 
+## Support Tickets
+
+Support tickets are Pro-only for **create**. Feedback (`POST /api/feedback`) remains a separate product-input channel for all authenticated users.
+
+Until billing entitlements ship, create is allowed for all authenticated users when `BILLING_ENTITLEMENTS_ENABLED` is unset/false. When `BILLING_ENTITLEMENTS_ENABLED=true` without a real `IsPro()` implementation, create returns `403` + `PREMIUM_REQUIRED`.
+
+### POST /api/tickets
+
+Create a support ticket. Status starts as `open`.
+
+**Request body:**
+
+```json
+{
+  "subject": "Cannot sync wallet balance",
+  "body": "After adding a transfer, balance stays stale until refresh.",
+  "category": "technical",
+  "priority": "medium"
+}
+```
+
+| Field | Type | Rules |
+|-------|------|-------|
+| `subject` | string | Required. 1–200 characters |
+| `body` | string | Required. 1–2000 characters |
+| `category` | string | Required. One of `technical`, `payment`, `other` |
+| `priority` | string | Optional. One of `low`, `medium`, `high` (default `medium`) |
+
+**Response `201`:**
+
+```json
+{
+  "status": "success",
+  "data": {
+    "ticket": {
+      "id": 1,
+      "subject": "Cannot sync wallet balance",
+      "body": "After adding a transfer, balance stays stale until refresh.",
+      "category": "technical",
+      "priority": "medium",
+      "status": "open",
+      "created_at": "2026-09-18T10:00:00Z",
+      "updated_at": "2026-09-18T10:00:00Z"
+    }
+  }
+}
+```
+
+**Error `403` `PREMIUM_REQUIRED`:** caller is not Pro (when entitlements are enabled).
+
+### GET /api/tickets
+
+List the authenticated user's tickets. Optional query: `status`, `category`.
+
+**Response `200`:** `{ "status": "success", "data": { "tickets": [ ... ] } }`
+
+### GET /api/tickets/:id
+
+Get one of the authenticated user's tickets.
+
+### POST /api/tickets/:id/reopen
+
+Reopen a ticket that is `done` → `open`. Sends a status-change email to the ticket owner. Returns `400` if the ticket is not `done`.
+
+### GET /api/admin/tickets
+
+Admin-only. List all tickets (includes `user_id`, `user_email`). Optional query: `status`, `category`, `user_id`.
+
+### GET /api/admin/tickets/:id
+
+Admin-only. Ticket detail with `user_id` and `user_email`.
+
+### PATCH /api/admin/tickets/:id/status
+
+Admin-only. Update status and email the ticket owner.
+
+**Request body:**
+
+```json
+{
+  "status": "in_progress"
+}
+```
+
+| Field | Type | Rules |
+|-------|------|-------|
+| `status` | string | Required. One of `open`, `in_progress`, `done` |
+
+---
+
 ## Recurring Transactions
 
 ### GET /api/recurring-transactions
@@ -1993,6 +2090,13 @@ Keep this file in sync with the running API. When routes, request/response shape
 ---
 
 ## Version History
+
+- **v2.16.0**: **Support tickets**
+  - User: `POST/GET /api/tickets`, `GET /api/tickets/:id`, `POST /api/tickets/:id/reopen`
+  - Admin: `GET /api/admin/tickets`, `GET /api/admin/tickets/:id`, `PATCH /api/admin/tickets/:id/status`
+  - Categories `technical` \| `payment` \| `other`; priority `low` \| `medium` \| `high`; status `open` \| `in_progress` \| `done`
+  - Create is Pro-gated (`PREMIUM_REQUIRED`); interim bypass when `BILLING_ENTITLEMENTS_ENABLED` is not `true`
+  - Email notification on admin status change and user reopen (SMTP / mock)
 
 - **v2.15.0**: **Preferences language**
   - `GET/PUT /api/preferences` includes `language` (`id` \| `en`, default `id`)

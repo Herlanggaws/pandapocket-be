@@ -350,6 +350,21 @@ type UserFeedback struct {
 	User *User `gorm:"foreignKey:UserID" json:"user,omitempty"`
 }
 
+// SupportTicket represents a Pro support ticket
+type SupportTicket struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	UserID    uint      `gorm:"not null;index" json:"user_id"`
+	Subject   string    `gorm:"not null;size:200" json:"subject"`
+	Body      string    `gorm:"type:text;not null" json:"body"`
+	Category  string    `gorm:"not null;size:32;index" json:"category"`
+	Priority  string    `gorm:"not null;size:16;default:'medium'" json:"priority"`
+	Status    string    `gorm:"not null;size:32;index;default:'open'" json:"status"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+
+	User *User `gorm:"foreignKey:UserID" json:"user,omitempty"`
+}
+
 // Token represents a JWT token in the database for revocation
 type Token struct {
 	ID           uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
@@ -416,6 +431,10 @@ func (Notification) TableName() string {
 
 func (UserFeedback) TableName() string {
 	return "user_feedbacks"
+}
+
+func (SupportTicket) TableName() string {
+	return "support_tickets"
 }
 
 func (Token) TableName() string {

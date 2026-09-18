@@ -107,6 +107,8 @@ func wipeUserOwnedRows(tx *gorm.DB, userID uint) error {
 		func() error { return tx.Where("user_id = ?", userID).Delete(&Wallet{}).Error },
 		func() error { return tx.Where("user_id = ?", userID).Delete(&HealthScoreSnapshot{}).Error },
 		func() error { return tx.Where("user_id = ?", userID).Delete(&Notification{}).Error },
+		func() error { return tx.Where("user_id = ?", userID).Delete(&UserFeedback{}).Error },
+		func() error { return tx.Where("user_id = ?", userID).Delete(&SupportTicket{}).Error },
 		func() error { return tx.Where("user_id = ?", userID).Delete(&Category{}).Error },
 		func() error { return tx.Where("user_id = ?", userID).Delete(&Currency{}).Error },
 		func() error { return tx.Where("user_id = ?", userID).Delete(&UserPreferences{}).Error },

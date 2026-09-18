@@ -38,6 +38,8 @@ func setupWipeTestDB(t *testing.T) *gorm.DB {
 		&Transfer{},
 		&UserPreferences{},
 		&Notification{},
+		&UserFeedback{},
+		&SupportTicket{},
 		&PasswordResetToken{},
 		&AccountResetChallenge{},
 	)

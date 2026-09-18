@@ -153,7 +153,7 @@ func (s *CurrencyService) GetDefaultCurrency(ctx context.Context, userID UserID)
 		return defaultCurrency, nil
 	}
 
-	// If no user default currency is set, return the first default currency
+	// If no user default currency is set, prefer IDR among system-seeded currencies
 	defaultCurrencies, err := s.currencyRepo.FindDefaultCurrencies(ctx)
 	if err != nil {
 		return nil, err
@@ -161,6 +161,12 @@ func (s *CurrencyService) GetDefaultCurrency(ctx context.Context, userID UserID)
 
 	if len(defaultCurrencies) == 0 {
 		return nil, errors.New("no default currency found")
+	}
+
+	for _, currency := range defaultCurrencies {
+		if currency.Code() == "IDR" {
+			return currency, nil
+		}
 	}
 
 	return defaultCurrencies[0], nil
