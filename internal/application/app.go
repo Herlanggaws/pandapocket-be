@@ -7,6 +7,7 @@ import (
 	"time"
 
 	appFinance "panda-pocket/internal/application/finance"
+	appFeedback "panda-pocket/internal/application/feedback"
 	appIdentity "panda-pocket/internal/application/identity"
 	appNotification "panda-pocket/internal/application/notification"
 	domainFinance "panda-pocket/internal/domain/finance"
@@ -28,6 +29,7 @@ type App struct {
 	FinanceHandlers             *handlers.FinanceHandlers
 	DashboardHandlers           *handlers.DashboardHandlers
 	NotificationHandlers        *handlers.NotificationHandlers
+	FeedbackHandlers            *handlers.FeedbackHandlers
 	AuthMiddleware              *middleware.AuthMiddleware
 	purgeDeletedAccountsUseCase *appIdentity.PurgeDeletedAccountsUseCase
 }
@@ -44,6 +46,7 @@ func NewApp(db *gorm.DB) *App {
 	authTokenRepo := database.NewGormTokenRepository(db)
 	prefsRepo := database.NewGormPreferencesRepository(db)
 	notificationRepo := database.NewGormNotificationRepository(db)
+	feedbackRepo := database.NewGormFeedbackRepository(db)
 	walletRepo := database.NewGormWalletRepository(db)
 	transferRepo := database.NewGormTransferRepository(db)
 	goalRepo := database.NewGormGoalRepository(db)
@@ -87,6 +90,7 @@ func NewApp(db *gorm.DB) *App {
 	getNotificationsUseCase := appNotification.NewGetNotificationsUseCase(notificationRepo)
 	markNotificationReadUseCase := appNotification.NewMarkNotificationReadUseCase(notificationRepo)
 	deleteNotificationUseCase := appNotification.NewDeleteNotificationUseCase(notificationRepo)
+	submitFeedbackUseCase := appFeedback.NewSubmitFeedbackUseCase(feedbackRepo)
 	getDashboardStatsUseCase := appIdentity.NewGetDashboardStatsUseCase(userRepo, budgetRepo, transactionRepo)
 	createTransactionUseCase := appFinance.NewCreateTransactionUseCase(transactionService, walletService)
 	getTransactionsUseCase := appFinance.NewGetTransactionsUseCase(transactionService, categoryService)
@@ -260,6 +264,7 @@ func NewApp(db *gorm.DB) *App {
 		markNotificationReadUseCase,
 		deleteNotificationUseCase,
 	)
+	feedbackHandlers := handlers.NewFeedbackHandlers(submitFeedbackUseCase)
 	authMiddleware := middleware.NewAuthMiddleware(tokenService, userRepo)
 
 	return &App{
@@ -268,6 +273,7 @@ func NewApp(db *gorm.DB) *App {
 		FinanceHandlers:             financeHandlers,
 		DashboardHandlers:           dashboardHandlers,
 		NotificationHandlers:        notificationHandlers,
+		FeedbackHandlers:            feedbackHandlers,
 		AuthMiddleware:              authMiddleware,
 		purgeDeletedAccountsUseCase: purgeDeletedAccountsUseCase,
 	}
@@ -376,6 +382,8 @@ func (app *App) SetupRoutes() *gin.Engine {
 			protected.GET("/notifications", app.NotificationHandlers.GetNotifications)
 			protected.PUT("/notifications/:id/read", app.NotificationHandlers.MarkNotificationRead)
 			protected.DELETE("/notifications/:id", app.NotificationHandlers.DeleteNotification)
+
+			protected.POST("/feedback", app.FeedbackHandlers.SubmitFeedback)
 
 			protected.GET("/recurring-transactions", app.FinanceHandlers.GetRecurringTransactions)
 			protected.POST("/recurring-transactions", app.FinanceHandlers.CreateRecurringTransaction)

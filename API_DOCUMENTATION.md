@@ -103,6 +103,7 @@ CORS currently allows all origins (`*`). Allowed request headers: `Origin`, `Con
 | GET | `/api/notifications` | Yes | In-app notifications |
 | PUT | `/api/notifications/:id/read` | Yes | Mark notification read |
 | DELETE | `/api/notifications/:id` | Yes | Delete notification |
+| POST | `/api/feedback` | Yes | Submit product feedback |
 | GET/POST | `/api/recurring-transactions` | Yes | Recurring rules (GET also enqueues due items as pending) |
 | DELETE | `/api/recurring-transactions/:id` | Yes | |
 | GET | `/api/pending-transactions` | Yes | List open pending recurring occurrences (also enqueues dues) |
@@ -1679,6 +1680,44 @@ Delete a notification.
 
 ---
 
+## Feedback
+
+### POST /api/feedback
+
+Submit product feedback for the authenticated user. Stored in `user_feedbacks` (no email/backoffice in v1).
+
+**Request body:**
+
+```json
+{
+  "category": "suggestion",
+  "message": "Would love CSV export for expenses."
+}
+```
+
+| Field | Type | Rules |
+|-------|------|-------|
+| `category` | string | Required. One of `bug`, `suggestion`, `other` |
+| `message` | string | Required. 1–2000 characters |
+
+**Response `201`:**
+
+```json
+{
+  "status": "success",
+  "data": {
+    "feedback": {
+      "id": 1,
+      "category": "suggestion",
+      "message": "Would love CSV export for expenses.",
+      "created_at": "2026-09-18T10:00:00Z"
+    }
+  }
+}
+```
+
+---
+
 ## Recurring Transactions
 
 ### GET /api/recurring-transactions
@@ -1952,6 +1991,9 @@ Keep this file in sync with the running API. When routes, request/response shape
 ---
 
 ## Version History
+
+- **v2.14.0**: **User feedback**
+  - `POST /api/feedback` stores authenticated feedback (`bug` \| `suggestion` \| `other` + message) in `user_feedbacks`
 
 - **v2.13.0**: **Onboarding seeds pending transactions**
   - `POST /api/onboarding/complete` no longer posts income/expense to the ledger immediately

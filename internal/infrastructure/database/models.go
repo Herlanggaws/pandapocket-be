@@ -337,6 +337,18 @@ type Notification struct {
 	User *User `gorm:"foreignKey:UserID" json:"user,omitempty"`
 }
 
+// UserFeedback represents user-submitted product feedback
+type UserFeedback struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	UserID    uint      `gorm:"not null;index" json:"user_id"`
+	Category  string    `gorm:"not null;size:32" json:"category"`
+	Message   string    `gorm:"type:text;not null" json:"message"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+
+	User *User `gorm:"foreignKey:UserID" json:"user,omitempty"`
+}
+
 // Token represents a JWT token in the database for revocation
 type Token struct {
 	ID           uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
@@ -399,6 +411,10 @@ func (UserPreferences) TableName() string {
 
 func (Notification) TableName() string {
 	return "notifications"
+}
+
+func (UserFeedback) TableName() string {
+	return "user_feedbacks"
 }
 
 func (Token) TableName() string {
