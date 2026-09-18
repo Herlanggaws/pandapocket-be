@@ -35,14 +35,15 @@ type onboardingPreferencesRepo interface {
 }
 
 type CompleteOnboardingUseCase struct {
-	prefsRepo                onboardingPreferencesRepo
-	walletService            *finance.WalletService
-	currencyService          *finance.CurrencyService
-	categoryService          *finance.CategoryService
-	createTransactionUseCase *CreateTransactionUseCase
-	createBudgetUseCase      *CreateBudgetUseCase
-	liabilityService         *finance.LiabilityService
-	getHealthScoreUseCase    *GetHealthScoreUseCase
+	prefsRepo               onboardingPreferencesRepo
+	walletService           *finance.WalletService
+	currencyService         *finance.CurrencyService
+	categoryService         *finance.CategoryService
+	createRecurringUseCase  *CreateRecurringTransactionUseCase
+	enqueueDueRecurring     *EnqueueDueRecurringUseCase
+	createBudgetUseCase     *CreateBudgetUseCase
+	liabilityService        *finance.LiabilityService
+	getHealthScoreUseCase   *GetHealthScoreUseCase
 }
 
 func NewCompleteOnboardingUseCase(
@@ -50,20 +51,22 @@ func NewCompleteOnboardingUseCase(
 	walletService *finance.WalletService,
 	currencyService *finance.CurrencyService,
 	categoryService *finance.CategoryService,
-	createTransactionUseCase *CreateTransactionUseCase,
+	createRecurringUseCase *CreateRecurringTransactionUseCase,
+	enqueueDueRecurring *EnqueueDueRecurringUseCase,
 	createBudgetUseCase *CreateBudgetUseCase,
 	liabilityService *finance.LiabilityService,
 	getHealthScoreUseCase *GetHealthScoreUseCase,
 ) *CompleteOnboardingUseCase {
 	return &CompleteOnboardingUseCase{
-		prefsRepo:                prefsRepo,
-		walletService:            walletService,
-		currencyService:          currencyService,
-		categoryService:          categoryService,
-		createTransactionUseCase: createTransactionUseCase,
-		createBudgetUseCase:      createBudgetUseCase,
-		liabilityService:         liabilityService,
-		getHealthScoreUseCase:    getHealthScoreUseCase,
+		prefsRepo:              prefsRepo,
+		walletService:          walletService,
+		currencyService:        currencyService,
+		categoryService:        categoryService,
+		createRecurringUseCase: createRecurringUseCase,
+		enqueueDueRecurring:    enqueueDueRecurring,
+		createBudgetUseCase:    createBudgetUseCase,
+		liabilityService:       liabilityService,
+		getHealthScoreUseCase:  getHealthScoreUseCase,
 	}
 }
 
@@ -126,6 +129,29 @@ func (uc *CompleteOnboardingUseCase) ensureOnboardingBudget(
 	return err
 }
 
+func (uc *CompleteOnboardingUseCase) seedMonthlyPending(
+	ctx context.Context,
+	userID int,
+	transactionType string,
+	categoryID int,
+	amount float64,
+	description string,
+	today string,
+	dayOfMonth int,
+) error {
+	day := dayOfMonth
+	_, err := uc.createRecurringUseCase.Execute(ctx, userID, CreateRecurringTransactionRequest{
+		Type:        transactionType,
+		CategoryID:  categoryID,
+		Amount:      amount,
+		Description: description,
+		Frequency:   "monthly",
+		DayOfMonth:  &day,
+		NextDueDate: today,
+	})
+	return err
+}
+
 func (uc *CompleteOnboardingUseCase) Execute(ctx context.Context, userID int, req CompleteOnboardingRequest) (*CompleteOnboardingResponse, error) {
 	user := domainIdentity.NewUserID(userID)
 
@@ -167,25 +193,33 @@ func (uc *CompleteOnboardingUseCase) Execute(ctx context.Context, userID int, re
 		return nil, err
 	}
 
-	today := time.Now().Format("2006-01-02")
-	monthStart := time.Date(time.Now().Year(), time.Now().Month(), 1, 0, 0, 0, 0, time.Now().Location()).Format("2006-01-02")
+	now := time.Now()
+	today := now.Format("2006-01-02")
+	dayOfMonth := now.Day()
+	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location()).Format("2006-01-02")
 
 	// Re-running complete (redo / retry) must not fail on existing seeded data.
 	if !alreadyCompleted {
+		seededPending := false
+
 		if req.MonthlyIncome > 0 {
 			incomeCategoryID, catErr := uc.findCategoryID(ctx, userID, finance.CategoryTypeIncome, "Salary", "Other")
 			if catErr != nil {
 				return nil, catErr
 			}
-			if _, err := uc.createTransactionUseCase.Execute(ctx, userID, CreateTransactionRequest{
-				CategoryID:  incomeCategoryID,
-				Amount:      req.MonthlyIncome,
-				Description: "Onboarding monthly income",
-				Date:        today,
-				Type:        "income",
-			}); err != nil {
+			if err := uc.seedMonthlyPending(
+				ctx,
+				userID,
+				"income",
+				incomeCategoryID,
+				req.MonthlyIncome,
+				"Onboarding monthly income",
+				today,
+				dayOfMonth,
+			); err != nil {
 				return nil, err
 			}
+			seededPending = true
 		}
 
 		if req.MonthlyExpense > 0 {
@@ -193,17 +227,27 @@ func (uc *CompleteOnboardingUseCase) Execute(ctx context.Context, userID int, re
 			if catErr != nil {
 				return nil, catErr
 			}
-			if _, err := uc.createTransactionUseCase.Execute(ctx, userID, CreateTransactionRequest{
-				CategoryID:  expenseCategoryID,
-				Amount:      req.MonthlyExpense,
-				Description: "Onboarding monthly expense estimate",
-				Date:        today,
-				Type:        "expense",
-			}); err != nil {
+			if err := uc.seedMonthlyPending(
+				ctx,
+				userID,
+				"expense",
+				expenseCategoryID,
+				req.MonthlyExpense,
+				"Onboarding monthly expense estimate",
+				today,
+				dayOfMonth,
+			); err != nil {
 				return nil, err
 			}
+			seededPending = true
 
 			if err := uc.ensureOnboardingBudget(ctx, userID, expenseCategoryID, req.MonthlyExpense, monthStart); err != nil {
+				return nil, err
+			}
+		}
+
+		if seededPending {
+			if err := uc.enqueueDueRecurring.Execute(ctx, userID); err != nil {
 				return nil, err
 			}
 		}

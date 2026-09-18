@@ -99,7 +99,7 @@ CORS currently allows all origins (`*`). Allowed request headers: `Origin`, `Con
 | GET/PUT | `/api/preferences` | Yes | User preferences & onboarding |
 | POST | `/api/account/reset/challenge` | Yes | Issue one-time confirmation string for data reset |
 | POST | `/api/account/reset` | Yes | Wipe user financial data after typing confirmation |
-| POST | `/api/onboarding/complete` | Yes | Finish onboarding; seed income/expense/budget/(debt) |
+| POST | `/api/onboarding/complete` | Yes | Finish onboarding; seed pending income/expense + budget/(debt) |
 | GET | `/api/notifications` | Yes | In-app notifications |
 | PUT | `/api/notifications/:id/read` | Yes | Mark notification read |
 | DELETE | `/api/notifications/:id` | Yes | Delete notification |
@@ -1558,7 +1558,7 @@ Primary-currency only (no FX). Other-currency wallets/assets/liabilities are cou
 
 ### POST /api/onboarding/complete
 
-Authenticated. Marks onboarding complete, updates preferences, and seeds baseline finance data so health score is meaningful.
+Authenticated. Marks onboarding complete, updates preferences, and seeds baseline setup. Monthly income/expense become **pending** items (via monthly recurring rules) that the user must confirm or reject — they are not posted to the ledger until confirmed.
 
 **Body:**
 ```json
@@ -1574,7 +1574,8 @@ Authenticated. Marks onboarding complete, updates preferences, and seeds baselin
 }
 ```
 
-- First completion creates income/expense (when amounts > 0) and a monthly fixed budget from expense
+- First completion (when amounts > 0): creates monthly recurring income/expense rules, enqueues open `pending_transactions` for today, and a monthly fixed budget from expense
+- Confirming a pending posts a real income/expense; rejecting skips that occurrence (recurring schedule still continues next month)
 - Re-running after `onboarding_completed` is already true updates preferences only (no duplicate seed); overlapping budgets are ignored so retries/redos do not fail
 - When `goal` is `debt` and `debt_balance` > 0, creates one liability on first completion
 
@@ -1951,6 +1952,11 @@ Keep this file in sync with the running API. When routes, request/response shape
 ---
 
 ## Version History
+
+- **v2.13.0**: **Onboarding seeds pending transactions**
+  - `POST /api/onboarding/complete` no longer posts income/expense to the ledger immediately
+  - Monthly income/expense create recurring rules + open pending items awaiting confirm/reject
+  - Budget and optional debt liability seeding unchanged
 
 - **v2.12.0**: **Delete account**
   - `DELETE /api/auth/account` soft-deletes the authenticated account after password confirmation
