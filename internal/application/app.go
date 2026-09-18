@@ -44,6 +44,7 @@ func NewApp(db *gorm.DB) *App {
 	goalRepo := database.NewGormGoalRepository(db)
 	assetRepo := database.NewGormAssetRepository(db)
 	liabilityRepo := database.NewGormLiabilityRepository(db)
+	liabilityPaymentRepo := database.NewGormLiabilityPaymentRepository(db)
 	healthSnapshotRepo := database.NewGormHealthScoreSnapshotRepository(db)
 	recurringRepo := database.NewGormRecurringTransactionRepository(db)
 	pendingRepo := database.NewGormPendingTransactionRepository(db)
@@ -58,7 +59,7 @@ func NewApp(db *gorm.DB) *App {
 	transferService := domainFinance.NewTransferService(transferRepo, walletRepo)
 	goalService := domainFinance.NewGoalService(goalRepo)
 	assetService := domainFinance.NewAssetService(assetRepo)
-	liabilityService := domainFinance.NewLiabilityService(liabilityRepo)
+	liabilityService := domainFinance.NewLiabilityService(liabilityRepo, liabilityPaymentRepo)
 
 	// Application layer - use cases
 	tokenService := appIdentity.NewTokenService(authTokenRepo)
@@ -150,6 +151,18 @@ func NewApp(db *gorm.DB) *App {
 	updateLiabilityUseCase := appFinance.NewUpdateLiabilityUseCase(liabilityService)
 	archiveLiabilityUseCase := appFinance.NewArchiveLiabilityUseCase(liabilityService)
 	unarchiveLiabilityUseCase := appFinance.NewUnarchiveLiabilityUseCase(liabilityService)
+	listLiabilityPaymentsUseCase := appFinance.NewListLiabilityPaymentsUseCase(liabilityService)
+	recordLiabilityPaymentUseCase := appFinance.NewRecordLiabilityPaymentUseCase(liabilityService, createTransactionUseCase, categoryService)
+	completeOnboardingUseCase := appFinance.NewCompleteOnboardingUseCase(
+		prefsRepo,
+		walletService,
+		currencyService,
+		categoryService,
+		createTransactionUseCase,
+		createBudgetUseCase,
+		liabilityService,
+		getHealthScoreUseCase,
+	)
 	getNetWorthSummaryUseCase := appFinance.NewGetNetWorthSummaryUseCase(getWalletSummaryUseCase, assetService, liabilityService, currencyService)
 	createTransferUseCase := appFinance.NewCreateTransferUseCase(transferService)
 	getTransfersUseCase := appFinance.NewGetTransfersUseCase(transferService)
@@ -221,6 +234,9 @@ func NewApp(db *gorm.DB) *App {
 		updateLiabilityUseCase,
 		archiveLiabilityUseCase,
 		unarchiveLiabilityUseCase,
+		listLiabilityPaymentsUseCase,
+		recordLiabilityPaymentUseCase,
+		completeOnboardingUseCase,
 		getNetWorthSummaryUseCase,
 		createTransferUseCase,
 		getTransfersUseCase,
@@ -331,11 +347,14 @@ func (app *App) SetupRoutes() *gin.Engine {
 			protected.PUT("/liabilities/:id", app.FinanceHandlers.UpdateLiability)
 			protected.POST("/liabilities/:id/archive", app.FinanceHandlers.ArchiveLiability)
 			protected.POST("/liabilities/:id/unarchive", app.FinanceHandlers.UnarchiveLiability)
+			protected.GET("/liabilities/:id/payments", app.FinanceHandlers.GetLiabilityPayments)
+			protected.POST("/liabilities/:id/payments", app.FinanceHandlers.RecordLiabilityPayment)
 
 			protected.GET("/net-worth/summary", app.FinanceHandlers.GetNetWorthSummary)
 
 			protected.GET("/preferences", app.IdentityHandlers.GetPreferences)
 			protected.PUT("/preferences", app.IdentityHandlers.UpdatePreferences)
+			protected.POST("/onboarding/complete", app.FinanceHandlers.CompleteOnboarding)
 
 			protected.GET("/notifications", app.NotificationHandlers.GetNotifications)
 			protected.PUT("/notifications/:id/read", app.NotificationHandlers.MarkNotificationRead)

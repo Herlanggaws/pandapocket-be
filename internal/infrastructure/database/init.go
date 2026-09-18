@@ -2,6 +2,7 @@ package database
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -150,6 +151,7 @@ func autoMigrate(db *gorm.DB) error {
 		&FinancialGoal{},
 		&Asset{},
 		&Liability{},
+		&LiabilityPayment{},
 		&HealthScoreSnapshot{},
 		&RecurringTransaction{},
 		&PendingTransaction{},
@@ -169,6 +171,10 @@ func createDefaultData(db *gorm.DB) error {
 		return err
 	}
 
+	if err := ensureDebtCategory(db); err != nil {
+		return err
+	}
+
 	// Create default currencies
 	err = createDefaultCurrenciesGorm(db)
 	if err != nil {
@@ -176,6 +182,18 @@ func createDefaultData(db *gorm.DB) error {
 	}
 
 	return nil
+}
+
+func ensureDebtCategory(db *gorm.DB) error {
+	var existing Category
+	err := db.Where("name = ? AND is_default = ? AND category_type = ?", "Debt", true, "expense").First(&existing).Error
+	if err == nil {
+		return nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return err
+	}
+	return db.Create(&Category{Name: "Debt", Color: "#DC2626", IsDefault: true, CategoryType: "expense"}).Error
 }
 
 // createDefaultCategoriesGorm creates default categories using GORM
@@ -202,6 +220,7 @@ func createDefaultCategoriesGorm(db *gorm.DB) error {
 		{Name: "Bills", Color: "#10B981", IsDefault: true, CategoryType: "expense"},
 		{Name: "Healthcare", Color: "#EC4899", IsDefault: true, CategoryType: "expense"},
 		{Name: "Education", Color: "#06B6D4", IsDefault: true, CategoryType: "expense"},
+		{Name: "Debt", Color: "#DC2626", IsDefault: true, CategoryType: "expense"},
 		{Name: "Other", Color: "#6B7280", IsDefault: true, CategoryType: "expense"},
 	}
 

@@ -18,6 +18,11 @@ type LiabilityRepository interface {
 	FindByUserID(ctx context.Context, userID UserID, includeArchived bool) ([]*Liability, error)
 }
 
+type LiabilityPaymentRepository interface {
+	Save(ctx context.Context, payment *LiabilityPayment) error
+	FindByLiabilityID(ctx context.Context, liabilityID LiabilityID) ([]*LiabilityPayment, error)
+}
+
 type AssetService struct {
 	assetRepo AssetRepository
 }
@@ -110,10 +115,11 @@ func (s *AssetService) Unarchive(ctx context.Context, userID UserID, id AssetID)
 
 type LiabilityService struct {
 	liabilityRepo LiabilityRepository
+	paymentRepo   LiabilityPaymentRepository
 }
 
-func NewLiabilityService(liabilityRepo LiabilityRepository) *LiabilityService {
-	return &LiabilityService{liabilityRepo: liabilityRepo}
+func NewLiabilityService(liabilityRepo LiabilityRepository, paymentRepo LiabilityPaymentRepository) *LiabilityService {
+	return &LiabilityService{liabilityRepo: liabilityRepo, paymentRepo: paymentRepo}
 }
 
 func (s *LiabilityService) Create(
@@ -125,8 +131,9 @@ func (s *LiabilityService) Create(
 	currentBalance float64,
 	notes string,
 	asOfDate *time.Time,
+	debt LiabilityDebtDetails,
 ) (*Liability, error) {
-	liability, err := NewLiability(userID, name, liabilityType, currencyID, currentBalance, notes, asOfDate)
+	liability, err := NewLiability(userID, name, liabilityType, currencyID, currentBalance, notes, asOfDate, debt)
 	if err != nil {
 		return nil, err
 	}
@@ -160,12 +167,13 @@ func (s *LiabilityService) Update(
 	currentBalance float64,
 	notes string,
 	asOfDate *time.Time,
+	debt LiabilityDebtDetails,
 ) (*Liability, error) {
 	liability, err := s.GetForUser(ctx, userID, id)
 	if err != nil {
 		return nil, err
 	}
-	if err := liability.Update(name, liabilityType, currentBalance, notes, asOfDate); err != nil {
+	if err := liability.Update(name, liabilityType, currentBalance, notes, asOfDate, debt); err != nil {
 		return nil, err
 	}
 	if err := s.liabilityRepo.Save(ctx, liability); err != nil {
@@ -196,4 +204,45 @@ func (s *LiabilityService) Unarchive(ctx context.Context, userID UserID, id Liab
 		return nil, err
 	}
 	return liability, nil
+}
+
+func (s *LiabilityService) RecordPayment(
+	ctx context.Context,
+	userID UserID,
+	id LiabilityID,
+	amount float64,
+	paidAt time.Time,
+	expenseID *int,
+	note string,
+) (*Liability, *LiabilityPayment, error) {
+	liability, err := s.GetForUser(ctx, userID, id)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := liability.ApplyPayment(amount); err != nil {
+		return nil, nil, err
+	}
+	payment, err := NewLiabilityPayment(id, userID, amount, paidAt, expenseID, note)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := s.liabilityRepo.Save(ctx, liability); err != nil {
+		return nil, nil, err
+	}
+	if s.paymentRepo != nil {
+		if err := s.paymentRepo.Save(ctx, payment); err != nil {
+			return nil, nil, err
+		}
+	}
+	return liability, payment, nil
+}
+
+func (s *LiabilityService) ListPayments(ctx context.Context, userID UserID, id LiabilityID) ([]*LiabilityPayment, error) {
+	if _, err := s.GetForUser(ctx, userID, id); err != nil {
+		return nil, err
+	}
+	if s.paymentRepo == nil {
+		return []*LiabilityPayment{}, nil
+	}
+	return s.paymentRepo.FindByLiabilityID(ctx, id)
 }

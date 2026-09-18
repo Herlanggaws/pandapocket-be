@@ -200,20 +200,43 @@ type Asset struct {
 
 // Liability represents an amount owed
 type Liability struct {
-	ID             uint       `gorm:"primaryKey" json:"id"`
-	UserID         uint       `gorm:"not null;index" json:"user_id"`
-	Name           string     `gorm:"not null" json:"name"`
-	Type           string     `gorm:"not null;default:'other';check:type IN ('loan', 'credit_card', 'mortgage', 'other')" json:"type"`
-	CurrencyID     uint       `gorm:"not null;index" json:"currency_id"`
-	CurrentBalance float64    `gorm:"type:decimal(14,2);not null;default:0" json:"current_balance"`
-	Notes          string     `gorm:"type:text" json:"notes"`
-	IsArchived     bool       `gorm:"default:false;index" json:"is_archived"`
-	AsOfDate       *time.Time `gorm:"type:date" json:"as_of_date,omitempty"`
-	CreatedAt      time.Time  `json:"created_at"`
-	UpdatedAt      time.Time  `json:"updated_at"`
+	ID                uint       `gorm:"primaryKey" json:"id"`
+	UserID            uint       `gorm:"not null;index" json:"user_id"`
+	Name              string     `gorm:"not null" json:"name"`
+	Type              string     `gorm:"not null;default:'other';check:type IN ('loan', 'credit_card', 'mortgage', 'other')" json:"type"`
+	CurrencyID        uint       `gorm:"not null;index" json:"currency_id"`
+	CurrentBalance    float64    `gorm:"type:decimal(14,2);not null;default:0" json:"current_balance"`
+	OriginalPrincipal *float64   `gorm:"type:decimal(14,2)" json:"original_principal,omitempty"`
+	InterestRateAPR   *float64   `gorm:"type:decimal(8,4)" json:"interest_rate_apr,omitempty"`
+	MinimumPayment    float64    `gorm:"type:decimal(14,2);not null;default:0" json:"minimum_payment"`
+	NextDueDate       *time.Time `gorm:"type:date" json:"next_due_date,omitempty"`
+	Notes             string     `gorm:"type:text" json:"notes"`
+	IsArchived        bool       `gorm:"default:false;index" json:"is_archived"`
+	AsOfDate          *time.Time `gorm:"type:date" json:"as_of_date,omitempty"`
+	CreatedAt         time.Time  `json:"created_at"`
+	UpdatedAt         time.Time  `json:"updated_at"`
 
 	User     *User     `gorm:"foreignKey:UserID" json:"user,omitempty"`
 	Currency *Currency `gorm:"foreignKey:CurrencyID" json:"currency,omitempty"`
+}
+
+// LiabilityPayment records a payment against a liability
+type LiabilityPayment struct {
+	ID          uint      `gorm:"primaryKey" json:"id"`
+	LiabilityID uint      `gorm:"not null;index" json:"liability_id"`
+	UserID      uint      `gorm:"not null;index" json:"user_id"`
+	Amount      float64   `gorm:"type:decimal(14,2);not null" json:"amount"`
+	PaidAt      time.Time `gorm:"type:date;not null" json:"paid_at"`
+	ExpenseID   *uint     `gorm:"index" json:"expense_id,omitempty"`
+	Note        string    `gorm:"type:text" json:"note"`
+	CreatedAt   time.Time `json:"created_at"`
+
+	Liability *Liability `gorm:"foreignKey:LiabilityID" json:"liability,omitempty"`
+	User      *User      `gorm:"foreignKey:UserID" json:"user,omitempty"`
+}
+
+func (LiabilityPayment) TableName() string {
+	return "liability_payments"
 }
 
 // HealthScoreSnapshot stores monthly health score history

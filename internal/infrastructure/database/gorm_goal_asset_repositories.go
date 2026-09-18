@@ -198,30 +198,44 @@ func (r *GormLiabilityRepository) toDomain(model Liability) *finance.Liability {
 		model.IsArchived,
 		model.AsOfDate,
 		model.CreatedAt,
+		finance.LiabilityDebtDetails{
+			OriginalPrincipal: model.OriginalPrincipal,
+			InterestRateAPR:   model.InterestRateAPR,
+			MinimumPayment:    model.MinimumPayment,
+			NextDueDate:       model.NextDueDate,
+		},
 	)
 }
 
 func (r *GormLiabilityRepository) Save(ctx context.Context, liability *finance.Liability) error {
 	model := &Liability{
-		UserID:         uint(liability.UserID().Value()),
-		Name:           liability.Name(),
-		Type:           string(liability.Type()),
-		CurrencyID:     uint(liability.CurrencyID().Value()),
-		CurrentBalance: liability.CurrentBalance(),
-		Notes:          liability.Notes(),
-		IsArchived:     liability.IsArchived(),
-		AsOfDate:       liability.AsOfDate(),
+		UserID:            uint(liability.UserID().Value()),
+		Name:              liability.Name(),
+		Type:              string(liability.Type()),
+		CurrencyID:        uint(liability.CurrencyID().Value()),
+		CurrentBalance:    liability.CurrentBalance(),
+		OriginalPrincipal: liability.OriginalPrincipal(),
+		InterestRateAPR:   liability.InterestRateAPR(),
+		MinimumPayment:    liability.MinimumPayment(),
+		NextDueDate:       liability.NextDueDate(),
+		Notes:             liability.Notes(),
+		IsArchived:        liability.IsArchived(),
+		AsOfDate:          liability.AsOfDate(),
 	}
 	if liability.ID().Value() != 0 {
 		model.ID = uint(liability.ID().Value())
 		return r.db.WithContext(ctx).Model(&Liability{}).Where("id = ?", model.ID).Updates(map[string]interface{}{
-			"name":            model.Name,
-			"type":            model.Type,
-			"current_balance": model.CurrentBalance,
-			"notes":           model.Notes,
-			"is_archived":     model.IsArchived,
-			"as_of_date":      model.AsOfDate,
-			"updated_at":      time.Now(),
+			"name":               model.Name,
+			"type":               model.Type,
+			"current_balance":    model.CurrentBalance,
+			"original_principal": model.OriginalPrincipal,
+			"interest_rate_apr":  model.InterestRateAPR,
+			"minimum_payment":    model.MinimumPayment,
+			"next_due_date":      model.NextDueDate,
+			"notes":              model.Notes,
+			"is_archived":        model.IsArchived,
+			"as_of_date":         model.AsOfDate,
+			"updated_at":         time.Now(),
 		}).Error
 	}
 	if err := r.db.WithContext(ctx).Create(model).Error; err != nil {
@@ -254,6 +268,65 @@ func (r *GormLiabilityRepository) FindByUserID(ctx context.Context, userID finan
 	result := make([]*finance.Liability, 0, len(models))
 	for _, m := range models {
 		result = append(result, r.toDomain(m))
+	}
+	return result, nil
+}
+
+type GormLiabilityPaymentRepository struct {
+	db *gorm.DB
+}
+
+func NewGormLiabilityPaymentRepository(db *gorm.DB) *GormLiabilityPaymentRepository {
+	return &GormLiabilityPaymentRepository{db: db}
+}
+
+func (r *GormLiabilityPaymentRepository) Save(ctx context.Context, payment *finance.LiabilityPayment) error {
+	model := &LiabilityPayment{
+		LiabilityID: uint(payment.LiabilityID().Value()),
+		UserID:      uint(payment.UserID().Value()),
+		Amount:      payment.Amount(),
+		PaidAt:      payment.PaidAt(),
+		Note:        payment.Note(),
+	}
+	if payment.ExpenseID() != nil {
+		id := uint(*payment.ExpenseID())
+		model.ExpenseID = &id
+	}
+	if payment.ID().Value() != 0 {
+		model.ID = uint(payment.ID().Value())
+	}
+	if err := r.db.WithContext(ctx).Create(model).Error; err != nil {
+		return err
+	}
+	payment.AssignID(finance.NewLiabilityPaymentID(int(model.ID)))
+	return nil
+}
+
+func (r *GormLiabilityPaymentRepository) FindByLiabilityID(ctx context.Context, liabilityID finance.LiabilityID) ([]*finance.LiabilityPayment, error) {
+	var models []LiabilityPayment
+	if err := r.db.WithContext(ctx).
+		Where("liability_id = ?", liabilityID.Value()).
+		Order("paid_at DESC, id DESC").
+		Find(&models).Error; err != nil {
+		return nil, err
+	}
+	result := make([]*finance.LiabilityPayment, 0, len(models))
+	for _, m := range models {
+		var expenseID *int
+		if m.ExpenseID != nil {
+			v := int(*m.ExpenseID)
+			expenseID = &v
+		}
+		result = append(result, finance.ReconstituteLiabilityPayment(
+			finance.NewLiabilityPaymentID(int(m.ID)),
+			finance.NewLiabilityID(int(m.LiabilityID)),
+			finance.NewUserID(int(m.UserID)),
+			m.Amount,
+			m.PaidAt,
+			expenseID,
+			m.Note,
+			m.CreatedAt,
+		))
 	}
 	return result, nil
 }

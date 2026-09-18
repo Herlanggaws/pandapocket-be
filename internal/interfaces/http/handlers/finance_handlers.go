@@ -65,7 +65,10 @@ type FinanceHandlers struct {
 	getLiabilitiesUseCase     *finance.GetLiabilitiesUseCase
 	updateLiabilityUseCase    *finance.UpdateLiabilityUseCase
 	archiveLiabilityUseCase   *finance.ArchiveLiabilityUseCase
-	unarchiveLiabilityUseCase *finance.UnarchiveLiabilityUseCase
+	unarchiveLiabilityUseCase   *finance.UnarchiveLiabilityUseCase
+	listLiabilityPaymentsUseCase *finance.ListLiabilityPaymentsUseCase
+	recordLiabilityPaymentUseCase *finance.RecordLiabilityPaymentUseCase
+	completeOnboardingUseCase     *finance.CompleteOnboardingUseCase
 	getNetWorthSummaryUseCase *finance.GetNetWorthSummaryUseCase
 	createTransferUseCase     *finance.CreateTransferUseCase
 	getTransfersUseCase       *finance.GetTransfersUseCase
@@ -126,6 +129,9 @@ func NewFinanceHandlers(
 	updateLiabilityUseCase *finance.UpdateLiabilityUseCase,
 	archiveLiabilityUseCase *finance.ArchiveLiabilityUseCase,
 	unarchiveLiabilityUseCase *finance.UnarchiveLiabilityUseCase,
+	listLiabilityPaymentsUseCase *finance.ListLiabilityPaymentsUseCase,
+	recordLiabilityPaymentUseCase *finance.RecordLiabilityPaymentUseCase,
+	completeOnboardingUseCase *finance.CompleteOnboardingUseCase,
 	getNetWorthSummaryUseCase *finance.GetNetWorthSummaryUseCase,
 	createTransferUseCase *finance.CreateTransferUseCase,
 	getTransfersUseCase *finance.GetTransfersUseCase,
@@ -183,8 +189,11 @@ func NewFinanceHandlers(
 		getLiabilitiesUseCase:     getLiabilitiesUseCase,
 		updateLiabilityUseCase:    updateLiabilityUseCase,
 		archiveLiabilityUseCase:   archiveLiabilityUseCase,
-		unarchiveLiabilityUseCase: unarchiveLiabilityUseCase,
-		getNetWorthSummaryUseCase: getNetWorthSummaryUseCase,
+		unarchiveLiabilityUseCase:     unarchiveLiabilityUseCase,
+		listLiabilityPaymentsUseCase:  listLiabilityPaymentsUseCase,
+		recordLiabilityPaymentUseCase: recordLiabilityPaymentUseCase,
+		completeOnboardingUseCase:     completeOnboardingUseCase,
+		getNetWorthSummaryUseCase:     getNetWorthSummaryUseCase,
 		createTransferUseCase:     createTransferUseCase,
 		getTransfersUseCase:       getTransfersUseCase,
 	}

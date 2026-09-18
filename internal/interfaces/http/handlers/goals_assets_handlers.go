@@ -247,6 +247,56 @@ func (h *FinanceHandlers) UnarchiveLiability(c *gin.Context) {
 	SuccessResponse(c, http.StatusOK, gin.H{"liability": response})
 }
 
+func (h *FinanceHandlers) GetLiabilityPayments(c *gin.Context) {
+	userID := c.GetInt("user_id")
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		ValidationErrorResponse(c, "invalid liability id")
+		return
+	}
+	response, err := h.listLiabilityPaymentsUseCase.Execute(c.Request.Context(), userID, id)
+	if err != nil {
+		HandleError(c, err, http.StatusBadRequest)
+		return
+	}
+	SuccessResponse(c, http.StatusOK, gin.H{"payments": response})
+}
+
+func (h *FinanceHandlers) RecordLiabilityPayment(c *gin.Context) {
+	userID := c.GetInt("user_id")
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		ValidationErrorResponse(c, "invalid liability id")
+		return
+	}
+	var req finance.RecordLiabilityPaymentRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		ValidationErrorResponse(c, err.Error())
+		return
+	}
+	response, err := h.recordLiabilityPaymentUseCase.Execute(c.Request.Context(), userID, id, req)
+	if err != nil {
+		HandleError(c, err, http.StatusBadRequest)
+		return
+	}
+	SuccessResponse(c, http.StatusCreated, response)
+}
+
+func (h *FinanceHandlers) CompleteOnboarding(c *gin.Context) {
+	userID := c.GetInt("user_id")
+	var req finance.CompleteOnboardingRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		ValidationErrorResponse(c, err.Error())
+		return
+	}
+	response, err := h.completeOnboardingUseCase.Execute(c.Request.Context(), userID, req)
+	if err != nil {
+		HandleError(c, err, http.StatusBadRequest)
+		return
+	}
+	SuccessResponse(c, http.StatusOK, response)
+}
+
 func (h *FinanceHandlers) GetNetWorthSummary(c *gin.Context) {
 	userID := c.GetInt("user_id")
 	response, err := h.getNetWorthSummaryUseCase.Execute(c.Request.Context(), userID)

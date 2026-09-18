@@ -92,8 +92,10 @@ CORS currently allows all origins (`*`). Allowed request headers: `Origin`, `Con
 | PUT | `/api/liabilities/:id` | Yes | |
 | POST | `/api/liabilities/:id/archive` | Yes | |
 | POST | `/api/liabilities/:id/unarchive` | Yes | |
+| GET/POST | `/api/liabilities/:id/payments` | Yes | Payment history / record payment |
 | GET | `/api/net-worth/summary` | Yes | Liquid + assets − liabilities (primary currency) |
 | GET/PUT | `/api/preferences` | Yes | User preferences & onboarding |
+| POST | `/api/onboarding/complete` | Yes | Finish onboarding; seed income/expense/budget/(debt) |
 | GET | `/api/notifications` | Yes | In-app notifications |
 | PUT | `/api/notifications/:id/read` | Yes | Mark notification read |
 | DELETE | `/api/notifications/:id` | Yes | Delete notification |
@@ -1449,14 +1451,54 @@ Manual balance-sheet positions (no market feeds). Wallets remain liquid assets.
 - `POST /api/assets/:id/archive`
 - `POST /api/assets/:id/unarchive`
 
-### Liabilities
+### Liabilities / Debts
 
 `type`: `loan` | `credit_card` | `mortgage` | `other`
+
+Create/update body fields:
+- `name`, `type`, `currency_id`, `current_balance` (required as before)
+- `original_principal` (optional; defaults to `current_balance` on create when omitted)
+- `interest_rate_apr` (optional annual percent)
+- `minimum_payment` (optional installment / minimum payment)
+- `next_due_date` (`YYYY-MM-DD`, optional)
+- `notes`, `as_of_date`
+
+Response extras:
+- `payoff_progress_percent` when `original_principal` is set
+- `estimated_months_remaining` when `minimum_payment > 0` and balance remains
 
 - `GET/POST /api/liabilities`
 - `PUT /api/liabilities/:id`
 - `POST /api/liabilities/:id/archive`
 - `POST /api/liabilities/:id/unarchive`
+- `GET /api/liabilities/:id/payments`
+- `POST /api/liabilities/:id/payments`
+
+#### POST /api/liabilities/:id/payments
+
+Records a payment and reduces `current_balance`. Optionally creates an expense on the default (or specified) wallet using the Debt category when available.
+
+```json
+{
+  "amount": 500000,
+  "paid_at": "2026-09-18",
+  "note": "September installment",
+  "create_expense": true,
+  "category_id": null,
+  "wallet_id": null
+}
+```
+
+```json
+{
+  "status": "success",
+  "data": {
+    "liability": { "id": 1, "current_balance": 9500000 },
+    "payment": { "id": 1, "amount": 500000, "paid_at": "2026-09-18", "expense_id": 42 }
+  },
+  "error": null
+}
+```
 
 ### GET /api/net-worth/summary
 
@@ -1484,6 +1526,29 @@ Primary-currency only (no FX). Other-currency wallets/assets/liabilities are cou
 ---
 
 ## Preferences
+
+### POST /api/onboarding/complete
+
+Authenticated. Marks onboarding complete, updates preferences, and seeds baseline finance data so health score is meaningful.
+
+**Body:**
+```json
+{
+  "primary_currency_id": 1,
+  "goal": "budget",
+  "topics": ["Food & Dining", "Transport"],
+  "monthly_income": 10000000,
+  "monthly_expense": 7000000,
+  "debt_balance": 5000000,
+  "debt_name": "Personal loan",
+  "debt_type": "loan"
+}
+```
+
+- Always creates income/expense (when amounts > 0) and a monthly fixed budget from expense
+- When `goal` is `debt` and `debt_balance` > 0, creates one liability
+
+**Response** includes `onboarding` map and optional `health_score`.
 
 ### GET /api/preferences
 
@@ -1808,6 +1873,12 @@ Keep this file in sync with the running API. When routes, request/response shape
 ---
 
 ## Version History
+
+- **v2.10.0**: **Debt tracker + onboarding complete**
+  - Liabilities support `original_principal`, `interest_rate_apr`, `minimum_payment`, `next_due_date`
+  - `GET/POST /api/liabilities/:id/payments` with optional expense creation (Debt category)
+  - Response includes payoff progress and estimated months remaining
+  - `POST /api/onboarding/complete` seeds income/expense/budget/(debt) and returns health score
 
 - **v2.9.0**: **Goals, full net worth, health history**
   - Savings goals CRUD with deadline and manual progress
