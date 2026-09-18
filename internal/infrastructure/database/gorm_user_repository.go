@@ -35,10 +35,7 @@ func (r *GormUserRepository) Save(ctx context.Context, user *identity.User) erro
 		return err
 	}
 
-	// Note: In a real implementation, you'd want to update the domain user's ID
-	// This would require modifying the domain user to be mutable or using a different approach
-	// For now, we rely on the database to handle ID generation
-
+	user.AssignID(identity.NewUserID(int(userModel.ID)))
 	return nil
 }
 

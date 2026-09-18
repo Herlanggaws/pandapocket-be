@@ -38,6 +38,15 @@ func (s *UserService) RegisterUser(ctx context.Context, email Email, password Pa
 		return nil, err
 	}
 
+	if user.ID().Value() == 0 {
+		// Belt-and-suspenders if repository failed to assign the generated ID.
+		persisted, err := s.userRepo.FindByEmail(ctx, email)
+		if err != nil {
+			return nil, errors.New("failed to load registered user")
+		}
+		return persisted, nil
+	}
+
 	return user, nil
 }
 

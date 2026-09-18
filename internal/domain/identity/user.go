@@ -161,3 +161,10 @@ func (u *User) ChangeRole(newRole Role) error {
 	u.role = newRole
 	return nil
 }
+
+// AssignID sets the persisted primary key after insert.
+func (u *User) AssignID(id UserID) {
+	if u.id.Value() == 0 && id.Value() != 0 {
+		u.id = id
+	}
+}

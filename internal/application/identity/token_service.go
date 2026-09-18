@@ -146,7 +146,10 @@ func (s *tokenService) ValidateToken(tokenString string) (*Claims, error) {
 		return nil, err
 	}
 
-	if claims, ok := token.Claims.(*Claims); ok && token.Valid {
+		if claims, ok := token.Claims.(*Claims); ok && token.Valid {
+		if claims.UserID <= 0 {
+			return nil, errors.New("invalid token user")
+		}
 		return claims, nil
 	}
 

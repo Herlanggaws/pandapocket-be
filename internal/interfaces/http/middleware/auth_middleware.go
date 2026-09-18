@@ -62,6 +62,11 @@ func (m *AuthMiddleware) RequireAuth() gin.HandlerFunc {
 		}
 
 		// Set user info in context
+		if claims.UserID <= 0 {
+			handlers.UnauthorizedResponse(c, "INVALID_TOKEN", "Invalid token")
+			c.Abort()
+			return
+		}
 		c.Set("user_id", claims.UserID)
 		c.Set("email", claims.Email)
 		c.Set("role", claims.Role)
