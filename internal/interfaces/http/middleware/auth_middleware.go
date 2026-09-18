@@ -1,21 +1,29 @@
 package middleware
 
 import (
+	"context"
 	"panda-pocket/internal/application/identity"
+	domainIdentity "panda-pocket/internal/domain/identity"
 	"panda-pocket/internal/interfaces/http/handlers"
 
 	"github.com/gin-gonic/gin"
 )
 
+type activeUserChecker interface {
+	ExistsActive(ctx context.Context, id domainIdentity.UserID) (bool, error)
+}
+
 // AuthMiddleware handles JWT authentication
 type AuthMiddleware struct {
 	tokenService identity.TokenService
+	userChecker  activeUserChecker
 }
 
 // NewAuthMiddleware creates a new auth middleware
-func NewAuthMiddleware(tokenService identity.TokenService) *AuthMiddleware {
+func NewAuthMiddleware(tokenService identity.TokenService, userChecker activeUserChecker) *AuthMiddleware {
 	return &AuthMiddleware{
 		tokenService: tokenService,
+		userChecker:  userChecker,
 	}
 }
 
@@ -36,24 +44,6 @@ func (m *AuthMiddleware) RequireAuth() gin.HandlerFunc {
 
 		claims, err := m.tokenService.ValidateToken(tokenString)
 		if err != nil {
-			// Check if token is expired and cleanup if necessary
-			// Note: jwt.ParseWithClaims returns an error if the token is expired
-			// We can check if it's an expiry error, or just cleanup on any validation error
-			// The user requested: "if the token that checked on the jwt claims is expired"
-			// But since we can't easily introspect the *Claims if Parse failed with expiry,
-			// we assume standard JWT expiry behavior.
-			// gorm_jwt/v5 returns distinct errors.
-
-			// For simplicity and to match request "if the token... is expired", we try to execute cleanup.
-			// Ideally we check `errors.Is(err, jwt.ErrTokenExpired)` but that requires importing jwt or checking string.
-			// Simple approach: If invalid, try to delete. But request specific "is expired".
-
-			// Attempt to parse strictly for expiry check or trust strict error handling?
-			// Let's call cleanup. TokenService.CleanupExpiredToken swallows errors so it's safe.
-			// However, blindly deleting might be aggressive if the token was just invalid signature.
-			// But for "cleanup", it's probably fine to delete invalid tokens too (they are invalid!).
-			// But strict requirement: "if ... expired".
-
 			m.tokenService.CleanupExpiredToken(c.Request.Context(), tokenString)
 
 			handlers.UnauthorizedResponse(c, "INVALID_TOKEN", "Invalid token")
@@ -61,12 +51,26 @@ func (m *AuthMiddleware) RequireAuth() gin.HandlerFunc {
 			return
 		}
 
-		// Set user info in context
 		if claims.UserID <= 0 {
 			handlers.UnauthorizedResponse(c, "INVALID_TOKEN", "Invalid token")
 			c.Abort()
 			return
 		}
+
+		if m.userChecker != nil {
+			active, err := m.userChecker.ExistsActive(c.Request.Context(), domainIdentity.NewUserID(claims.UserID))
+			if err != nil {
+				handlers.InternalServerErrorResponse(c, "USER_LOOKUP_FAILED", "Failed to verify user")
+				c.Abort()
+				return
+			}
+			if !active {
+				handlers.UnauthorizedResponse(c, "ACCOUNT_DELETED", "Account has been deleted")
+				c.Abort()
+				return
+			}
+		}
+
 		c.Set("user_id", claims.UserID)
 		c.Set("email", claims.Email)
 		c.Set("role", claims.Role)
@@ -91,7 +95,6 @@ func (m *AuthMiddleware) RequireRole(requiredRole string) gin.HandlerFunc {
 			return
 		}
 
-		// Check if user has required role or higher
 		if !hasRequiredRole(role, requiredRole) {
 			handlers.ForbiddenResponse(c, "INSUFFICIENT_PERMISSIONS", "Insufficient permissions")
 			c.Abort()

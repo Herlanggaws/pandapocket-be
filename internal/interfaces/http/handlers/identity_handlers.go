@@ -22,6 +22,7 @@ type IdentityHandlers struct {
 	getPreferencesUseCase    *identity.GetPreferencesUseCase
 	updatePreferencesUseCase *identity.UpdatePreferencesUseCase
 	resetAccountDataUseCase  *identity.ResetAccountDataUseCase
+	deleteAccountUseCase     *identity.DeleteAccountUseCase
 }
 
 // NewIdentityHandlers creates a new identity handlers instance
@@ -37,6 +38,7 @@ func NewIdentityHandlers(
 	getPreferencesUseCase *identity.GetPreferencesUseCase,
 	updatePreferencesUseCase *identity.UpdatePreferencesUseCase,
 	resetAccountDataUseCase *identity.ResetAccountDataUseCase,
+	deleteAccountUseCase *identity.DeleteAccountUseCase,
 ) *IdentityHandlers {
 	return &IdentityHandlers{
 		registerUserUseCase:      registerUserUseCase,
@@ -50,6 +52,7 @@ func NewIdentityHandlers(
 		getPreferencesUseCase:    getPreferencesUseCase,
 		updatePreferencesUseCase: updatePreferencesUseCase,
 		resetAccountDataUseCase:  resetAccountDataUseCase,
+		deleteAccountUseCase:     deleteAccountUseCase,
 	}
 }
 
@@ -302,6 +305,33 @@ func (h *IdentityHandlers) ResetAccountData(c *gin.Context) {
 
 	response, err := h.resetAccountDataUseCase.Execute(c.Request.Context(), req)
 	if err != nil {
+		HandleError(c, err, http.StatusBadRequest)
+		return
+	}
+	SuccessResponse(c, http.StatusOK, response)
+}
+
+// DeleteAccount soft-deletes the authenticated user's account after password confirmation.
+func (h *IdentityHandlers) DeleteAccount(c *gin.Context) {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		UnauthorizedResponse(c, "UNAUTHORIZED", "User not authenticated")
+		return
+	}
+
+	var req identity.DeleteAccountRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		ValidationErrorResponse(c, formatValidationError(err))
+		return
+	}
+	req.UserID = userID.(int)
+
+	response, err := h.deleteAccountUseCase.Execute(c.Request.Context(), req)
+	if err != nil {
+		if err.Error() == "invalid password" {
+			HandleError(c, err, http.StatusUnauthorized)
+			return
+		}
 		HandleError(c, err, http.StatusBadRequest)
 		return
 	}

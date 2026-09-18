@@ -39,6 +39,7 @@ type TokenService interface {
 	ValidateRefreshToken(ctx context.Context, tokenString string) (*RefreshTokenClaims, error)
 	GenerateAccessTokenResult(userID int, email string, role string) (string, error)
 	RevokeToken(ctx context.Context, tokenString string) error
+	RevokeAllForUser(ctx context.Context, userID int) error
 	CleanupExpiredToken(ctx context.Context, tokenString string) error
 }
 
@@ -187,6 +188,11 @@ func (s *tokenService) ValidateRefreshToken(ctx context.Context, tokenString str
 // RevokeToken revokes a refresh token
 func (s *tokenService) RevokeToken(ctx context.Context, tokenString string) error {
 	return s.repo.Revoke(ctx, tokenString)
+}
+
+// RevokeAllForUser revokes all tokens for a user
+func (s *tokenService) RevokeAllForUser(ctx context.Context, userID int) error {
+	return s.repo.RevokeAllForUser(ctx, userID)
 }
 
 // CleanupExpiredToken removes an expired access token from the database

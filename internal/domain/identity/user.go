@@ -14,6 +14,7 @@ type User struct {
 	password  PasswordHash
 	role      Role
 	createdAt time.Time
+	deletedAt *time.Time
 }
 
 // UserID is a value object representing a user identifier
@@ -133,6 +134,18 @@ func (u *User) CreatedAt() time.Time {
 
 func (u *User) Role() Role {
 	return u.role
+}
+
+func (u *User) DeletedAt() *time.Time {
+	return u.deletedAt
+}
+
+func (u *User) IsDeleted() bool {
+	return u.deletedAt != nil
+}
+
+func (u *User) MarkDeleted(at time.Time) {
+	u.deletedAt = &at
 }
 
 func (u *User) UpdatePassword(passwordHash PasswordHash) {

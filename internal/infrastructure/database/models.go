@@ -13,6 +13,7 @@ type User struct {
 	PasswordHash string     `gorm:"not null" json:"-"`
 	Role         string     `gorm:"default:'user';check:role IN ('user', 'admin', 'super_admin')" json:"role"`
 	LastLoginAt  *time.Time `json:"last_login_at,omitempty"`
+	DeletedAt    *time.Time `gorm:"index" json:"deleted_at,omitempty"`
 	CreatedAt    time.Time  `json:"created_at"`
 	UpdatedAt    time.Time  `json:"updated_at"`
 

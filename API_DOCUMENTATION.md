@@ -12,7 +12,7 @@ PandaPocket (product brand: **Berbudget**) is a personal finance management API 
 
 ### Implemented Endpoints
 
-- **Authentication**: Register, Login, Logout, Refresh, Forgot/Reset Password, Change Password
+- **Authentication**: Register, Login, Logout, Refresh, Forgot/Reset Password, Change Password, Delete Account
 - **Categories**: Full CRUD operations
 - **Expenses**: Full CRUD operations
 - **Incomes**: Full CRUD operations
@@ -65,6 +65,7 @@ CORS currently allows all origins (`*`). Allowed request headers: `Origin`, `Con
 | POST | `/api/auth/forgot` | No | Forgot password |
 | POST | `/api/auth/reset-password` | No | Reset with token from email |
 | POST | `/api/auth/change-password` | Yes | Authenticated password change |
+| DELETE | `/api/auth/account` | Yes | Soft-delete account (password required); purge after 14 days |
 | GET | `/api/users` | Yes (admin) | List users |
 | GET | `/api/dashboard/stats` | Yes (admin) | Admin dashboard statistics |
 | GET/POST | `/api/categories` | Yes | |
@@ -374,6 +375,31 @@ Change password for the authenticated user. Requires `Authorization: Bearer <tok
   "error": null
 }
 ```
+
+### DELETE /api/auth/account
+
+Soft-delete the authenticated user's account. Requires `Authorization: Bearer <token>` and the current password. Login is blocked immediately; all sessions are revoked. Personal data is retained for up to 14 days, then hard-purged by a background job. The original email can be registered again right after soft-delete.
+
+**Request Body:**
+```json
+{
+  "password": "password123"
+}
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "data": {
+    "message": "Account scheduled for deletion",
+    "scheduled_purge_at": "2026-10-02T10:00:00Z"
+  },
+  "error": null
+}
+```
+
+**Errors:** `401` for invalid password; `400` for missing password or other client errors.
 
 ---
 
@@ -1925,6 +1951,11 @@ Keep this file in sync with the running API. When routes, request/response shape
 ---
 
 ## Version History
+
+- **v2.12.0**: **Delete account**
+  - `DELETE /api/auth/account` soft-deletes the authenticated account after password confirmation
+  - Sessions revoked immediately; login/refresh blocked for deleted users
+  - Hard purge of user-owned data after 14 days via hourly background job
 
 - **v2.11.0**: **Account data reset**
   - `POST /api/account/reset/challenge` issues a one-time confirmation string (TTL 5m)

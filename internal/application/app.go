@@ -1,7 +1,11 @@
 package application
 
 import (
+	"context"
+	"log"
 	"net/http"
+	"time"
+
 	appFinance "panda-pocket/internal/application/finance"
 	appIdentity "panda-pocket/internal/application/identity"
 	appNotification "panda-pocket/internal/application/notification"
@@ -19,12 +23,13 @@ import (
 
 // App represents the application with all its dependencies
 type App struct {
-	DB                   *gorm.DB
-	IdentityHandlers     *handlers.IdentityHandlers
-	FinanceHandlers      *handlers.FinanceHandlers
-	DashboardHandlers    *handlers.DashboardHandlers
-	NotificationHandlers *handlers.NotificationHandlers
-	AuthMiddleware       *middleware.AuthMiddleware
+	DB                          *gorm.DB
+	IdentityHandlers            *handlers.IdentityHandlers
+	FinanceHandlers             *handlers.FinanceHandlers
+	DashboardHandlers           *handlers.DashboardHandlers
+	NotificationHandlers        *handlers.NotificationHandlers
+	AuthMiddleware              *middleware.AuthMiddleware
+	purgeDeletedAccountsUseCase *appIdentity.PurgeDeletedAccountsUseCase
 }
 
 // NewApp creates a new application instance with all dependencies wired up
@@ -77,6 +82,8 @@ func NewApp(db *gorm.DB) *App {
 	accountResetChallengeRepo := database.NewGormAccountResetChallengeRepository(db)
 	userDataWiper := database.NewGormUserDataWiper(db)
 	resetAccountDataUseCase := appIdentity.NewResetAccountDataUseCase(accountResetChallengeRepo, userDataWiper)
+	deleteAccountUseCase := appIdentity.NewDeleteAccountUseCase(userRepo, tokenService)
+	purgeDeletedAccountsUseCase := appIdentity.NewPurgeDeletedAccountsUseCase(userRepo, userDataWiper)
 	getNotificationsUseCase := appNotification.NewGetNotificationsUseCase(notificationRepo)
 	markNotificationReadUseCase := appNotification.NewMarkNotificationReadUseCase(notificationRepo)
 	deleteNotificationUseCase := appNotification.NewDeleteNotificationUseCase(notificationRepo)
@@ -183,6 +190,7 @@ func NewApp(db *gorm.DB) *App {
 		getPreferencesUseCase,
 		updatePreferencesUseCase,
 		resetAccountDataUseCase,
+		deleteAccountUseCase,
 	)
 	financeHandlers := handlers.NewFinanceHandlers(
 		createTransactionUseCase,
@@ -251,15 +259,16 @@ func NewApp(db *gorm.DB) *App {
 		markNotificationReadUseCase,
 		deleteNotificationUseCase,
 	)
-	authMiddleware := middleware.NewAuthMiddleware(tokenService)
+	authMiddleware := middleware.NewAuthMiddleware(tokenService, userRepo)
 
 	return &App{
-		DB:                   db,
-		IdentityHandlers:     identityHandlers,
-		FinanceHandlers:      financeHandlers,
-		DashboardHandlers:    dashboardHandlers,
-		NotificationHandlers: notificationHandlers,
-		AuthMiddleware:       authMiddleware,
+		DB:                          db,
+		IdentityHandlers:            identityHandlers,
+		FinanceHandlers:             financeHandlers,
+		DashboardHandlers:           dashboardHandlers,
+		NotificationHandlers:        notificationHandlers,
+		AuthMiddleware:              authMiddleware,
+		purgeDeletedAccountsUseCase: purgeDeletedAccountsUseCase,
 	}
 }
 
@@ -289,6 +298,7 @@ func (app *App) SetupRoutes() *gin.Engine {
 			auth.POST("/reset-password", app.IdentityHandlers.ResetPassword)
 
 			auth.POST("/change-password", app.AuthMiddleware.RequireAuth(), app.IdentityHandlers.ChangePassword)
+			auth.DELETE("/account", app.AuthMiddleware.RequireAuth(), app.IdentityHandlers.DeleteAccount)
 		}
 
 		protected := api.Group("")
@@ -395,3 +405,38 @@ func (app *App) SetupRoutes() *gin.Engine {
 
 	return r
 }
+
+// StartBackgroundJobs starts periodic maintenance such as account purge after retention.
+func (app *App) StartBackgroundJobs(ctx context.Context) {
+	if app.purgeDeletedAccountsUseCase == nil {
+		return
+	}
+
+	go func() {
+		runPurge := func() {
+			purged, err := app.purgeDeletedAccountsUseCase.Execute(context.Background())
+			if err != nil {
+				log.Printf("account purge job failed: %v", err)
+				return
+			}
+			if purged > 0 {
+				log.Printf("account purge job removed %d account(s)", purged)
+			}
+		}
+
+		runPurge()
+
+		ticker := time.NewTicker(time.Hour)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				runPurge()
+			}
+		}
+	}()
+}
+
