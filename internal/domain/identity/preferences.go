@@ -14,6 +14,7 @@ type UserPreferences struct {
 	emailNotifications bool
 	budgetAlerts       bool
 	recurringReminders bool
+	language           string
 	onboarding         json.RawMessage
 	createdAt          time.Time
 	updatedAt          time.Time
@@ -34,6 +35,13 @@ func (p PreferencesID) Value() int {
 
 // UserID for preferences reuses identity UserID
 
+func NormalizeLanguage(language string) string {
+	if language == "en" {
+		return "en"
+	}
+	return "id"
+}
+
 func NewUserPreferences(
 	userID UserID,
 	primaryCurrencyID int,
@@ -50,6 +58,7 @@ func NewUserPreferences(
 		emailNotifications: emailNotifications,
 		budgetAlerts:       budgetAlerts,
 		recurringReminders: recurringReminders,
+		language:           "id",
 		onboarding:         onboarding,
 		createdAt:          now,
 		updatedAt:          now,
@@ -61,6 +70,7 @@ func ReconstituteUserPreferences(
 	userID UserID,
 	primaryCurrencyID int,
 	emailNotifications, budgetAlerts, recurringReminders bool,
+	language string,
 	onboarding json.RawMessage,
 	createdAt, updatedAt time.Time,
 ) *UserPreferences {
@@ -74,6 +84,7 @@ func ReconstituteUserPreferences(
 		emailNotifications: emailNotifications,
 		budgetAlerts:       budgetAlerts,
 		recurringReminders: recurringReminders,
+		language:           NormalizeLanguage(language),
 		onboarding:         onboarding,
 		createdAt:          createdAt,
 		updatedAt:          updatedAt,
@@ -86,6 +97,7 @@ func (p *UserPreferences) PrimaryCurrencyID() int      { return p.primaryCurrenc
 func (p *UserPreferences) EmailNotifications() bool    { return p.emailNotifications }
 func (p *UserPreferences) BudgetAlerts() bool          { return p.budgetAlerts }
 func (p *UserPreferences) RecurringReminders() bool    { return p.recurringReminders }
+func (p *UserPreferences) Language() string            { return NormalizeLanguage(p.language) }
 func (p *UserPreferences) Onboarding() json.RawMessage { return p.onboarding }
 func (p *UserPreferences) CreatedAt() time.Time        { return p.createdAt }
 func (p *UserPreferences) UpdatedAt() time.Time        { return p.updatedAt }
@@ -111,6 +123,11 @@ func (p *UserPreferences) SetBudgetAlerts(v bool) {
 
 func (p *UserPreferences) SetRecurringReminders(v bool) {
 	p.recurringReminders = v
+	p.updatedAt = time.Now()
+}
+
+func (p *UserPreferences) SetLanguage(language string) {
+	p.language = NormalizeLanguage(language)
 	p.updatedAt = time.Now()
 }
 

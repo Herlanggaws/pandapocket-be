@@ -1591,6 +1591,7 @@ Returns the authenticated user's preferences. Creates defaults on first access.
 Partial update. Accepts any of:
 - `primary_currency_id`
 - `email_notifications`, `budget_alerts`, `recurring_reminders`
+- `language` (`id` | `en`, default `id`)
 - Onboarding fields: `onboarding_completed`, `goal`, `topics`, `cadence`, `start_path`
 
 **Response:**
@@ -1606,6 +1607,7 @@ Partial update. Accepts any of:
       "email_notifications": true,
       "budget_alerts": true,
       "recurring_reminders": true,
+      "language": "id",
       "onboarding": {},
       "onboarding_completed": true
     }
@@ -1991,6 +1993,9 @@ Keep this file in sync with the running API. When routes, request/response shape
 ---
 
 ## Version History
+
+- **v2.15.0**: **Preferences language**
+  - `GET/PUT /api/preferences` includes `language` (`id` \| `en`, default `id`)
 
 - **v2.14.0**: **User feedback**
   - `POST /api/feedback` stores authenticated feedback (`bug` \| `suggestion` \| `other` + message) in `user_feedbacks`

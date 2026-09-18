@@ -313,6 +313,7 @@ type UserPreferences struct {
 	EmailNotifications bool            `gorm:"default:true" json:"email_notifications"`
 	BudgetAlerts       bool            `gorm:"default:true" json:"budget_alerts"`
 	RecurringReminders bool            `gorm:"default:true" json:"recurring_reminders"`
+	Language           string          `gorm:"size:8;default:'id'" json:"language"`
 	Onboarding         JSONRaw         `gorm:"type:text;default:'{}'" json:"onboarding"`
 	CreatedAt          time.Time       `json:"created_at"`
 	UpdatedAt          time.Time       `json:"updated_at"`

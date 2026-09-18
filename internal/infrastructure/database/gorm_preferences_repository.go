@@ -30,6 +30,7 @@ func (r *GormPreferencesRepository) toDomain(model UserPreferences) *identity.Us
 		model.EmailNotifications,
 		model.BudgetAlerts,
 		model.RecurringReminders,
+		model.Language,
 		onboarding,
 		model.CreatedAt,
 		model.UpdatedAt,
@@ -48,6 +49,7 @@ func (r *GormPreferencesRepository) Save(ctx context.Context, prefs *identity.Us
 		EmailNotifications: prefs.EmailNotifications(),
 		BudgetAlerts:       prefs.BudgetAlerts(),
 		RecurringReminders: prefs.RecurringReminders(),
+		Language:           prefs.Language(),
 		Onboarding:         JSONRaw(onboarding),
 	}
 
@@ -58,6 +60,7 @@ func (r *GormPreferencesRepository) Save(ctx context.Context, prefs *identity.Us
 			"email_notifications": model.EmailNotifications,
 			"budget_alerts":       model.BudgetAlerts,
 			"recurring_reminders": model.RecurringReminders,
+			"language":            model.Language,
 			"onboarding":          string(onboarding),
 		}).Error
 	}

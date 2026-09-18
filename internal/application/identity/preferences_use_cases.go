@@ -18,6 +18,7 @@ type PreferencesResponse struct {
 	EmailNotifications bool            `json:"email_notifications"`
 	BudgetAlerts       bool            `json:"budget_alerts"`
 	RecurringReminders bool            `json:"recurring_reminders"`
+	Language           string          `json:"language"`
 	Onboarding         json.RawMessage `json:"onboarding"`
 	Goal               interface{}     `json:"goal,omitempty"`
 	Topics             interface{}     `json:"topics,omitempty"`
@@ -72,6 +73,7 @@ type UpdatePreferencesRequest struct {
 	EmailNotifications  *bool       `json:"email_notifications"`
 	BudgetAlerts        *bool       `json:"budget_alerts"`
 	RecurringReminders  *bool       `json:"recurring_reminders"`
+	Language            *string     `json:"language"`
 	OnboardingCompleted *bool       `json:"onboarding_completed"`
 	Goal                interface{} `json:"goal"`
 	Topics              interface{} `json:"topics"`
@@ -121,6 +123,9 @@ func (uc *UpdatePreferencesUseCase) Execute(ctx context.Context, userID int, req
 	if req.RecurringReminders != nil {
 		prefs.SetRecurringReminders(*req.RecurringReminders)
 	}
+	if req.Language != nil {
+		prefs.SetLanguage(*req.Language)
+	}
 
 	onboardingMap := map[string]interface{}{}
 	if len(prefs.Onboarding()) > 0 {
@@ -168,6 +173,7 @@ func toPreferencesResponse(prefs *domainIdentity.UserPreferences) *PreferencesRe
 		EmailNotifications: prefs.EmailNotifications(),
 		BudgetAlerts:       prefs.BudgetAlerts(),
 		RecurringReminders: prefs.RecurringReminders(),
+		Language:           prefs.Language(),
 		Onboarding:         prefs.Onboarding(),
 	}
 
