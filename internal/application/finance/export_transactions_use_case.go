@@ -19,7 +19,7 @@ import (
 const exportMaxRows = 5000
 
 var (
-	ErrExportTooLarge     = errors.New("export exceeds maximum of 5000 transactions; narrow the date range")
+	ErrExportTooLarge      = errors.New("export exceeds maximum of 5000 transactions; narrow the date range")
 	ErrInvalidExportFormat = errors.New("format must be csv or pdf")
 )
 
@@ -81,7 +81,7 @@ func (uc *ExportTransactionsUseCase) Execute(
 		return nil, err
 	}
 	if !isPro {
-		return nil, entitlement.ErrPremiumRequired
+		return nil, entitlement.RequirePro(entitlement.FeatureExport)
 	}
 
 	filters, err := buildExportFilters(req)

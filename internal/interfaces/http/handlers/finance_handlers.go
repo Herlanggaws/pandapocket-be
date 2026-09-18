@@ -1,9 +1,11 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"panda-pocket/internal/application/finance"
+	"panda-pocket/internal/domain/entitlement"
 	domainFinance "panda-pocket/internal/domain/finance"
 	"strconv"
 	"time"
@@ -13,65 +15,65 @@ import (
 
 // FinanceHandlers handles finance-related HTTP requests
 type FinanceHandlers struct {
-	createTransactionUseCase  *finance.CreateTransactionUseCase
-	getTransactionsUseCase    *finance.GetTransactionsUseCase
-	getAllTransactionsUseCase *finance.GetAllTransactionsUseCase
-	updateTransactionUseCase  *finance.UpdateTransactionUseCase
-	deleteTransactionUseCase  *finance.DeleteTransactionUseCase
-	createCategoryUseCase     *finance.CreateCategoryUseCase
-	updateCategoryUseCase     *finance.UpdateCategoryUseCase
-	deleteCategoryUseCase     *finance.DeleteCategoryUseCase
-	getCategoriesUseCase      *finance.GetCategoriesUseCase
-	getAnalyticsUseCase       *finance.GetAnalyticsUseCase
-	createBudgetUseCase       *finance.CreateBudgetUseCase
-	getBudgetsUseCase         *finance.GetBudgetsUseCase
-	updateBudgetUseCase       *finance.UpdateBudgetUseCase
-	deleteBudgetUseCase       *finance.DeleteBudgetUseCase
-	createCurrencyUseCase     *finance.CreateCurrencyUseCase
-	getCurrenciesUseCase      *finance.GetCurrenciesUseCase
-	updateCurrencyUseCase     *finance.UpdateCurrencyUseCase
-	deleteCurrencyUseCase     *finance.DeleteCurrencyUseCase
-	setDefaultCurrencyUseCase *finance.SetDefaultCurrencyUseCase
-	getDefaultCurrencyUseCase *finance.GetDefaultCurrencyUseCase
-	checkBudgetAlertsUseCase  *finance.CheckBudgetAlertsUseCase
-	createRecurringUseCase    *finance.CreateRecurringTransactionUseCase
-	getRecurringUseCase       *finance.GetRecurringTransactionsUseCase
-	deleteRecurringUseCase    *finance.DeleteRecurringTransactionUseCase
-	listPendingUseCase        *finance.ListPendingTransactionsUseCase
-	confirmPendingUseCase     *finance.ConfirmPendingTransactionUseCase
-	rejectPendingUseCase      *finance.RejectPendingTransactionUseCase
-	createWalletUseCase       *finance.CreateWalletUseCase
-	getWalletsUseCase         *finance.GetWalletsUseCase
-	getWalletUseCase          *finance.GetWalletUseCase
-	updateWalletUseCase       *finance.UpdateWalletUseCase
-	setDefaultWalletUseCase   *finance.SetDefaultWalletUseCase
-	archiveWalletUseCase      *finance.ArchiveWalletUseCase
-	unarchiveWalletUseCase    *finance.UnarchiveWalletUseCase
-	getWalletBalanceUseCase   *finance.GetWalletBalanceUseCase
-	getWalletSummaryUseCase   *finance.GetWalletSummaryUseCase
-	getHealthScoreUseCase     *finance.GetHealthScoreUseCase
-	getHealthScoreHistoryUseCase *finance.GetHealthScoreHistoryUseCase
-	createGoalUseCase         *finance.CreateGoalUseCase
-	getGoalsUseCase           *finance.GetGoalsUseCase
-	getGoalUseCase            *finance.GetGoalUseCase
-	updateGoalUseCase         *finance.UpdateGoalUseCase
-	deleteGoalUseCase         *finance.DeleteGoalUseCase
-	createAssetUseCase        *finance.CreateAssetUseCase
-	getAssetsUseCase          *finance.GetAssetsUseCase
-	updateAssetUseCase        *finance.UpdateAssetUseCase
-	archiveAssetUseCase       *finance.ArchiveAssetUseCase
-	unarchiveAssetUseCase     *finance.UnarchiveAssetUseCase
-	createLiabilityUseCase    *finance.CreateLiabilityUseCase
-	getLiabilitiesUseCase     *finance.GetLiabilitiesUseCase
-	updateLiabilityUseCase    *finance.UpdateLiabilityUseCase
-	archiveLiabilityUseCase   *finance.ArchiveLiabilityUseCase
-	unarchiveLiabilityUseCase   *finance.UnarchiveLiabilityUseCase
-	listLiabilityPaymentsUseCase *finance.ListLiabilityPaymentsUseCase
+	createTransactionUseCase      *finance.CreateTransactionUseCase
+	getTransactionsUseCase        *finance.GetTransactionsUseCase
+	getAllTransactionsUseCase     *finance.GetAllTransactionsUseCase
+	updateTransactionUseCase      *finance.UpdateTransactionUseCase
+	deleteTransactionUseCase      *finance.DeleteTransactionUseCase
+	createCategoryUseCase         *finance.CreateCategoryUseCase
+	updateCategoryUseCase         *finance.UpdateCategoryUseCase
+	deleteCategoryUseCase         *finance.DeleteCategoryUseCase
+	getCategoriesUseCase          *finance.GetCategoriesUseCase
+	getAnalyticsUseCase           *finance.GetAnalyticsUseCase
+	createBudgetUseCase           *finance.CreateBudgetUseCase
+	getBudgetsUseCase             *finance.GetBudgetsUseCase
+	updateBudgetUseCase           *finance.UpdateBudgetUseCase
+	deleteBudgetUseCase           *finance.DeleteBudgetUseCase
+	createCurrencyUseCase         *finance.CreateCurrencyUseCase
+	getCurrenciesUseCase          *finance.GetCurrenciesUseCase
+	updateCurrencyUseCase         *finance.UpdateCurrencyUseCase
+	deleteCurrencyUseCase         *finance.DeleteCurrencyUseCase
+	setDefaultCurrencyUseCase     *finance.SetDefaultCurrencyUseCase
+	getDefaultCurrencyUseCase     *finance.GetDefaultCurrencyUseCase
+	checkBudgetAlertsUseCase      *finance.CheckBudgetAlertsUseCase
+	createRecurringUseCase        *finance.CreateRecurringTransactionUseCase
+	getRecurringUseCase           *finance.GetRecurringTransactionsUseCase
+	deleteRecurringUseCase        *finance.DeleteRecurringTransactionUseCase
+	listPendingUseCase            *finance.ListPendingTransactionsUseCase
+	confirmPendingUseCase         *finance.ConfirmPendingTransactionUseCase
+	rejectPendingUseCase          *finance.RejectPendingTransactionUseCase
+	createWalletUseCase           *finance.CreateWalletUseCase
+	getWalletsUseCase             *finance.GetWalletsUseCase
+	getWalletUseCase              *finance.GetWalletUseCase
+	updateWalletUseCase           *finance.UpdateWalletUseCase
+	setDefaultWalletUseCase       *finance.SetDefaultWalletUseCase
+	archiveWalletUseCase          *finance.ArchiveWalletUseCase
+	unarchiveWalletUseCase        *finance.UnarchiveWalletUseCase
+	getWalletBalanceUseCase       *finance.GetWalletBalanceUseCase
+	getWalletSummaryUseCase       *finance.GetWalletSummaryUseCase
+	getHealthScoreUseCase         *finance.GetHealthScoreUseCase
+	getHealthScoreHistoryUseCase  *finance.GetHealthScoreHistoryUseCase
+	createGoalUseCase             *finance.CreateGoalUseCase
+	getGoalsUseCase               *finance.GetGoalsUseCase
+	getGoalUseCase                *finance.GetGoalUseCase
+	updateGoalUseCase             *finance.UpdateGoalUseCase
+	deleteGoalUseCase             *finance.DeleteGoalUseCase
+	createAssetUseCase            *finance.CreateAssetUseCase
+	getAssetsUseCase              *finance.GetAssetsUseCase
+	updateAssetUseCase            *finance.UpdateAssetUseCase
+	archiveAssetUseCase           *finance.ArchiveAssetUseCase
+	unarchiveAssetUseCase         *finance.UnarchiveAssetUseCase
+	createLiabilityUseCase        *finance.CreateLiabilityUseCase
+	getLiabilitiesUseCase         *finance.GetLiabilitiesUseCase
+	updateLiabilityUseCase        *finance.UpdateLiabilityUseCase
+	archiveLiabilityUseCase       *finance.ArchiveLiabilityUseCase
+	unarchiveLiabilityUseCase     *finance.UnarchiveLiabilityUseCase
+	listLiabilityPaymentsUseCase  *finance.ListLiabilityPaymentsUseCase
 	recordLiabilityPaymentUseCase *finance.RecordLiabilityPaymentUseCase
 	completeOnboardingUseCase     *finance.CompleteOnboardingUseCase
-	getNetWorthSummaryUseCase *finance.GetNetWorthSummaryUseCase
-	createTransferUseCase     *finance.CreateTransferUseCase
-	getTransfersUseCase       *finance.GetTransfersUseCase
+	getNetWorthSummaryUseCase     *finance.GetNetWorthSummaryUseCase
+	createTransferUseCase         *finance.CreateTransferUseCase
+	getTransfersUseCase           *finance.GetTransfersUseCase
 }
 
 // NewFinanceHandlers creates a new finance handlers instance
@@ -137,65 +139,65 @@ func NewFinanceHandlers(
 	getTransfersUseCase *finance.GetTransfersUseCase,
 ) *FinanceHandlers {
 	return &FinanceHandlers{
-		createTransactionUseCase:  createTransactionUseCase,
-		getTransactionsUseCase:    getTransactionsUseCase,
-		getAllTransactionsUseCase: getAllTransactionsUseCase,
-		updateTransactionUseCase:  updateTransactionUseCase,
-		deleteTransactionUseCase:  deleteTransactionUseCase,
-		createCategoryUseCase:     createCategoryUseCase,
-		updateCategoryUseCase:     updateCategoryUseCase,
-		deleteCategoryUseCase:     deleteCategoryUseCase,
-		getCategoriesUseCase:      getCategoriesUseCase,
-		getAnalyticsUseCase:       getAnalyticsUseCase,
-		createBudgetUseCase:       createBudgetUseCase,
-		getBudgetsUseCase:         getBudgetsUseCase,
-		updateBudgetUseCase:       updateBudgetUseCase,
-		deleteBudgetUseCase:       deleteBudgetUseCase,
-		createCurrencyUseCase:     createCurrencyUseCase,
-		getCurrenciesUseCase:      getCurrenciesUseCase,
-		updateCurrencyUseCase:     updateCurrencyUseCase,
-		deleteCurrencyUseCase:     deleteCurrencyUseCase,
-		setDefaultCurrencyUseCase: setDefaultCurrencyUseCase,
-		getDefaultCurrencyUseCase: getDefaultCurrencyUseCase,
-		checkBudgetAlertsUseCase:  checkBudgetAlertsUseCase,
-		createRecurringUseCase:    createRecurringUseCase,
-		getRecurringUseCase:       getRecurringUseCase,
-		deleteRecurringUseCase:    deleteRecurringUseCase,
-		listPendingUseCase:        listPendingUseCase,
-		confirmPendingUseCase:     confirmPendingUseCase,
-		rejectPendingUseCase:      rejectPendingUseCase,
-		createWalletUseCase:       createWalletUseCase,
-		getWalletsUseCase:         getWalletsUseCase,
-		getWalletUseCase:          getWalletUseCase,
-		updateWalletUseCase:       updateWalletUseCase,
-		setDefaultWalletUseCase:   setDefaultWalletUseCase,
-		archiveWalletUseCase:      archiveWalletUseCase,
-		unarchiveWalletUseCase:    unarchiveWalletUseCase,
-		getWalletBalanceUseCase:   getWalletBalanceUseCase,
-		getWalletSummaryUseCase:   getWalletSummaryUseCase,
-		getHealthScoreUseCase:     getHealthScoreUseCase,
-		getHealthScoreHistoryUseCase: getHealthScoreHistoryUseCase,
-		createGoalUseCase:         createGoalUseCase,
-		getGoalsUseCase:           getGoalsUseCase,
-		getGoalUseCase:            getGoalUseCase,
-		updateGoalUseCase:         updateGoalUseCase,
-		deleteGoalUseCase:         deleteGoalUseCase,
-		createAssetUseCase:        createAssetUseCase,
-		getAssetsUseCase:          getAssetsUseCase,
-		updateAssetUseCase:        updateAssetUseCase,
-		archiveAssetUseCase:       archiveAssetUseCase,
-		unarchiveAssetUseCase:     unarchiveAssetUseCase,
-		createLiabilityUseCase:    createLiabilityUseCase,
-		getLiabilitiesUseCase:     getLiabilitiesUseCase,
-		updateLiabilityUseCase:    updateLiabilityUseCase,
-		archiveLiabilityUseCase:   archiveLiabilityUseCase,
+		createTransactionUseCase:      createTransactionUseCase,
+		getTransactionsUseCase:        getTransactionsUseCase,
+		getAllTransactionsUseCase:     getAllTransactionsUseCase,
+		updateTransactionUseCase:      updateTransactionUseCase,
+		deleteTransactionUseCase:      deleteTransactionUseCase,
+		createCategoryUseCase:         createCategoryUseCase,
+		updateCategoryUseCase:         updateCategoryUseCase,
+		deleteCategoryUseCase:         deleteCategoryUseCase,
+		getCategoriesUseCase:          getCategoriesUseCase,
+		getAnalyticsUseCase:           getAnalyticsUseCase,
+		createBudgetUseCase:           createBudgetUseCase,
+		getBudgetsUseCase:             getBudgetsUseCase,
+		updateBudgetUseCase:           updateBudgetUseCase,
+		deleteBudgetUseCase:           deleteBudgetUseCase,
+		createCurrencyUseCase:         createCurrencyUseCase,
+		getCurrenciesUseCase:          getCurrenciesUseCase,
+		updateCurrencyUseCase:         updateCurrencyUseCase,
+		deleteCurrencyUseCase:         deleteCurrencyUseCase,
+		setDefaultCurrencyUseCase:     setDefaultCurrencyUseCase,
+		getDefaultCurrencyUseCase:     getDefaultCurrencyUseCase,
+		checkBudgetAlertsUseCase:      checkBudgetAlertsUseCase,
+		createRecurringUseCase:        createRecurringUseCase,
+		getRecurringUseCase:           getRecurringUseCase,
+		deleteRecurringUseCase:        deleteRecurringUseCase,
+		listPendingUseCase:            listPendingUseCase,
+		confirmPendingUseCase:         confirmPendingUseCase,
+		rejectPendingUseCase:          rejectPendingUseCase,
+		createWalletUseCase:           createWalletUseCase,
+		getWalletsUseCase:             getWalletsUseCase,
+		getWalletUseCase:              getWalletUseCase,
+		updateWalletUseCase:           updateWalletUseCase,
+		setDefaultWalletUseCase:       setDefaultWalletUseCase,
+		archiveWalletUseCase:          archiveWalletUseCase,
+		unarchiveWalletUseCase:        unarchiveWalletUseCase,
+		getWalletBalanceUseCase:       getWalletBalanceUseCase,
+		getWalletSummaryUseCase:       getWalletSummaryUseCase,
+		getHealthScoreUseCase:         getHealthScoreUseCase,
+		getHealthScoreHistoryUseCase:  getHealthScoreHistoryUseCase,
+		createGoalUseCase:             createGoalUseCase,
+		getGoalsUseCase:               getGoalsUseCase,
+		getGoalUseCase:                getGoalUseCase,
+		updateGoalUseCase:             updateGoalUseCase,
+		deleteGoalUseCase:             deleteGoalUseCase,
+		createAssetUseCase:            createAssetUseCase,
+		getAssetsUseCase:              getAssetsUseCase,
+		updateAssetUseCase:            updateAssetUseCase,
+		archiveAssetUseCase:           archiveAssetUseCase,
+		unarchiveAssetUseCase:         unarchiveAssetUseCase,
+		createLiabilityUseCase:        createLiabilityUseCase,
+		getLiabilitiesUseCase:         getLiabilitiesUseCase,
+		updateLiabilityUseCase:        updateLiabilityUseCase,
+		archiveLiabilityUseCase:       archiveLiabilityUseCase,
 		unarchiveLiabilityUseCase:     unarchiveLiabilityUseCase,
 		listLiabilityPaymentsUseCase:  listLiabilityPaymentsUseCase,
 		recordLiabilityPaymentUseCase: recordLiabilityPaymentUseCase,
 		completeOnboardingUseCase:     completeOnboardingUseCase,
 		getNetWorthSummaryUseCase:     getNetWorthSummaryUseCase,
-		createTransferUseCase:     createTransferUseCase,
-		getTransfersUseCase:       getTransfersUseCase,
+		createTransferUseCase:         createTransferUseCase,
+		getTransfersUseCase:           getTransfersUseCase,
 	}
 }
 
@@ -214,6 +216,10 @@ func (h *FinanceHandlers) CreateExpense(c *gin.Context) {
 
 	response, err := h.createTransactionUseCase.Execute(c.Request.Context(), userID, req)
 	if err != nil {
+		if errors.Is(err, entitlement.ErrPremiumRequired) {
+			PremiumRequiredResponse(c, err)
+			return
+		}
 		HandleError(c, err, http.StatusBadRequest)
 		return
 	}
@@ -242,6 +248,10 @@ func (h *FinanceHandlers) CreateIncome(c *gin.Context) {
 
 	response, err := h.createTransactionUseCase.Execute(c.Request.Context(), userID, req)
 	if err != nil {
+		if errors.Is(err, entitlement.ErrPremiumRequired) {
+			PremiumRequiredResponse(c, err)
+			return
+		}
 		HandleError(c, err, http.StatusBadRequest)
 		return
 	}
@@ -366,6 +376,10 @@ func (h *FinanceHandlers) CreateCategory(c *gin.Context) {
 
 	response, err := h.createCategoryUseCase.Execute(c.Request.Context(), userID, req)
 	if err != nil {
+		if errors.Is(err, entitlement.ErrPremiumRequired) {
+			PremiumRequiredResponse(c, err)
+			return
+		}
 		HandleError(c, err, http.StatusBadRequest)
 		return
 	}
@@ -610,6 +624,10 @@ func (h *FinanceHandlers) CreateBudget(c *gin.Context) {
 
 	response, err := h.createBudgetUseCase.Execute(c.Request.Context(), userID, req)
 	if err != nil {
+		if errors.Is(err, entitlement.ErrPremiumRequired) {
+			PremiumRequiredResponse(c, err)
+			return
+		}
 		HandleError(c, err, http.StatusBadRequest)
 		return
 	}
@@ -810,6 +828,10 @@ func (h *FinanceHandlers) CreateRecurringTransaction(c *gin.Context) {
 	}
 	response, err := h.createRecurringUseCase.Execute(c.Request.Context(), userID, req)
 	if err != nil {
+		if errors.Is(err, entitlement.ErrPremiumRequired) {
+			PremiumRequiredResponse(c, err)
+			return
+		}
 		HandleError(c, err, http.StatusBadRequest)
 		return
 	}
@@ -885,7 +907,6 @@ func (h *FinanceHandlers) RejectPendingTransaction(c *gin.Context) {
 		"pending_transaction": response,
 	})
 }
-
 
 func (h *FinanceHandlers) GetHealthScore(c *gin.Context) {
 	userID := c.GetInt("user_id")

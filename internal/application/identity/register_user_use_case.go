@@ -3,6 +3,7 @@ package identity
 import (
 	"context"
 	"errors"
+	"panda-pocket/internal/domain/billing"
 	"panda-pocket/internal/domain/identity"
 
 	"golang.org/x/crypto/bcrypt"
@@ -24,27 +25,31 @@ type RegisterUserResponse struct {
 
 // RegisterUserUseCase handles user registration
 type RegisterUserUseCase struct {
-	userService  *identity.UserService
-	tokenService TokenService
+	userService      *identity.UserService
+	tokenService     TokenService
+	subscriptionRepo billing.SubscriptionRepository
 }
 
 // NewRegisterUserUseCase creates a new register user use case
-func NewRegisterUserUseCase(userService *identity.UserService, tokenService TokenService) *RegisterUserUseCase {
+func NewRegisterUserUseCase(
+	userService *identity.UserService,
+	tokenService TokenService,
+	subscriptionRepo billing.SubscriptionRepository,
+) *RegisterUserUseCase {
 	return &RegisterUserUseCase{
-		userService:  userService,
-		tokenService: tokenService,
+		userService:      userService,
+		tokenService:     tokenService,
+		subscriptionRepo: subscriptionRepo,
 	}
 }
 
 // Execute executes the register user use case
 func (uc *RegisterUserUseCase) Execute(ctx context.Context, req RegisterUserRequest) (*RegisterUserResponse, error) {
-	// Create email value object
 	email, err := identity.NewEmail(req.Email)
 	if err != nil {
 		return nil, errors.New("invalid email format")
 	}
 
-	// Hash password
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
 		return nil, errors.New("failed to hash password")
@@ -52,13 +57,19 @@ func (uc *RegisterUserUseCase) Execute(ctx context.Context, req RegisterUserRequ
 
 	passwordHash := identity.NewPasswordHash(string(hashedPassword))
 
-	// Register user
 	user, err := uc.userService.RegisterUser(ctx, email, passwordHash)
 	if err != nil {
 		return nil, err
 	}
 
-	// Generate token
+	sub, err := billing.NewTrialSubscription(user.ID().Value())
+	if err != nil {
+		return nil, err
+	}
+	if err := uc.subscriptionRepo.Save(ctx, sub); err != nil {
+		return nil, errors.New("failed to create subscription")
+	}
+
 	token, refreshToken, err := uc.tokenService.GenerateToken(ctx, user.ID().Value(), user.Email().Value(), user.Role().Value())
 	if err != nil {
 		return nil, errors.New("failed to generate token")

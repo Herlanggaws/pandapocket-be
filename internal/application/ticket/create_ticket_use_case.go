@@ -63,7 +63,7 @@ func (uc *CreateTicketUseCase) Execute(ctx context.Context, userID int, req Crea
 		return nil, err
 	}
 	if !isPro {
-		return nil, entitlement.ErrPremiumRequired
+		return nil, entitlement.RequirePro(entitlement.FeatureTickets)
 	}
 
 	category, err := domainTicket.ParseCategory(req.Category)

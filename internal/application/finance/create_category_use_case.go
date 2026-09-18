@@ -3,6 +3,7 @@ package finance
 import (
 	"context"
 	"errors"
+	"panda-pocket/internal/domain/entitlement"
 	"panda-pocket/internal/domain/finance"
 )
 
@@ -25,18 +26,22 @@ type CreateCategoryResponse struct {
 // CreateCategoryUseCase handles category creation
 type CreateCategoryUseCase struct {
 	categoryService *finance.CategoryService
+	entitlements    entitlement.Checker
 }
 
 // NewCreateCategoryUseCase creates a new create category use case
-func NewCreateCategoryUseCase(categoryService *finance.CategoryService) *CreateCategoryUseCase {
+func NewCreateCategoryUseCase(
+	categoryService *finance.CategoryService,
+	entitlements entitlement.Checker,
+) *CreateCategoryUseCase {
 	return &CreateCategoryUseCase{
 		categoryService: categoryService,
+		entitlements:    entitlements,
 	}
 }
 
 // Execute executes the create category use case
 func (uc *CreateCategoryUseCase) Execute(ctx context.Context, userID int, req CreateCategoryRequest) (*CreateCategoryResponse, error) {
-	// Validate category type
 	var categoryType finance.CategoryType
 	switch req.Type {
 	case "expense":
@@ -47,7 +52,23 @@ func (uc *CreateCategoryUseCase) Execute(ctx context.Context, userID int, req Cr
 		return nil, errors.New("invalid category type")
 	}
 
-	// Create category
+	categories, err := uc.categoryService.GetCategoriesByUser(ctx, finance.NewUserID(userID))
+	if err != nil {
+		return nil, err
+	}
+	used := 0
+	for _, category := range categories {
+		if !category.IsDefault() {
+			used++
+		}
+	}
+	if err := entitlement.EnforceCreateLimit(
+		ctx, uc.entitlements, userID,
+		entitlement.FeatureCategories, used, entitlement.FreeCustomCategories,
+	); err != nil {
+		return nil, err
+	}
+
 	category, err := uc.categoryService.CreateCategory(
 		ctx,
 		finance.NewUserID(userID),

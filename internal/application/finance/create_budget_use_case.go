@@ -3,6 +3,7 @@ package finance
 import (
 	"context"
 	"errors"
+	"panda-pocket/internal/domain/entitlement"
 	"panda-pocket/internal/domain/finance"
 	"time"
 )
@@ -23,6 +24,7 @@ type CreateBudgetUseCase struct {
 	currencyService    *finance.CurrencyService
 	categoryService    *finance.CategoryService
 	transactionService *finance.TransactionService
+	entitlements       entitlement.Checker
 }
 
 // NewCreateBudgetUseCase creates a new create budget use case
@@ -31,12 +33,14 @@ func NewCreateBudgetUseCase(
 	currencyService *finance.CurrencyService,
 	categoryService *finance.CategoryService,
 	transactionService *finance.TransactionService,
+	entitlements entitlement.Checker,
 ) *CreateBudgetUseCase {
 	return &CreateBudgetUseCase{
 		budgetService:      budgetService,
 		currencyService:    currencyService,
 		categoryService:    categoryService,
 		transactionService: transactionService,
+		entitlements:       entitlements,
 	}
 }
 
@@ -44,6 +48,17 @@ func NewCreateBudgetUseCase(
 func (uc *CreateBudgetUseCase) Execute(ctx context.Context, userID int, req CreateBudgetRequest) (*BudgetResponse, error) {
 	startDate, err := time.Parse("2006-01-02", req.StartDate)
 	if err != nil {
+		return nil, err
+	}
+
+	active, err := uc.budgetService.GetActiveBudgetsByUser(ctx, finance.NewUserID(userID))
+	if err != nil {
+		return nil, err
+	}
+	if err := entitlement.EnforceCreateLimit(
+		ctx, uc.entitlements, userID,
+		entitlement.FeatureBudgets, len(active), entitlement.FreeActiveBudgets,
+	); err != nil {
 		return nil, err
 	}
 

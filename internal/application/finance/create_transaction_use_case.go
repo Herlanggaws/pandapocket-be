@@ -3,6 +3,7 @@ package finance
 import (
 	"context"
 	"errors"
+	"panda-pocket/internal/domain/entitlement"
 	"panda-pocket/internal/domain/finance"
 	"time"
 )
@@ -35,16 +36,19 @@ type CreateTransactionResponse struct {
 type CreateTransactionUseCase struct {
 	transactionService *finance.TransactionService
 	walletService      *finance.WalletService
+	entitlements       entitlement.Checker
 }
 
 // NewCreateTransactionUseCase creates a new create transaction use case
 func NewCreateTransactionUseCase(
 	transactionService *finance.TransactionService,
 	walletService *finance.WalletService,
+	entitlements entitlement.Checker,
 ) *CreateTransactionUseCase {
 	return &CreateTransactionUseCase{
 		transactionService: transactionService,
 		walletService:      walletService,
+		entitlements:       entitlements,
 	}
 }
 
@@ -53,6 +57,24 @@ func (uc *CreateTransactionUseCase) Execute(ctx context.Context, userID int, req
 	date, err := time.Parse("2006-01-02", req.Date)
 	if err != nil {
 		return nil, errors.New("invalid date format. Expected YYYY-MM-DD")
+	}
+
+	now := time.Now().UTC()
+	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
+	monthEnd := monthStart.AddDate(0, 1, 0).Add(-time.Nanosecond)
+	_, used, err := uc.transactionService.GetTransactionsByUserWithFilters(
+		ctx,
+		finance.NewUserID(userID),
+		finance.TransactionFilters{StartDate: &monthStart, EndDate: &monthEnd, Limit: 1},
+	)
+	if err != nil {
+		return nil, err
+	}
+	if err := entitlement.EnforceCreateLimit(
+		ctx, uc.entitlements, userID,
+		entitlement.FeatureTransactions, int(used), entitlement.FreeTransactionsPerMonth,
+	); err != nil {
+		return nil, err
 	}
 
 	wallet, err := uc.walletService.ResolveUsableWallet(ctx, finance.NewUserID(userID), req.WalletID)

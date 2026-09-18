@@ -67,6 +67,11 @@ func InitDB() (*gorm.DB, error) {
 		return nil, err
 	}
 
+	err = backfillFreeSubscriptions(db)
+	if err != nil {
+		return nil, err
+	}
+
 	err = backfillBudgetLimitTypes(db)
 	if err != nil {
 		return nil, err
@@ -157,6 +162,8 @@ func autoMigrate(db *gorm.DB) error {
 		&PendingTransaction{},
 		&Transfer{},
 		&UserPreferences{},
+		&Subscription{},
+		&BillingWebhookEvent{},
 		&Notification{},
 		&UserFeedback{},
 		&SupportTicket{},
@@ -377,4 +384,36 @@ func backfillBudgetLimitTypes(db *gorm.DB) error {
 	return db.Model(&Budget{}).
 		Where("limit_type = '' OR limit_type IS NULL").
 		Update("limit_type", "fixed").Error
+}
+
+// backfillFreeSubscriptions ensures every user has a Free subscription row.
+func backfillFreeSubscriptions(db *gorm.DB) error {
+	var users []User
+	if err := db.Find(&users).Error; err != nil {
+		return err
+	}
+
+	for _, user := range users {
+		var count int64
+		if err := db.Model(&Subscription{}).Where("user_id = ?", user.ID).Count(&count).Error; err != nil {
+			return err
+		}
+		if count > 0 {
+			continue
+		}
+
+		sub := Subscription{
+			UserID:            user.ID,
+			Plan:              "free",
+			Status:            "expired",
+			DoitCustomerRef:   fmt.Sprintf("user:%d", user.ID),
+			CancelAtPeriodEnd: false,
+		}
+		if err := db.Create(&sub).Error; err != nil {
+			return err
+		}
+		log.Printf("Created free subscription for user %d", user.ID)
+	}
+
+	return nil
 }

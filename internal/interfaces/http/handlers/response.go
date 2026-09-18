@@ -1,9 +1,12 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
+
+	"panda-pocket/internal/domain/entitlement"
 
 	"github.com/gin-gonic/gin"
 )
@@ -19,6 +22,9 @@ type APIResponse struct {
 type ErrorResponse struct {
 	ErrorCode    string `json:"error_code"`
 	ErrorMessage string `json:"error_message"`
+	Feature      string `json:"feature,omitempty"`
+	Limit        *int   `json:"limit,omitempty"`
+	Used         *int   `json:"used,omitempty"`
 }
 
 // SuccessResponse sends a successful API response
@@ -55,6 +61,27 @@ func UnauthorizedResponse(c *gin.Context, errorCode string, errorMessage string)
 // ForbiddenResponse sends a 403 Forbidden error response
 func ForbiddenResponse(c *gin.Context, errorCode string, errorMessage string) {
 	SendErrorResponse(c, http.StatusForbidden, errorCode, errorMessage)
+}
+
+// PremiumRequiredResponse sends 403 PREMIUM_REQUIRED, including feature/limit/used when present.
+func PremiumRequiredResponse(c *gin.Context, err error) {
+	resp := &ErrorResponse{
+		ErrorCode:    "PREMIUM_REQUIRED",
+		ErrorMessage: err.Error(),
+	}
+	var limitErr *entitlement.LimitExceeded
+	if errors.As(err, &limitErr) {
+		resp.Feature = limitErr.Feature
+		limit := limitErr.Limit
+		used := limitErr.Used
+		resp.Limit = &limit
+		resp.Used = &used
+	}
+	c.JSON(http.StatusForbidden, APIResponse{
+		Status: "error",
+		Data:   nil,
+		Error:  resp,
+	})
 }
 
 // NotFoundResponse sends a 404 Not Found error response

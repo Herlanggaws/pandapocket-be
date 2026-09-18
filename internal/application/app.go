@@ -6,13 +6,14 @@ import (
 	"net/http"
 	"time"
 
-	appFinance "panda-pocket/internal/application/finance"
+	appBilling "panda-pocket/internal/application/billing"
 	appFeedback "panda-pocket/internal/application/feedback"
+	appFinance "panda-pocket/internal/application/finance"
 	appIdentity "panda-pocket/internal/application/identity"
 	appNotification "panda-pocket/internal/application/notification"
 	appTicket "panda-pocket/internal/application/ticket"
-	domainFinance "panda-pocket/internal/domain/finance"
 	"panda-pocket/internal/domain/entitlement"
+	domainFinance "panda-pocket/internal/domain/finance"
 	domainIdentity "panda-pocket/internal/domain/identity"
 	"panda-pocket/internal/infrastructure/database"
 	"panda-pocket/internal/infrastructure/notification"
@@ -34,6 +35,7 @@ type App struct {
 	NotificationHandlers        *handlers.NotificationHandlers
 	FeedbackHandlers            *handlers.FeedbackHandlers
 	TicketHandlers              *handlers.TicketHandlers
+	BillingHandlers             *handlers.BillingHandlers
 	AuthMiddleware              *middleware.AuthMiddleware
 	purgeDeletedAccountsUseCase *appIdentity.PurgeDeletedAccountsUseCase
 }
@@ -49,6 +51,7 @@ func NewApp(db *gorm.DB) *App {
 	tokenRepo := database.NewGormPasswordResetTokenRepository(db)
 	authTokenRepo := database.NewGormTokenRepository(db)
 	prefsRepo := database.NewGormPreferencesRepository(db)
+	subscriptionRepo := database.NewGormSubscriptionRepository(db)
 	notificationRepo := database.NewGormNotificationRepository(db)
 	feedbackRepo := database.NewGormFeedbackRepository(db)
 	ticketRepo := database.NewGormTicketRepository(db)
@@ -78,7 +81,7 @@ func NewApp(db *gorm.DB) *App {
 	tokenService := appIdentity.NewTokenService(authTokenRepo)
 	emailService := notification.NewSMTPEmailService()
 	notificationHelper := appNotification.NewCreateNotificationHelper(notificationRepo)
-	registerUserUseCase := appIdentity.NewRegisterUserUseCase(userService, tokenService)
+	registerUserUseCase := appIdentity.NewRegisterUserUseCase(userService, tokenService, subscriptionRepo)
 	loginUserUseCase := appIdentity.NewLoginUserUseCase(userService, tokenService)
 	getUsersUseCase := appIdentity.NewGetUsersUseCase(userService)
 	forgotPasswordUseCase := appIdentity.NewForgotPasswordUseCase(userRepo, tokenRepo, emailService)
@@ -96,7 +99,8 @@ func NewApp(db *gorm.DB) *App {
 	markNotificationReadUseCase := appNotification.NewMarkNotificationReadUseCase(notificationRepo)
 	deleteNotificationUseCase := appNotification.NewDeleteNotificationUseCase(notificationRepo)
 	submitFeedbackUseCase := appFeedback.NewSubmitFeedbackUseCase(feedbackRepo)
-	entitlementChecker := entitlement.NewInterimChecker()
+	entitlementChecker := entitlement.NewSubscriptionChecker(subscriptionRepo)
+	getSubscriptionUseCase := appBilling.NewGetSubscriptionUseCase(subscriptionRepo)
 	createTicketUseCase := appTicket.NewCreateTicketUseCase(ticketRepo, entitlementChecker)
 	listTicketsUseCase := appTicket.NewListTicketsUseCase(ticketRepo)
 	getTicketUseCase := appTicket.NewGetTicketUseCase(ticketRepo)
@@ -105,20 +109,20 @@ func NewApp(db *gorm.DB) *App {
 	getAdminTicketUseCase := appTicket.NewGetAdminTicketUseCase(ticketRepo, userRepo)
 	updateTicketStatusUseCase := appTicket.NewUpdateTicketStatusUseCase(ticketRepo, userRepo, emailService)
 	getDashboardStatsUseCase := appIdentity.NewGetDashboardStatsUseCase(userRepo, budgetRepo, transactionRepo)
-	createTransactionUseCase := appFinance.NewCreateTransactionUseCase(transactionService, walletService)
+	createTransactionUseCase := appFinance.NewCreateTransactionUseCase(transactionService, walletService, entitlementChecker)
 	getTransactionsUseCase := appFinance.NewGetTransactionsUseCase(transactionService, categoryService)
 	getAllTransactionsUseCase := appFinance.NewGetAllTransactionsUseCase(transactionService, categoryService)
 	exportTransactionsUseCase := appFinance.NewExportTransactionsUseCase(transactionService, categoryService, entitlementChecker)
 	updateTransactionUseCase := appFinance.NewUpdateTransactionUseCase(transactionService)
 	deleteTransactionUseCase := appFinance.NewDeleteTransactionUseCase(transactionService)
-	createCategoryUseCase := appFinance.NewCreateCategoryUseCase(categoryService)
+	createCategoryUseCase := appFinance.NewCreateCategoryUseCase(categoryService, entitlementChecker)
 	updateCategoryUseCase := appFinance.NewUpdateCategoryUseCase(categoryService)
 	deleteCategoryUseCase := appFinance.NewDeleteCategoryUseCase(categoryService)
 	getCategoriesUseCase := appFinance.NewGetCategoriesUseCase(categoryService)
 	getAnalyticsUseCase := appFinance.NewGetAnalyticsUseCase(transactionService, categoryService)
 	getHealthScoreUseCase := appFinance.NewGetHealthScoreUseCase(budgetService, categoryService, transactionService, getAnalyticsUseCase, healthSnapshotRepo)
 	getHealthScoreHistoryUseCase := appFinance.NewGetHealthScoreHistoryUseCase(healthSnapshotRepo)
-	createBudgetUseCase := appFinance.NewCreateBudgetUseCase(budgetService, currencyService, categoryService, transactionService)
+	createBudgetUseCase := appFinance.NewCreateBudgetUseCase(budgetService, currencyService, categoryService, transactionService, entitlementChecker)
 	getBudgetsUseCase := appFinance.NewGetBudgetsUseCase(budgetService, categoryService, transactionService)
 	updateBudgetUseCase := appFinance.NewUpdateBudgetUseCase(budgetService, categoryService, transactionService)
 	deleteBudgetUseCase := appFinance.NewDeleteBudgetUseCase(budgetService)
@@ -135,7 +139,7 @@ func NewApp(db *gorm.DB) *App {
 		prefsRepo,
 		notificationHelper,
 	)
-	createRecurringUseCase := appFinance.NewCreateRecurringTransactionUseCase(recurringRepo, walletService, categoryService)
+	createRecurringUseCase := appFinance.NewCreateRecurringTransactionUseCase(recurringRepo, walletService, categoryService, entitlementChecker)
 	enqueueDueRecurringUseCase := appFinance.NewEnqueueDueRecurringUseCase(
 		recurringRepo,
 		pendingRepo,
@@ -289,6 +293,7 @@ func NewApp(db *gorm.DB) *App {
 		getAdminTicketUseCase,
 		updateTicketStatusUseCase,
 	)
+	billingHandlers := handlers.NewBillingHandlers(getSubscriptionUseCase)
 	authMiddleware := middleware.NewAuthMiddleware(tokenService, userRepo)
 
 	return &App{
@@ -300,6 +305,7 @@ func NewApp(db *gorm.DB) *App {
 		NotificationHandlers:        notificationHandlers,
 		FeedbackHandlers:            feedbackHandlers,
 		TicketHandlers:              ticketHandlers,
+		BillingHandlers:             billingHandlers,
 		AuthMiddleware:              authMiddleware,
 		purgeDeletedAccountsUseCase: purgeDeletedAccountsUseCase,
 	}
@@ -405,6 +411,7 @@ func (app *App) SetupRoutes() *gin.Engine {
 
 			protected.GET("/preferences", app.IdentityHandlers.GetPreferences)
 			protected.PUT("/preferences", app.IdentityHandlers.UpdatePreferences)
+			protected.GET("/me/subscription", app.BillingHandlers.GetSubscription)
 			protected.POST("/account/reset/challenge", app.IdentityHandlers.CreateAccountResetChallenge)
 			protected.POST("/account/reset", app.IdentityHandlers.ResetAccountData)
 			protected.POST("/onboarding/complete", app.FinanceHandlers.CompleteOnboarding)
@@ -483,4 +490,3 @@ func (app *App) StartBackgroundJobs(ctx context.Context) {
 		}
 	}()
 }
-

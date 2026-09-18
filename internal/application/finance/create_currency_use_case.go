@@ -49,4 +49,3 @@ func (uc *CreateCurrencyUseCase) Execute(ctx context.Context, userID finance.Use
 		Currency: currency,
 	}, nil
 }
-

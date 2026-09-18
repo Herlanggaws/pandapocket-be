@@ -44,7 +44,7 @@ func (h *ExportHandlers) ExportTransactions(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, entitlement.ErrPremiumRequired):
-			ForbiddenResponse(c, "PREMIUM_REQUIRED", err.Error())
+			PremiumRequiredResponse(c, err)
 		case errors.Is(err, finance.ErrInvalidExportFormat):
 			ValidationErrorResponse(c, err.Error())
 		case errors.Is(err, finance.ErrExportTooLarge):

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"panda-pocket/internal/domain/entitlement"
 	"panda-pocket/internal/domain/finance"
 	domainIdentity "panda-pocket/internal/domain/identity"
 	"strings"
@@ -35,15 +36,15 @@ type onboardingPreferencesRepo interface {
 }
 
 type CompleteOnboardingUseCase struct {
-	prefsRepo               onboardingPreferencesRepo
-	walletService           *finance.WalletService
-	currencyService         *finance.CurrencyService
-	categoryService         *finance.CategoryService
-	createRecurringUseCase  *CreateRecurringTransactionUseCase
-	enqueueDueRecurring     *EnqueueDueRecurringUseCase
-	createBudgetUseCase     *CreateBudgetUseCase
-	liabilityService        *finance.LiabilityService
-	getHealthScoreUseCase   *GetHealthScoreUseCase
+	prefsRepo              onboardingPreferencesRepo
+	walletService          *finance.WalletService
+	currencyService        *finance.CurrencyService
+	categoryService        *finance.CategoryService
+	createRecurringUseCase *CreateRecurringTransactionUseCase
+	enqueueDueRecurring    *EnqueueDueRecurringUseCase
+	createBudgetUseCase    *CreateBudgetUseCase
+	liabilityService       *finance.LiabilityService
+	getHealthScoreUseCase  *GetHealthScoreUseCase
 }
 
 func NewCompleteOnboardingUseCase(
@@ -116,7 +117,7 @@ func (uc *CompleteOnboardingUseCase) ensureOnboardingBudget(
 	amount float64,
 	monthStart string,
 ) error {
-	_, err := uc.createBudgetUseCase.Execute(ctx, userID, CreateBudgetRequest{
+	_, err := uc.createBudgetUseCase.Execute(entitlement.WithEntitlementBypass(ctx), userID, CreateBudgetRequest{
 		CategoryID: expenseCategoryID,
 		Amount:     amount,
 		LimitType:  "fixed",
@@ -140,7 +141,7 @@ func (uc *CompleteOnboardingUseCase) seedMonthlyPending(
 	dayOfMonth int,
 ) error {
 	day := dayOfMonth
-	_, err := uc.createRecurringUseCase.Execute(ctx, userID, CreateRecurringTransactionRequest{
+	_, err := uc.createRecurringUseCase.Execute(entitlement.WithEntitlementBypass(ctx), userID, CreateRecurringTransactionRequest{
 		Type:        transactionType,
 		CategoryID:  categoryID,
 		Amount:      amount,

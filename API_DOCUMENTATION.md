@@ -98,6 +98,7 @@ CORS currently allows all origins (`*`). Allowed request headers: `Origin`, `Con
 | GET/POST | `/api/liabilities/:id/payments` | Yes | Payment history / record payment |
 | GET | `/api/net-worth/summary` | Yes | Liquid + assets − liabilities (primary currency) |
 | GET/PUT | `/api/preferences` | Yes | User preferences & onboarding |
+| GET | `/api/me/subscription` | Yes | Current billing subscription + `is_pro` |
 | POST | `/api/account/reset/challenge` | Yes | Issue one-time confirmation string for data reset |
 | POST | `/api/account/reset` | Yes | Wipe user financial data after typing confirmation |
 | POST | `/api/onboarding/complete` | Yes | Finish onboarding; seed pending income/expense + budget/(debt) |
@@ -215,7 +216,7 @@ All API endpoints follow a standardized response structure:
 
 ### POST /api/auth/register
 
-Register a new user account.
+Register a new user account. Also creates a billing subscription with a **14-day Pro trial** (`status=trialing`, `plan=free`, `trial_ends_at=now+14d`). Existing backfilled accounts do not receive a trial.
 
 **Request Body:**
 ```json
@@ -958,7 +959,7 @@ Get all transactions (both income and expense) for the authenticated user with a
 Export transactions for the authenticated user as a **CSV** or **PDF** file download (Pro-gated via entitlement checker).
 
 **Auth:** Bearer token required.  
-**Premium:** Returns `403` with `PREMIUM_REQUIRED` when the user is not Pro (when `BILLING_ENTITLEMENTS_ENABLED=true`, interim checker treats everyone as Free).
+**Premium:** Returns `403` with `PREMIUM_REQUIRED` (+ `feature`/`limit`/`used`) when the user is not Pro per subscription `IsPro()`.
 
 **Query Parameters:**
 - `format` (required): `csv` or `pdf`
@@ -986,7 +987,10 @@ Export transactions for the authenticated user as a **CSV** or **PDF** file down
   "data": null,
   "error": {
     "error_code": "PREMIUM_REQUIRED",
-    "error_message": "premium required"
+    "error_message": "export requires Pro",
+    "feature": "export",
+    "limit": 0,
+    "used": 0
   }
 }
 ```
@@ -1668,6 +1672,65 @@ Partial update. Accepts any of:
 }
 ```
 
+### GET /api/me/subscription
+
+Returns the authenticated user's current subscription. Creates a Free row (`plan=free`, `status=expired`, no trial) if missing. If `status=trialing` and `trial_ends_at` has passed without paid access, normalizes to `status=expired` (keeps `trial_ends_at` so trial cannot restart).
+
+**Example after register (active trial):**
+```json
+{
+  "status": "success",
+  "data": {
+    "subscription": {
+      "plan": "free",
+      "status": "trialing",
+      "billing_interval": null,
+      "trial_ends_at": "2026-10-02T12:00:00Z",
+      "current_period_end": null,
+      "grace_ends_at": null,
+      "cancel_at_period_end": false,
+      "is_pro": true
+    }
+  },
+  "error": null
+}
+```
+
+`is_pro` is derived from DB state: active period, past_due within grace, or active trial (`trial_ends_at` in the future). Create gates and Pro-only endpoints use the same `SubscriptionChecker` / `IsPro()`.
+
+---
+
+## Freemium create gates (billing PR2)
+
+Free users are limited on **create** writes. GET list/read stays open (including data created while Pro).
+
+| Action | Free | Pro |
+| --- | --- | --- |
+| Create expense/income | max **50** / calendar month (UTC) | Unlimited |
+| Create custom category | max **10** (non-default) | Unlimited |
+| Create budget | max **3** active | Unlimited |
+| Create recurring | blocked | Unlimited |
+| Create support ticket | blocked | Allowed |
+| Export transactions | blocked | Allowed |
+
+Over limit / Pro-only → **403** with:
+
+```json
+{
+  "status": "error",
+  "data": null,
+  "error": {
+    "error_code": "PREMIUM_REQUIRED",
+    "error_message": "budgets limit reached on Free plan (3/3). Upgrade to Pro.",
+    "feature": "budgets",
+    "limit": 3,
+    "used": 3
+  }
+}
+```
+
+`feature` values: `transactions`, `categories`, `budgets`, `recurring`, `tickets`, `export`.
+
 ---
 
 ## Account data reset
@@ -1776,7 +1839,7 @@ Submit product feedback for the authenticated user. Stored in `user_feedbacks` (
 
 Support tickets are Pro-only for **create**. Feedback (`POST /api/feedback`) remains a separate product-input channel for all authenticated users.
 
-Until billing entitlements ship, create is allowed for all authenticated users when `BILLING_ENTITLEMENTS_ENABLED` is unset/false. When `BILLING_ENTITLEMENTS_ENABLED=true` without a real `IsPro()` implementation, create returns `403` + `PREMIUM_REQUIRED`.
+Create returns `403` + `PREMIUM_REQUIRED` when subscription `IsPro()` is false.
 
 ### POST /api/tickets
 
@@ -1820,7 +1883,7 @@ Create a support ticket. Status starts as `open`.
 }
 ```
 
-**Error `403` `PREMIUM_REQUIRED`:** caller is not Pro (when entitlements are enabled).
+**Error `403` `PREMIUM_REQUIRED`:** caller is not Pro (`feature=tickets`).
 
 ### GET /api/tickets
 
@@ -2136,14 +2199,29 @@ Keep this file in sync with the running API. When routes, request/response shape
 
 ## Version History
 
+- **v2.20.0**: **Trial on register (billing PR3)**
+  - `POST /api/auth/register` creates `status=trialing`, `trial_ends_at=now+14d` (plan stays `free` until paid)
+  - `GET /api/me/subscription` normalizes ended trials to `expired` without clearing `trial_ends_at`
+  - Existing / backfilled users remain Free without trial; trial once per account
+- **v2.19.0**: **Entitlement gates (billing PR2)**
+  - `SubscriptionChecker` replaces interim `BILLING_ENTITLEMENTS_ENABLED` bypass
+  - Free create limits: transactions 50/mo, custom categories 10, active budgets 3, recurring blocked
+  - Ticket create + export use real subscription `IsPro()`
+  - `403 PREMIUM_REQUIRED` includes optional `feature` / `limit` / `used`
+  - Onboarding seed bypasses gates via trusted context (Free users can still complete onboarding)
+- **v2.18.0**: **Subscription schema (billing PR1)**
+  - Tables `subscriptions` + `billing_webhook_events` (webhook handler later)
+  - Register creates subscription row; existing users backfilled Free
+  - `GET /api/me/subscription` returns plan/status/period/trial fields + `is_pro`
+  - Domain `IsPro(now)`
 - **v2.17.0**: **Transaction export (CSV/PDF)**
   - `GET /api/export/transactions?format=csv|pdf` with list filters; Pro-gated (`PREMIUM_REQUIRED`)
-  - Shared `domain/entitlement` package (interim checker + `ErrPremiumRequired`)
+  - Shared `domain/entitlement` package (`ErrPremiumRequired`)
 - **v2.16.0**: **Support tickets**
   - User: `POST/GET /api/tickets`, `GET /api/tickets/:id`, `POST /api/tickets/:id/reopen`
   - Admin: `GET /api/admin/tickets`, `GET /api/admin/tickets/:id`, `PATCH /api/admin/tickets/:id/status`
   - Categories `technical` \| `payment` \| `other`; priority `low` \| `medium` \| `high`; status `open` \| `in_progress` \| `done`
-  - Create is Pro-gated (`PREMIUM_REQUIRED`); interim bypass when `BILLING_ENTITLEMENTS_ENABLED` is not `true`
+  - Create is Pro-gated (`PREMIUM_REQUIRED`)
   - Email notification on admin status change and user reopen (SMTP / mock)
 
 - **v2.15.0**: **Preferences language**

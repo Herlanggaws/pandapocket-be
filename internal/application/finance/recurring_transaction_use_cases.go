@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"panda-pocket/internal/domain/entitlement"
 	domainFinance "panda-pocket/internal/domain/finance"
 )
 
@@ -43,21 +44,31 @@ type CreateRecurringTransactionUseCase struct {
 	recurringRepo   domainFinance.RecurringTransactionRepository
 	walletService   *domainFinance.WalletService
 	categoryService *domainFinance.CategoryService
+	entitlements    entitlement.Checker
 }
 
 func NewCreateRecurringTransactionUseCase(
 	recurringRepo domainFinance.RecurringTransactionRepository,
 	walletService *domainFinance.WalletService,
 	categoryService *domainFinance.CategoryService,
+	entitlements entitlement.Checker,
 ) *CreateRecurringTransactionUseCase {
 	return &CreateRecurringTransactionUseCase{
 		recurringRepo:   recurringRepo,
 		walletService:   walletService,
 		categoryService: categoryService,
+		entitlements:    entitlements,
 	}
 }
 
 func (uc *CreateRecurringTransactionUseCase) Execute(ctx context.Context, userID int, req CreateRecurringTransactionRequest) (*RecurringTransactionResponse, error) {
+	if err := entitlement.EnforceCreateLimit(
+		ctx, uc.entitlements, userID,
+		entitlement.FeatureRecurring, 0, 0,
+	); err != nil {
+		return nil, err
+	}
+
 	wallet, err := uc.walletService.ResolveUsableWallet(ctx, domainFinance.NewUserID(userID), req.WalletID)
 	if err != nil {
 		return nil, err

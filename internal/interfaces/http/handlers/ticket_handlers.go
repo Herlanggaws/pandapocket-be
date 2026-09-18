@@ -140,7 +140,7 @@ func (h *TicketHandlers) UpdateTicketStatus(c *gin.Context) {
 func handleTicketError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, entitlement.ErrPremiumRequired):
-		ForbiddenResponse(c, "PREMIUM_REQUIRED", err.Error())
+		PremiumRequiredResponse(c, err)
 	case errors.Is(err, domainTicket.ErrNotFound):
 		NotFoundResponse(c, "TICKET_NOT_FOUND", err.Error())
 	case errors.Is(err, domainTicket.ErrAccessDenied):

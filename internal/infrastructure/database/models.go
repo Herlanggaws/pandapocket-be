@@ -27,6 +27,7 @@ type User struct {
 	RecurringTransactions []RecurringTransaction `gorm:"foreignKey:UserID" json:"recurring_transactions,omitempty"`
 	Transfers             []Transfer             `gorm:"foreignKey:UserID" json:"transfers,omitempty"`
 	UserPreferences       *UserPreferences       `gorm:"foreignKey:UserID" json:"user_preferences,omitempty"`
+	Subscription          *Subscription          `gorm:"foreignKey:UserID" json:"subscription,omitempty"`
 	Notifications         []Notification         `gorm:"foreignKey:UserID" json:"notifications,omitempty"`
 }
 
@@ -257,22 +258,22 @@ type HealthScoreSnapshot struct {
 
 // RecurringTransaction represents a recurring transaction in the database
 type RecurringTransaction struct {
-	ID           uint      `gorm:"primaryKey" json:"id"`
-	UserID       uint      `gorm:"not null;index" json:"user_id"`
-	WalletID     *uint     `gorm:"index" json:"wallet_id,omitempty"`
-	CategoryID   uint      `gorm:"not null;index" json:"category_id"`
-	CurrencyID   uint      `gorm:"not null;index" json:"currency_id"`
-	Amount       float64   `gorm:"type:decimal(14,2);not null" json:"amount"`
-	Description  string    `gorm:"type:text" json:"description"`
-	Frequency    string    `gorm:"not null;check:frequency IN ('daily', 'weekly', 'monthly', 'yearly')" json:"frequency"`
-	Type         string    `gorm:"not null;default:'expense';check:type IN ('expense', 'income')" json:"type"`
-	Weekday      *int      `gorm:"column:weekday" json:"weekday,omitempty"`
-	DayOfMonth   *int      `gorm:"column:day_of_month" json:"day_of_month,omitempty"`
-	MonthOfYear  *int      `gorm:"column:month_of_year" json:"month_of_year,omitempty"`
-	NextDueDate  time.Time `gorm:"type:date;not null" json:"next_due_date"`
-	IsActive     bool      `gorm:"default:true" json:"is_active"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	ID          uint      `gorm:"primaryKey" json:"id"`
+	UserID      uint      `gorm:"not null;index" json:"user_id"`
+	WalletID    *uint     `gorm:"index" json:"wallet_id,omitempty"`
+	CategoryID  uint      `gorm:"not null;index" json:"category_id"`
+	CurrencyID  uint      `gorm:"not null;index" json:"currency_id"`
+	Amount      float64   `gorm:"type:decimal(14,2);not null" json:"amount"`
+	Description string    `gorm:"type:text" json:"description"`
+	Frequency   string    `gorm:"not null;check:frequency IN ('daily', 'weekly', 'monthly', 'yearly')" json:"frequency"`
+	Type        string    `gorm:"not null;default:'expense';check:type IN ('expense', 'income')" json:"type"`
+	Weekday     *int      `gorm:"column:weekday" json:"weekday,omitempty"`
+	DayOfMonth  *int      `gorm:"column:day_of_month" json:"day_of_month,omitempty"`
+	MonthOfYear *int      `gorm:"column:month_of_year" json:"month_of_year,omitempty"`
+	NextDueDate time.Time `gorm:"type:date;not null" json:"next_due_date"`
+	IsActive    bool      `gorm:"default:true" json:"is_active"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 
 	// Relationships
 	User     *User     `gorm:"foreignKey:UserID" json:"user,omitempty"`
@@ -305,18 +306,43 @@ type PendingTransaction struct {
 	Currency             *Currency             `gorm:"foreignKey:CurrencyID" json:"currency,omitempty"`
 }
 
+// Subscription is the current billing entitlement row for a user (one per user).
+type Subscription struct {
+	ID                 uint       `gorm:"primaryKey" json:"id"`
+	UserID             uint       `gorm:"uniqueIndex;not null" json:"user_id"`
+	Plan               string     `gorm:"type:varchar(20);not null;default:'free';check:plan IN ('free','pro')" json:"plan"`
+	BillingInterval    *string    `gorm:"type:varchar(20);check:billing_interval IS NULL OR billing_interval IN ('monthly','yearly')" json:"billing_interval,omitempty"`
+	Status             string     `gorm:"type:varchar(20);not null;default:'expired';check:status IN ('trialing','active','past_due','canceled','expired')" json:"status"`
+	TrialEndsAt        *time.Time `json:"trial_ends_at,omitempty"`
+	CurrentPeriodEnd   *time.Time `json:"current_period_end,omitempty"`
+	GraceEndsAt        *time.Time `json:"grace_ends_at,omitempty"`
+	DoitSubscriptionID *string    `gorm:"type:varchar(128)" json:"doit_subscription_id,omitempty"`
+	DoitCustomerRef    string     `gorm:"type:varchar(64);not null" json:"doit_customer_ref"`
+	CancelAtPeriodEnd  bool       `gorm:"not null;default:false" json:"cancel_at_period_end"`
+	CreatedAt          time.Time  `json:"created_at"`
+	UpdatedAt          time.Time  `json:"updated_at"`
+}
+
+// BillingWebhookEvent stores received doit webhook events for dedup (B5).
+type BillingWebhookEvent struct {
+	ID         uint      `gorm:"primaryKey" json:"id"`
+	EventID    string    `gorm:"uniqueIndex;type:varchar(128);not null" json:"event_id"`
+	Payload    string    `gorm:"type:text;not null" json:"payload"`
+	ReceivedAt time.Time `gorm:"not null" json:"received_at"`
+}
+
 // UserPreferences represents user preferences in the database
 type UserPreferences struct {
-	ID                 uint            `gorm:"primaryKey" json:"id"`
-	UserID             uint            `gorm:"uniqueIndex;not null" json:"user_id"`
-	PrimaryCurrencyID  uint            `gorm:"not null" json:"primary_currency_id"`
-	EmailNotifications bool            `gorm:"default:true" json:"email_notifications"`
-	BudgetAlerts       bool            `gorm:"default:true" json:"budget_alerts"`
-	RecurringReminders bool            `gorm:"default:true" json:"recurring_reminders"`
-	Language           string          `gorm:"size:8;default:'id'" json:"language"`
-	Onboarding         JSONRaw         `gorm:"type:text;default:'{}'" json:"onboarding"`
-	CreatedAt          time.Time       `json:"created_at"`
-	UpdatedAt          time.Time       `json:"updated_at"`
+	ID                 uint      `gorm:"primaryKey" json:"id"`
+	UserID             uint      `gorm:"uniqueIndex;not null" json:"user_id"`
+	PrimaryCurrencyID  uint      `gorm:"not null" json:"primary_currency_id"`
+	EmailNotifications bool      `gorm:"default:true" json:"email_notifications"`
+	BudgetAlerts       bool      `gorm:"default:true" json:"budget_alerts"`
+	RecurringReminders bool      `gorm:"default:true" json:"recurring_reminders"`
+	Language           string    `gorm:"size:8;default:'id'" json:"language"`
+	Onboarding         JSONRaw   `gorm:"type:text;default:'{}'" json:"onboarding"`
+	CreatedAt          time.Time `json:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at"`
 
 	// Relationships
 	User            *User     `gorm:"foreignKey:UserID" json:"user,omitempty"`
@@ -419,6 +445,14 @@ func (RecurringTransaction) TableName() string {
 
 func (PendingTransaction) TableName() string {
 	return "pending_transactions"
+}
+
+func (Subscription) TableName() string {
+	return "subscriptions"
+}
+
+func (BillingWebhookEvent) TableName() string {
+	return "billing_webhook_events"
 }
 
 func (UserPreferences) TableName() string {
