@@ -3,6 +3,7 @@ package finance
 import (
 	"context"
 	"fmt"
+	"panda-pocket/internal/domain/entitlement"
 	"panda-pocket/internal/domain/finance"
 	"sort"
 	"time"
@@ -10,8 +11,10 @@ import (
 
 // GetAnalyticsRequest represents the request for analytics
 type GetAnalyticsRequest struct {
-	Period   string `json:"period"` // "monthly", "weekly", "yearly"
-	WalletID *int   `json:"wallet_id,omitempty"`
+	Period    string `json:"period"` // "monthly", "weekly", "yearly", or "custom" when dates set
+	WalletID  *int   `json:"wallet_id,omitempty"`
+	StartDate string `json:"start_date,omitempty"` // YYYY-MM-DD, Pro only with end_date
+	EndDate   string `json:"end_date,omitempty"`
 }
 
 type SpendingByCategoryItem struct {
@@ -30,30 +33,37 @@ type SpendingByPeriodItem struct {
 
 // GetAnalyticsResponse represents the analytics response
 type GetAnalyticsResponse struct {
-	TotalIncome         float64                  `json:"total_income"`
-	TotalSpent          float64                  `json:"total_spent"`
-	NetAmount           float64                  `json:"net_amount"`
-	Period              string                   `json:"period"`
-	TransactionCount    int                      `json:"transaction_count"`
-	SpendingByCategory  []SpendingByCategoryItem `json:"spending_by_category"`
-	SpendingByPeriod    []SpendingByPeriodItem   `json:"spending_by_period"`
+	TotalIncome        float64                  `json:"total_income"`
+	TotalSpent         float64                  `json:"total_spent"`
+	NetAmount          float64                  `json:"net_amount"`
+	Period             string                   `json:"period"`
+	TransactionCount   int                      `json:"transaction_count"`
+	SpendingByCategory []SpendingByCategoryItem `json:"spending_by_category"`
+	SpendingByPeriod   []SpendingByPeriodItem   `json:"spending_by_period"`
 }
 
 // GetAnalyticsUseCase handles getting analytics data
 type GetAnalyticsUseCase struct {
 	transactionService *finance.TransactionService
 	categoryService    *finance.CategoryService
+	entitlements       entitlement.Checker
 }
 
 // NewGetAnalyticsUseCase creates a new get analytics use case
 func NewGetAnalyticsUseCase(
 	transactionService *finance.TransactionService,
 	categoryService *finance.CategoryService,
+	entitlements entitlement.Checker,
 ) *GetAnalyticsUseCase {
 	return &GetAnalyticsUseCase{
 		transactionService: transactionService,
 		categoryService:    categoryService,
+		entitlements:       entitlements,
 	}
+}
+
+func parseAnalyticsDate(value string) (time.Time, error) {
+	return time.ParseInLocation("2006-01-02", value, time.Local)
 }
 
 // Execute executes the get analytics use case
@@ -63,24 +73,63 @@ func (uc *GetAnalyticsUseCase) Execute(ctx context.Context, userID int, req GetA
 		period = "monthly"
 	}
 
+	hasCustom := req.StartDate != "" || req.EndDate != ""
+	needsPro := period == "yearly" || hasCustom
+	if needsPro {
+		isPro, err := uc.entitlements.IsPro(ctx, userID)
+		if err != nil {
+			return nil, err
+		}
+		if !isPro {
+			return nil, entitlement.RequirePro(entitlement.FeatureInsights)
+		}
+	}
+
 	var startDate, endDate time.Time
 	now := time.Now()
+	bucketMode := period
 
-	switch period {
-	case "weekly":
-		weekday := int(now.Weekday())
-		if weekday == 0 {
-			weekday = 7
+	if hasCustom {
+		if req.StartDate == "" || req.EndDate == "" {
+			return nil, fmt.Errorf("start_date and end_date are both required for custom range")
 		}
-		startDate = now.AddDate(0, 0, -weekday+1).Truncate(24 * time.Hour)
-		endDate = startDate.AddDate(0, 0, 6).Add(23*time.Hour + 59*time.Minute + 59*time.Second)
-	case "yearly":
-		startDate = time.Date(now.Year(), 1, 1, 0, 0, 0, 0, now.Location())
-		endDate = time.Date(now.Year(), 12, 31, 23, 59, 59, 999999999, now.Location())
-	default:
-		period = "monthly"
-		startDate = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
-		endDate = startDate.AddDate(0, 1, -1).Add(23*time.Hour + 59*time.Minute + 59*time.Second)
+		parsedStart, err := parseAnalyticsDate(req.StartDate)
+		if err != nil {
+			return nil, fmt.Errorf("invalid start_date")
+		}
+		parsedEnd, err := parseAnalyticsDate(req.EndDate)
+		if err != nil {
+			return nil, fmt.Errorf("invalid end_date")
+		}
+		if parsedEnd.Before(parsedStart) {
+			return nil, fmt.Errorf("end_date must be on or after start_date")
+		}
+		startDate = parsedStart
+		endDate = parsedEnd.Add(23*time.Hour + 59*time.Minute + 59*time.Second)
+		period = "custom"
+		if endDate.Sub(startDate) <= 31*24*time.Hour {
+			bucketMode = "weekly"
+		} else {
+			bucketMode = "yearly"
+		}
+	} else {
+		switch period {
+		case "weekly":
+			weekday := int(now.Weekday())
+			if weekday == 0 {
+				weekday = 7
+			}
+			startDate = now.AddDate(0, 0, -weekday+1).Truncate(24 * time.Hour)
+			endDate = startDate.AddDate(0, 0, 6).Add(23*time.Hour + 59*time.Minute + 59*time.Second)
+		case "yearly":
+			startDate = time.Date(now.Year(), 1, 1, 0, 0, 0, 0, now.Location())
+			endDate = time.Date(now.Year(), 12, 31, 23, 59, 59, 999999999, now.Location())
+		default:
+			period = "monthly"
+			bucketMode = "monthly"
+			startDate = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
+			endDate = startDate.AddDate(0, 1, -1).Add(23*time.Hour + 59*time.Minute + 59*time.Second)
+		}
 	}
 
 	transactions, err := uc.transactionService.GetTransactionsByUserAndDateRange(ctx, finance.NewUserID(userID), startDate, endDate)
@@ -118,7 +167,7 @@ func (uc *GetAnalyticsUseCase) Execute(ctx context.Context, userID int, req GetA
 
 		var bucketKey, bucketLabel, bucketDate string
 		d := transaction.Date()
-		switch period {
+		switch bucketMode {
 		case "weekly":
 			bucketKey = d.Format("2006-01-02")
 			bucketLabel = d.Format("Mon")
@@ -135,9 +184,7 @@ func (uc *GetAnalyticsUseCase) Execute(ctx context.Context, userID int, req GetA
 		periodTotals[bucketKey] += amount
 		if _, ok := periodDates[bucketKey]; !ok {
 			periodDates[bucketKey] = bucketDate
-			_ = bucketLabel
 		}
-		// store label in a parallel map via formatting when building response
 		periodDates[bucketKey+"__label"] = bucketLabel
 	}
 

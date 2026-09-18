@@ -59,4 +59,5 @@ type PasswordResetTokenRepository interface {
 	Save(ctx context.Context, token *PasswordResetToken) error
 	FindByToken(ctx context.Context, token string) (*PasswordResetToken, error)
 	Delete(ctx context.Context, id uuid.UUID) error
+	DeleteExpired(ctx context.Context, before time.Time) (int64, error)
 }

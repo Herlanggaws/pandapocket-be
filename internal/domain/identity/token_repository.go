@@ -2,6 +2,7 @@ package identity
 
 import (
 	"context"
+	"time"
 )
 
 // TokenRepository defines the contract for token persistence
@@ -11,4 +12,5 @@ type TokenRepository interface {
 	DeleteByAccessToken(ctx context.Context, accessToken string) error
 	Revoke(ctx context.Context, refreshToken string) error
 	RevokeAllForUser(ctx context.Context, userID int) error
+	DeleteExpired(ctx context.Context, before time.Time) (int64, error)
 }

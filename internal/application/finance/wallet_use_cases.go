@@ -3,6 +3,7 @@ package finance
 import (
 	"context"
 	"errors"
+	"panda-pocket/internal/domain/entitlement"
 	"panda-pocket/internal/domain/finance"
 	"time"
 )
@@ -92,10 +93,17 @@ func toTransferResponse(transfer *finance.Transfer) TransferResponse {
 
 type CreateWalletUseCase struct {
 	walletService *finance.WalletService
+	entitlements  entitlement.Checker
 }
 
-func NewCreateWalletUseCase(walletService *finance.WalletService) *CreateWalletUseCase {
-	return &CreateWalletUseCase{walletService: walletService}
+func NewCreateWalletUseCase(
+	walletService *finance.WalletService,
+	entitlements entitlement.Checker,
+) *CreateWalletUseCase {
+	return &CreateWalletUseCase{
+		walletService: walletService,
+		entitlements:  entitlements,
+	}
 }
 
 func (uc *CreateWalletUseCase) Execute(ctx context.Context, userID int, req CreateWalletRequest) (*WalletResponse, error) {
@@ -103,6 +111,18 @@ func (uc *CreateWalletUseCase) Execute(ctx context.Context, userID int, req Crea
 	if err != nil {
 		return nil, err
 	}
+
+	existing, err := uc.walletService.GetWallets(ctx, finance.NewUserID(userID), false)
+	if err != nil {
+		return nil, err
+	}
+	if err := entitlement.EnforceCreateLimit(
+		ctx, uc.entitlements, userID,
+		entitlement.FeatureWallets, len(existing), entitlement.FreeWallets,
+	); err != nil {
+		return nil, err
+	}
+
 	wallet, err := uc.walletService.CreateWallet(
 		ctx,
 		finance.NewUserID(userID),

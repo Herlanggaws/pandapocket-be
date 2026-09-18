@@ -595,7 +595,9 @@ func (h *FinanceHandlers) GetAnalytics(c *gin.Context) {
 	period := c.DefaultQuery("period", "monthly")
 
 	req := finance.GetAnalyticsRequest{
-		Period: period,
+		Period:    period,
+		StartDate: c.Query("start_date"),
+		EndDate:   c.Query("end_date"),
 	}
 	if walletIDParam := c.Query("wallet_id"); walletIDParam != "" {
 		if walletID, err := strconv.Atoi(walletIDParam); err == nil {
@@ -605,7 +607,11 @@ func (h *FinanceHandlers) GetAnalytics(c *gin.Context) {
 
 	response, err := h.getAnalyticsUseCase.Execute(c.Request.Context(), userID, req)
 	if err != nil {
-		InternalServerErrorResponse(c, "FETCH_ANALYTICS_ERROR", "Failed to fetch analytics")
+		if errors.Is(err, entitlement.ErrPremiumRequired) {
+			PremiumRequiredResponse(c, err)
+			return
+		}
+		HandleError(c, err, http.StatusBadRequest)
 		return
 	}
 
@@ -937,6 +943,10 @@ func (h *FinanceHandlers) CreateWallet(c *gin.Context) {
 	}
 	response, err := h.createWalletUseCase.Execute(c.Request.Context(), userID, req)
 	if err != nil {
+		if errors.Is(err, entitlement.ErrPremiumRequired) {
+			PremiumRequiredResponse(c, err)
+			return
+		}
 		HandleError(c, err, http.StatusBadRequest)
 		return
 	}

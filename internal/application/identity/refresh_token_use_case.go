@@ -46,6 +46,8 @@ func (uc *RefreshTokenUseCase) Execute(ctx context.Context, req RefreshTokenRequ
 		return nil, errors.New("user not found")
 	}
 
+	_ = uc.tokenService.RevokeToken(ctx, req.RefreshToken)
+
 	// Generate new token pair
 	accessToken, refreshToken, err := uc.tokenService.GenerateToken(ctx, user.ID().Value(), user.Email().Value(), user.Role().Value())
 	if err != nil {

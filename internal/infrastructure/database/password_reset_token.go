@@ -68,3 +68,9 @@ func (r *GormPasswordResetTokenRepository) FindByToken(ctx context.Context, toke
 func (r *GormPasswordResetTokenRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	return r.db.WithContext(ctx).Delete(&PasswordResetToken{}, "id = ?", id).Error
 }
+
+// DeleteExpired deletes password reset tokens whose expires_at is before the cutoff.
+func (r *GormPasswordResetTokenRepository) DeleteExpired(ctx context.Context, before time.Time) (int64, error) {
+	result := r.db.WithContext(ctx).Where("expires_at < ?", before).Delete(&PasswordResetToken{})
+	return result.RowsAffected, result.Error
+}

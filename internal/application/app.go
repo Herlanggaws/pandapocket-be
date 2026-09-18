@@ -38,6 +38,7 @@ type App struct {
 	BillingHandlers             *handlers.BillingHandlers
 	AuthMiddleware              *middleware.AuthMiddleware
 	purgeDeletedAccountsUseCase *appIdentity.PurgeDeletedAccountsUseCase
+	cleanupExpiredTokensUseCase *appIdentity.CleanupExpiredTokensUseCase
 }
 
 // NewApp creates a new application instance with all dependencies wired up
@@ -95,6 +96,7 @@ func NewApp(db *gorm.DB) *App {
 	resetAccountDataUseCase := appIdentity.NewResetAccountDataUseCase(accountResetChallengeRepo, userDataWiper)
 	deleteAccountUseCase := appIdentity.NewDeleteAccountUseCase(userRepo, tokenService)
 	purgeDeletedAccountsUseCase := appIdentity.NewPurgeDeletedAccountsUseCase(userRepo, userDataWiper)
+	cleanupExpiredTokensUseCase := appIdentity.NewCleanupExpiredTokensUseCase(authTokenRepo, tokenRepo)
 	getNotificationsUseCase := appNotification.NewGetNotificationsUseCase(notificationRepo)
 	markNotificationReadUseCase := appNotification.NewMarkNotificationReadUseCase(notificationRepo)
 	deleteNotificationUseCase := appNotification.NewDeleteNotificationUseCase(notificationRepo)
@@ -119,7 +121,7 @@ func NewApp(db *gorm.DB) *App {
 	updateCategoryUseCase := appFinance.NewUpdateCategoryUseCase(categoryService)
 	deleteCategoryUseCase := appFinance.NewDeleteCategoryUseCase(categoryService)
 	getCategoriesUseCase := appFinance.NewGetCategoriesUseCase(categoryService)
-	getAnalyticsUseCase := appFinance.NewGetAnalyticsUseCase(transactionService, categoryService)
+	getAnalyticsUseCase := appFinance.NewGetAnalyticsUseCase(transactionService, categoryService, entitlementChecker)
 	getHealthScoreUseCase := appFinance.NewGetHealthScoreUseCase(budgetService, categoryService, transactionService, getAnalyticsUseCase, healthSnapshotRepo)
 	getHealthScoreHistoryUseCase := appFinance.NewGetHealthScoreHistoryUseCase(healthSnapshotRepo)
 	createBudgetUseCase := appFinance.NewCreateBudgetUseCase(budgetService, currencyService, categoryService, transactionService, entitlementChecker)
@@ -159,7 +161,7 @@ func NewApp(db *gorm.DB) *App {
 	)
 	confirmPendingUseCase := appFinance.NewConfirmPendingTransactionUseCase(pendingRepo, transactionService)
 	rejectPendingUseCase := appFinance.NewRejectPendingTransactionUseCase(pendingRepo)
-	createWalletUseCase := appFinance.NewCreateWalletUseCase(walletService)
+	createWalletUseCase := appFinance.NewCreateWalletUseCase(walletService, entitlementChecker)
 	getWalletsUseCase := appFinance.NewGetWalletsUseCase(walletService)
 	getWalletUseCase := appFinance.NewGetWalletUseCase(walletService)
 	updateWalletUseCase := appFinance.NewUpdateWalletUseCase(walletService)
@@ -308,6 +310,7 @@ func NewApp(db *gorm.DB) *App {
 		BillingHandlers:             billingHandlers,
 		AuthMiddleware:              authMiddleware,
 		purgeDeletedAccountsUseCase: purgeDeletedAccountsUseCase,
+		cleanupExpiredTokensUseCase: cleanupExpiredTokensUseCase,
 	}
 }
 
@@ -457,14 +460,13 @@ func (app *App) SetupRoutes() *gin.Engine {
 	return r
 }
 
-// StartBackgroundJobs starts periodic maintenance such as account purge after retention.
+// StartBackgroundJobs starts periodic maintenance such as account purge and token hygiene.
 func (app *App) StartBackgroundJobs(ctx context.Context) {
-	if app.purgeDeletedAccountsUseCase == nil {
-		return
-	}
-
 	go func() {
 		runPurge := func() {
+			if app.purgeDeletedAccountsUseCase == nil {
+				return
+			}
 			purged, err := app.purgeDeletedAccountsUseCase.Execute(context.Background())
 			if err != nil {
 				log.Printf("account purge job failed: %v", err)
@@ -475,7 +477,26 @@ func (app *App) StartBackgroundJobs(ctx context.Context) {
 			}
 		}
 
+		runTokenCleanup := func() {
+			if app.cleanupExpiredTokensUseCase == nil {
+				return
+			}
+			result, err := app.cleanupExpiredTokensUseCase.Execute(context.Background())
+			if err != nil {
+				log.Printf("token hygiene job failed: %v", err)
+				return
+			}
+			if result.SessionTokensDeleted > 0 || result.PasswordResetTokensDeleted > 0 {
+				log.Printf(
+					"token hygiene job deleted %d session token(s) and %d password-reset token(s)",
+					result.SessionTokensDeleted,
+					result.PasswordResetTokensDeleted,
+				)
+			}
+		}
+
 		runPurge()
+		runTokenCleanup()
 
 		ticker := time.NewTicker(time.Hour)
 		defer ticker.Stop()
@@ -486,6 +507,7 @@ func (app *App) StartBackgroundJobs(ctx context.Context) {
 				return
 			case <-ticker.C:
 				runPurge()
+				runTokenCleanup()
 			}
 		}
 	}()

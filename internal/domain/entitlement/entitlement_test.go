@@ -60,6 +60,15 @@ func TestEnforceCreateLimit(t *testing.T) {
 	if err := EnforceCreateLimit(ctx, StaticChecker{Pro: false}, 1, FeatureRecurring, 0, 0); err == nil {
 		t.Fatal("recurring free should fail")
 	}
+	if err := EnforceCreateLimit(ctx, StaticChecker{Pro: false}, 1, FeatureWallets, 1, FreeWallets); err == nil {
+		t.Fatal("free at wallet limit should fail")
+	}
+	if err := EnforceCreateLimit(ctx, StaticChecker{Pro: false}, 1, FeatureWallets, 0, FreeWallets); err != nil {
+		t.Fatalf("free under wallet limit should pass: %v", err)
+	}
+	if err := EnforceCreateLimit(ctx, StaticChecker{Pro: true}, 1, FeatureWallets, 5, FreeWallets); err != nil {
+		t.Fatalf("pro should skip wallet limits: %v", err)
+	}
 	bypassCtx := WithEntitlementBypass(ctx)
 	if err := EnforceCreateLimit(bypassCtx, StaticChecker{Pro: false}, 1, FeatureRecurring, 0, 0); err != nil {
 		t.Fatalf("bypass should allow free recurring seed: %v", err)

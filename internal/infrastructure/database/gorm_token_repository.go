@@ -61,3 +61,9 @@ func (r *GormTokenRepository) DeleteByAccessToken(ctx context.Context, accessTok
 func (r *GormTokenRepository) RevokeAllForUser(ctx context.Context, userID int) error {
 	return r.db.WithContext(ctx).Model(&Token{}).Where("user_id = ?", userID).Update("revoked", true).Error
 }
+
+// DeleteExpired deletes refresh/session rows whose expires_at is before the cutoff.
+func (r *GormTokenRepository) DeleteExpired(ctx context.Context, before time.Time) (int64, error) {
+	result := r.db.WithContext(ctx).Where("expires_at < ?", before).Delete(&Token{})
+	return result.RowsAffected, result.Error
+}

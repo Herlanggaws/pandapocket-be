@@ -1392,6 +1392,10 @@ Get spending analytics and reports for the authenticated user.
 
 **Query Parameters:**
 - `period` (optional): `weekly`, `monthly` (default), or `yearly`
+- `start_date` / `end_date` (optional, Pro): `YYYY-MM-DD` custom range (both required together; response `period` becomes `custom`)
+- `wallet_id` (optional): filter transactions to one wallet
+
+**Entitlement:** Free may use `weekly` / `monthly` only. `yearly` or custom dates return **403** `PREMIUM_REQUIRED` (`feature`: `insights`).
 
 **Response:**
 ```json
@@ -2025,6 +2029,8 @@ List wallets for the authenticated user. Each item includes computed `balance`.
 
 `type`: `cash` | `bank` | `e_wallet`
 
+Free plan: max **1** non-archived wallet. Additional creates return **403** `PREMIUM_REQUIRED` (`feature`: `wallets`, `limit`: 1). Pro (trial / paid / grace) is unlimited.
+
 ### GET /api/wallets/summary
 
 Liquid net worth in the user's **primary** currency: sum of balances for non-archived wallets with matching `currency_id`. Other-currency active wallets are counted in `excluded_wallet_count` (not converted; no FX).
@@ -2198,6 +2204,10 @@ Keep this file in sync with the running API. When routes, request/response shape
 ---
 
 ## Version History
+
+- **v2.21.0**: **Pro differentiation gates (P1/P2)**
+  - `POST /api/wallets` — Free max 1 non-archived wallet; **403** `PREMIUM_REQUIRED` (`feature`: `wallets`)
+  - `GET /api/analytics` — Free: `weekly`/`monthly`; Pro: `yearly` + optional `start_date`/`end_date`; Free advanced range → **403** `PREMIUM_REQUIRED` (`feature`: `insights`)
 
 - **v2.20.0**: **Trial on register (billing PR3)**
   - `POST /api/auth/register` creates `status=trialing`, `trial_ends_at=now+14d` (plan stays `free` until paid)

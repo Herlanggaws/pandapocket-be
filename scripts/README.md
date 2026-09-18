@@ -1,6 +1,13 @@
-# Currency Setup Scripts
+## Foreign keys (D1)
 
-This directory contains scripts to add default currencies to the PandaPocket database.
+Idempotent script: [`add_foreign_keys.sql`](add_foreign_keys.sql).
+
+Applied on prod `pandapocket` 2026-09-18 after orphan pre-flight (all 0). Re-run safely on other environments:
+
+```bash
+psql -d pandapocket -U nark -v ON_ERROR_STOP=1 -f scripts/add_foreign_keys.sql
+```
+
 
 ## Available Scripts
 

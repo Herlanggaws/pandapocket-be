@@ -15,6 +15,7 @@ const (
 	FreeTransactionsPerMonth = 50
 	FreeCustomCategories     = 10
 	FreeActiveBudgets        = 3
+	FreeWallets              = 1
 )
 
 const (
@@ -24,6 +25,8 @@ const (
 	FeatureRecurring    = "recurring"
 	FeatureTickets      = "tickets"
 	FeatureExport       = "export"
+	FeatureWallets      = "wallets"
+	FeatureInsights     = "insights"
 )
 
 // Checker decides whether a user may use Pro-only features.
