@@ -247,23 +247,10 @@ func createDefaultCategoriesGorm(db *gorm.DB) error {
 	return nil
 }
 
-// createDefaultCurrenciesGorm creates default currencies using GORM
+// createDefaultCurrenciesGorm ensures system default currencies exist (insert missing by code).
 func createDefaultCurrenciesGorm(db *gorm.DB) error {
-	// Check if default currencies already exist
-	var count int64
-	err := db.Model(&Currency{}).Where("is_default = ?", true).Count(&count).Error
-	if err != nil {
-		return err
-	}
-
-	// If default currencies already exist, don't create them again
-	if count > 0 {
-		log.Println("Default currencies already exist, skipping creation")
-		return nil
-	}
-
-	// Default currencies - 20 popular currencies
 	defaultCurrencies := []Currency{
+		{Code: "IDR", Name: "Indonesian Rupiah", Symbol: "Rp", IsDefault: true},
 		{Code: "USD", Name: "US Dollar", Symbol: "$", IsDefault: true},
 		{Code: "EUR", Name: "Euro", Symbol: "€", IsDefault: true},
 		{Code: "GBP", Name: "British Pound", Symbol: "£", IsDefault: true},
@@ -286,12 +273,27 @@ func createDefaultCurrenciesGorm(db *gorm.DB) error {
 		{Code: "THB", Name: "Thai Baht", Symbol: "฿", IsDefault: true},
 	}
 
-	// Create currencies
-	if err := db.Create(&defaultCurrencies).Error; err != nil {
-		return err
+	created := 0
+	for _, currency := range defaultCurrencies {
+		var existing Currency
+		err := db.Where("code = ? AND user_id IS NULL", currency.Code).First(&existing).Error
+		if err == nil {
+			continue
+		}
+		if err != gorm.ErrRecordNotFound {
+			return err
+		}
+		if err := db.Create(&currency).Error; err != nil {
+			return err
+		}
+		created++
 	}
 
-	log.Printf("Created %d default currencies", len(defaultCurrencies))
+	if created > 0 {
+		log.Printf("Created %d missing default currencies", created)
+	} else {
+		log.Println("Default currencies already complete")
+	}
 	return nil
 }
 
@@ -316,7 +318,9 @@ func backfillDefaultWallets(db *gorm.DB) error {
 				currencyID = prefs.PrimaryCurrencyID
 			} else {
 				var systemCurrency Currency
-				if err := db.Where("is_default = ? AND code = ?", true, "USD").First(&systemCurrency).Error; err == nil {
+				if err := db.Where("is_default = ? AND code = ?", true, "IDR").First(&systemCurrency).Error; err == nil {
+					currencyID = systemCurrency.ID
+				} else if err := db.Where("is_default = ? AND code = ?", true, "USD").First(&systemCurrency).Error; err == nil {
 					currencyID = systemCurrency.ID
 				} else if err := db.Where("is_default = ?", true).First(&systemCurrency).Error; err == nil {
 					currencyID = systemCurrency.ID

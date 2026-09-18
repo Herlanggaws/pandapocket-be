@@ -23,22 +23,9 @@ func (s *CurrencyService) GetPrimaryCurrency(ctx context.Context, userID UserID)
 }
 
 // GetCurrenciesByUser retrieves all currencies accessible to a user
+// (system defaults with user_id IS NULL plus the user's custom currencies).
 func (s *CurrencyService) GetCurrenciesByUser(ctx context.Context, userID UserID) ([]*Currency, error) {
-	// Get user's currencies
-	userCurrencies, err := s.currencyRepo.FindByUserID(ctx, userID)
-	if err != nil {
-		return nil, err
-	}
-
-	// Get default currencies
-	defaultCurrencies, err := s.currencyRepo.FindDefaultCurrencies(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	// Combine and return
-	allCurrencies := append(defaultCurrencies, userCurrencies...)
-	return allCurrencies, nil
+	return s.currencyRepo.FindByUserID(ctx, userID)
 }
 
 // CreateCurrency creates a new currency

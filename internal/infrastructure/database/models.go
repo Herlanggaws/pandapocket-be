@@ -108,7 +108,7 @@ type Expense struct {
 	WalletID    *uint     `gorm:"index" json:"wallet_id,omitempty"`
 	CategoryID  uint      `gorm:"not null;index" json:"category_id"`
 	CurrencyID  uint      `gorm:"not null;index" json:"currency_id"`
-	Amount      float64   `gorm:"type:decimal(10,2);not null" json:"amount"`
+	Amount      float64   `gorm:"type:decimal(14,2);not null" json:"amount"`
 	Description string    `gorm:"type:text" json:"description"`
 	Date        time.Time `gorm:"type:date;not null;index:idx_expense_user_date_created,priority:2" json:"date"`
 	CreatedAt   time.Time `gorm:"index:idx_expense_user_date_created,priority:3" json:"created_at"`
@@ -128,7 +128,7 @@ type Income struct {
 	WalletID    *uint     `gorm:"index" json:"wallet_id,omitempty"`
 	CategoryID  uint      `gorm:"not null;index" json:"category_id"`
 	CurrencyID  uint      `gorm:"not null;index" json:"currency_id"`
-	Amount      float64   `gorm:"type:decimal(10,2);not null" json:"amount"`
+	Amount      float64   `gorm:"type:decimal(14,2);not null" json:"amount"`
 	Description string    `gorm:"type:text" json:"description"`
 	Date        time.Time `gorm:"type:date;not null;index:idx_income_user_date_created,priority:2" json:"date"`
 	CreatedAt   time.Time `gorm:"index:idx_income_user_date_created,priority:3" json:"created_at"`
@@ -147,7 +147,7 @@ type Budget struct {
 	UserID     uint      `gorm:"not null;index" json:"user_id"`
 	CategoryID uint      `gorm:"not null;index" json:"category_id"`
 	CurrencyID uint      `gorm:"not null;index;default:1" json:"currency_id"`
-	Amount     float64   `gorm:"type:decimal(10,2);not null;default:0" json:"amount"`
+	Amount     float64   `gorm:"type:decimal(14,2);not null;default:0" json:"amount"`
 	LimitType  string    `gorm:"not null;default:'fixed';check:limit_type IN ('fixed', 'percent')" json:"limit_type"`
 	Percent    *float64  `gorm:"type:decimal(5,2)" json:"percent,omitempty"`
 	Period     string    `gorm:"not null;check:period IN ('weekly', 'monthly', 'yearly')" json:"period"`
@@ -261,7 +261,7 @@ type RecurringTransaction struct {
 	WalletID     *uint     `gorm:"index" json:"wallet_id,omitempty"`
 	CategoryID   uint      `gorm:"not null;index" json:"category_id"`
 	CurrencyID   uint      `gorm:"not null;index" json:"currency_id"`
-	Amount       float64   `gorm:"type:decimal(10,2);not null" json:"amount"`
+	Amount       float64   `gorm:"type:decimal(14,2);not null" json:"amount"`
 	Description  string    `gorm:"type:text" json:"description"`
 	Frequency    string    `gorm:"not null;check:frequency IN ('daily', 'weekly', 'monthly', 'yearly')" json:"frequency"`
 	Type         string    `gorm:"not null;default:'expense';check:type IN ('expense', 'income')" json:"type"`
@@ -287,7 +287,7 @@ type PendingTransaction struct {
 	WalletID               *uint      `gorm:"index" json:"wallet_id,omitempty"`
 	RecurringTransactionID uint       `gorm:"not null;uniqueIndex:idx_pending_recurring_due" json:"recurring_transaction_id"`
 	DueDate                time.Time  `gorm:"type:date;not null;uniqueIndex:idx_pending_recurring_due" json:"due_date"`
-	Amount                 float64    `gorm:"type:decimal(10,2);not null" json:"amount"`
+	Amount                 float64    `gorm:"type:decimal(14,2);not null" json:"amount"`
 	Description            string     `gorm:"type:text" json:"description"`
 	Type                   string     `gorm:"not null;check:type IN ('expense', 'income')" json:"type"`
 	CategoryID             uint       `gorm:"not null;index" json:"category_id"`
