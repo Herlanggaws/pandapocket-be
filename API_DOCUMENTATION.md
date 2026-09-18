@@ -1545,8 +1545,9 @@ Authenticated. Marks onboarding complete, updates preferences, and seeds baselin
 }
 ```
 
-- Always creates income/expense (when amounts > 0) and a monthly fixed budget from expense
-- When `goal` is `debt` and `debt_balance` > 0, creates one liability
+- First completion creates income/expense (when amounts > 0) and a monthly fixed budget from expense
+- Re-running after `onboarding_completed` is already true updates preferences only (no duplicate seed); overlapping budgets are ignored so retries/redos do not fail
+- When `goal` is `debt` and `debt_balance` > 0, creates one liability on first completion
 
 **Response** includes `onboarding` map and optional `health_score`.
 
@@ -1873,6 +1874,9 @@ Keep this file in sync with the running API. When routes, request/response shape
 ---
 
 ## Version History
+
+- **v2.10.1**: **Idempotent onboarding complete**
+  - `POST /api/onboarding/complete` skips re-seeding when already completed and ignores overlapping budget on retry/redo
 
 - **v2.10.0**: **Debt tracker + onboarding complete**
   - Liabilities support `original_principal`, `interest_rate_apr`, `minimum_payment`, `next_due_date`

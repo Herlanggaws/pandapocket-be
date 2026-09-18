@@ -6,6 +6,7 @@ import (
 	"errors"
 	"panda-pocket/internal/domain/finance"
 	domainIdentity "panda-pocket/internal/domain/identity"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -84,6 +85,47 @@ func (uc *CompleteOnboardingUseCase) findCategoryID(ctx context.Context, userID 
 	return categories[0].ID().Value(), nil
 }
 
+func isOnboardingCompletedFlag(onboardingMap map[string]interface{}) bool {
+	value, ok := onboardingMap["onboarding_completed"]
+	if !ok || value == nil {
+		return false
+	}
+	switch typed := value.(type) {
+	case bool:
+		return typed
+	case string:
+		return strings.EqualFold(typed, "true") || typed == "1"
+	case float64:
+		return typed != 0
+	default:
+		return false
+	}
+}
+
+func isBudgetOverlapError(err error) bool {
+	return err != nil && strings.Contains(strings.ToLower(err.Error()), "overlapping budget")
+}
+
+func (uc *CompleteOnboardingUseCase) ensureOnboardingBudget(
+	ctx context.Context,
+	userID int,
+	expenseCategoryID int,
+	amount float64,
+	monthStart string,
+) error {
+	_, err := uc.createBudgetUseCase.Execute(ctx, userID, CreateBudgetRequest{
+		CategoryID: expenseCategoryID,
+		Amount:     amount,
+		LimitType:  "fixed",
+		Period:     "monthly",
+		StartDate:  monthStart,
+	})
+	if isBudgetOverlapError(err) {
+		return nil
+	}
+	return err
+}
+
 func (uc *CompleteOnboardingUseCase) Execute(ctx context.Context, userID int, req CompleteOnboardingRequest) (*CompleteOnboardingResponse, error) {
 	user := domainIdentity.NewUserID(userID)
 
@@ -105,7 +147,8 @@ func (uc *CompleteOnboardingUseCase) Execute(ctx context.Context, userID int, re
 
 	onboardingMap := map[string]interface{}{}
 	_ = json.Unmarshal(prefs.Onboarding(), &onboardingMap)
-	onboardingMap["onboarding_completed"] = true
+	alreadyCompleted := isOnboardingCompletedFlag(onboardingMap)
+
 	if req.Goal != "" {
 		onboardingMap["goal"] = req.Goal
 	}
@@ -117,14 +160,6 @@ func (uc *CompleteOnboardingUseCase) Execute(ctx context.Context, userID int, re
 	if req.DebtBalance != nil {
 		onboardingMap["debt_balance"] = *req.DebtBalance
 	}
-	merged, err := json.Marshal(onboardingMap)
-	if err != nil {
-		return nil, err
-	}
-	prefs.SetOnboarding(merged)
-	if err := uc.prefsRepo.Save(ctx, prefs); err != nil {
-		return nil, err
-	}
 
 	primaryCurrencyID := prefs.PrimaryCurrencyID()
 	_, err = uc.walletService.EnsureDefaultWallet(ctx, finance.NewUserID(userID), finance.NewCurrencyID(primaryCurrencyID))
@@ -135,75 +170,88 @@ func (uc *CompleteOnboardingUseCase) Execute(ctx context.Context, userID int, re
 	today := time.Now().Format("2006-01-02")
 	monthStart := time.Date(time.Now().Year(), time.Now().Month(), 1, 0, 0, 0, 0, time.Now().Location()).Format("2006-01-02")
 
-	if req.MonthlyIncome > 0 {
-		incomeCategoryID, catErr := uc.findCategoryID(ctx, userID, finance.CategoryTypeIncome, "Salary", "Other")
-		if catErr != nil {
-			return nil, catErr
+	// Re-running complete (redo / retry) must not fail on existing seeded data.
+	if !alreadyCompleted {
+		if req.MonthlyIncome > 0 {
+			incomeCategoryID, catErr := uc.findCategoryID(ctx, userID, finance.CategoryTypeIncome, "Salary", "Other")
+			if catErr != nil {
+				return nil, catErr
+			}
+			if _, err := uc.createTransactionUseCase.Execute(ctx, userID, CreateTransactionRequest{
+				CategoryID:  incomeCategoryID,
+				Amount:      req.MonthlyIncome,
+				Description: "Onboarding monthly income",
+				Date:        today,
+				Type:        "income",
+			}); err != nil {
+				return nil, err
+			}
 		}
-		if _, err := uc.createTransactionUseCase.Execute(ctx, userID, CreateTransactionRequest{
-			CategoryID:  incomeCategoryID,
-			Amount:      req.MonthlyIncome,
-			Description: "Onboarding monthly income",
-			Date:        today,
-			Type:        "income",
-		}); err != nil {
-			return nil, err
-		}
-	}
 
-	if req.MonthlyExpense > 0 {
+		if req.MonthlyExpense > 0 {
+			expenseCategoryID, catErr := uc.findCategoryID(ctx, userID, finance.CategoryTypeExpense, "Other", "Bills", "Food")
+			if catErr != nil {
+				return nil, catErr
+			}
+			if _, err := uc.createTransactionUseCase.Execute(ctx, userID, CreateTransactionRequest{
+				CategoryID:  expenseCategoryID,
+				Amount:      req.MonthlyExpense,
+				Description: "Onboarding monthly expense estimate",
+				Date:        today,
+				Type:        "expense",
+			}); err != nil {
+				return nil, err
+			}
+
+			if err := uc.ensureOnboardingBudget(ctx, userID, expenseCategoryID, req.MonthlyExpense, monthStart); err != nil {
+				return nil, err
+			}
+		}
+
+		if req.Goal == "debt" && req.DebtBalance != nil && *req.DebtBalance > 0 {
+			debtType := req.DebtType
+			if debtType == "" {
+				debtType = "other"
+			}
+			liabilityType, parseErr := finance.ParseLiabilityType(debtType)
+			if parseErr != nil {
+				liabilityType = finance.LiabilityTypeOther
+			}
+			name := req.DebtName
+			if name == "" {
+				name = "Onboarding debt"
+			}
+			principal := *req.DebtBalance
+			if _, err := uc.liabilityService.Create(
+				ctx,
+				finance.NewUserID(userID),
+				name,
+				liabilityType,
+				finance.NewCurrencyID(primaryCurrencyID),
+				*req.DebtBalance,
+				"Seeded from onboarding",
+				nil,
+				finance.LiabilityDebtDetails{OriginalPrincipal: &principal},
+			); err != nil {
+				return nil, err
+			}
+		}
+	} else if req.MonthlyExpense > 0 {
+		// Partial prior runs may have marked complete without a budget — ensure one exists.
 		expenseCategoryID, catErr := uc.findCategoryID(ctx, userID, finance.CategoryTypeExpense, "Other", "Bills", "Food")
-		if catErr != nil {
-			return nil, catErr
-		}
-		if _, err := uc.createTransactionUseCase.Execute(ctx, userID, CreateTransactionRequest{
-			CategoryID:  expenseCategoryID,
-			Amount:      req.MonthlyExpense,
-			Description: "Onboarding monthly expense estimate",
-			Date:        today,
-			Type:        "expense",
-		}); err != nil {
-			return nil, err
-		}
-
-		if _, err := uc.createBudgetUseCase.Execute(ctx, userID, CreateBudgetRequest{
-			CategoryID: expenseCategoryID,
-			Amount:     req.MonthlyExpense,
-			LimitType:  "fixed",
-			Period:     "monthly",
-			StartDate:  monthStart,
-		}); err != nil {
-			return nil, err
+		if catErr == nil {
+			_ = uc.ensureOnboardingBudget(ctx, userID, expenseCategoryID, req.MonthlyExpense, monthStart)
 		}
 	}
 
-	if req.Goal == "debt" && req.DebtBalance != nil && *req.DebtBalance > 0 {
-		debtType := req.DebtType
-		if debtType == "" {
-			debtType = "other"
-		}
-		liabilityType, parseErr := finance.ParseLiabilityType(debtType)
-		if parseErr != nil {
-			liabilityType = finance.LiabilityTypeOther
-		}
-		name := req.DebtName
-		if name == "" {
-			name = "Onboarding debt"
-		}
-		principal := *req.DebtBalance
-		if _, err := uc.liabilityService.Create(
-			ctx,
-			finance.NewUserID(userID),
-			name,
-			liabilityType,
-			finance.NewCurrencyID(primaryCurrencyID),
-			*req.DebtBalance,
-			"Seeded from onboarding",
-			nil,
-			finance.LiabilityDebtDetails{OriginalPrincipal: &principal},
-		); err != nil {
-			return nil, err
-		}
+	onboardingMap["onboarding_completed"] = true
+	merged, err := json.Marshal(onboardingMap)
+	if err != nil {
+		return nil, err
+	}
+	prefs.SetOnboarding(merged)
+	if err := uc.prefsRepo.Save(ctx, prefs); err != nil {
+		return nil, err
 	}
 
 	var health *HealthScoreResponse
