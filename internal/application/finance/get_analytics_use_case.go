@@ -33,19 +33,22 @@ type SpendingByPeriodItem struct {
 
 // GetAnalyticsResponse represents the analytics response
 type GetAnalyticsResponse struct {
-	TotalIncome        float64                  `json:"total_income"`
-	TotalSpent         float64                  `json:"total_spent"`
-	NetAmount          float64                  `json:"net_amount"`
-	Period             string                   `json:"period"`
-	TransactionCount   int                      `json:"transaction_count"`
-	SpendingByCategory []SpendingByCategoryItem `json:"spending_by_category"`
-	SpendingByPeriod   []SpendingByPeriodItem   `json:"spending_by_period"`
+	TotalIncome               float64                  `json:"total_income"`
+	TotalSpent                float64                  `json:"total_spent"`
+	NetAmount                 float64                  `json:"net_amount"`
+	Period                    string                   `json:"period"`
+	CurrencyID                int                      `json:"currency_id"`
+	TransactionCount          int                      `json:"transaction_count"`
+	ExcludedTransactionCount  int                      `json:"excluded_transaction_count"`
+	SpendingByCategory        []SpendingByCategoryItem `json:"spending_by_category"`
+	SpendingByPeriod          []SpendingByPeriodItem   `json:"spending_by_period"`
 }
 
 // GetAnalyticsUseCase handles getting analytics data
 type GetAnalyticsUseCase struct {
 	transactionService *finance.TransactionService
 	categoryService    *finance.CategoryService
+	currencyService    *finance.CurrencyService
 	entitlements       entitlement.Checker
 }
 
@@ -53,11 +56,13 @@ type GetAnalyticsUseCase struct {
 func NewGetAnalyticsUseCase(
 	transactionService *finance.TransactionService,
 	categoryService *finance.CategoryService,
+	currencyService *finance.CurrencyService,
 	entitlements entitlement.Checker,
 ) *GetAnalyticsUseCase {
 	return &GetAnalyticsUseCase{
 		transactionService: transactionService,
 		categoryService:    categoryService,
+		currencyService:    currencyService,
 		entitlements:       entitlements,
 	}
 }
@@ -147,6 +152,23 @@ func (uc *GetAnalyticsUseCase) Execute(ctx context.Context, userID int, req GetA
 		transactions = filtered
 	}
 
+	primary, err := uc.currencyService.GetPrimaryCurrency(ctx, finance.NewUserID(userID))
+	if err != nil {
+		return nil, err
+	}
+	primaryCurrencyID := primary.ID().Value()
+
+	excludedCount := 0
+	primaryOnly := make([]*finance.Transaction, 0, len(transactions))
+	for _, transaction := range transactions {
+		if transaction.CurrencyID().Value() != primaryCurrencyID {
+			excludedCount++
+			continue
+		}
+		primaryOnly = append(primaryOnly, transaction)
+	}
+	transactions = primaryOnly
+
 	var totalIncome, totalSpent float64
 	categoryTotals := map[int]float64{}
 	periodTotals := map[string]float64{}
@@ -230,12 +252,14 @@ func (uc *GetAnalyticsUseCase) Execute(ctx context.Context, userID int, req GetA
 	}
 
 	return &GetAnalyticsResponse{
-		TotalIncome:        totalIncome,
-		TotalSpent:         totalSpent,
-		NetAmount:          totalIncome - totalSpent,
-		Period:             period,
-		TransactionCount:   len(transactions),
-		SpendingByCategory: spendingByCategory,
-		SpendingByPeriod:   spendingByPeriod,
+		TotalIncome:              totalIncome,
+		TotalSpent:               totalSpent,
+		NetAmount:                totalIncome - totalSpent,
+		Period:                   period,
+		CurrencyID:               primaryCurrencyID,
+		TransactionCount:         len(transactions),
+		ExcludedTransactionCount: excludedCount,
+		SpendingByCategory:       spendingByCategory,
+		SpendingByPeriod:         spendingByPeriod,
 	}, nil
 }

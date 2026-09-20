@@ -1042,6 +1042,9 @@ Export transactions for the authenticated user as a **CSV** or **PDF** file down
     "page": 1,
     "limit": 20,
     "total_pages": 1,
+    "total_incomes": 1000,
+    "total_expenses": 50,
+    "currency_id": 1,
     "filters": {
       "type": "expense",
       "start_date": "2024-01-01",
@@ -1055,11 +1058,13 @@ Export transactions for the authenticated user as a **CSV** or **PDF** file down
 ```
 
 **Response Fields:**
-- `transactions`: Array of transaction objects
+- `transactions`: Array of transaction objects (all currencies; each row has its own `currency_id`)
 - `total`: Total number of transactions matching the filters (across all pages)
 - `page`: Current page number (1-based)
 - `limit`: Number of items per page
 - `total_pages`: Total number of pages available
+- `total_incomes` / `total_expenses`: Sums for the **current page**, **primary currency only** (no FX); other-currency rows on the page are listed but excluded from these totals
+- `currency_id`: User primary currency used for the page totals
 - `filters`: Object showing the applied filters for transparency
 
 **Transaction Object Fields:**
@@ -1397,6 +1402,8 @@ Get spending analytics and reports for the authenticated user.
 
 **Entitlement:** Free may use `weekly` / `monthly` only. `yearly` or custom dates return **403** `PREMIUM_REQUIRED` (`feature`: `insights`).
 
+**Currency:** Totals and breakdowns include **primary currency only** (no FX). Other-currency transactions are counted in `excluded_transaction_count` and omitted from sums.
+
 **Response:**
 ```json
 {
@@ -1406,7 +1413,9 @@ Get spending analytics and reports for the authenticated user.
     "total_spent": 1250.50,
     "net_amount": 1749.50,
     "period": "monthly",
+    "currency_id": 1,
     "transaction_count": 42,
+    "excluded_transaction_count": 3,
     "spending_by_category": [
       {
         "category_id": 1,
@@ -1935,11 +1944,11 @@ Admin-only. Update status and email the ticket owner.
 
 List recurring rules. Also enqueues any **due** active rules as **pending transactions** (does not create expenses/incomes) and advances `next_due_date` using the schedule. May create `recurring_reminder` notifications when enabled in preferences.
 
-Each item includes schedule fields (`weekday`, `day_of_month`, `month_of_year` as applicable) and `schedule_label`.
+Each item includes schedule fields (`weekday`, `day_of_month`, `month_of_year` as applicable), `schedule_label`, `wallet_id`, and `currency_id` (inherited from the wallet).
 
 ### POST /api/recurring-transactions
 
-Creates a recurring rule. `next_due_date` is computed from the schedule (first occurrence on/after today), unless an optional `next_due_date` seed date is provided as the search start.
+Creates a recurring rule. Currency is taken from the resolved wallet (`wallet_id` optional; defaults to the user’s default wallet). `next_due_date` is computed from the schedule (first occurrence on/after today), unless an optional `next_due_date` seed date is provided as the search start.
 
 **Weekly** — requires `weekday` (`0`=Sunday … `6`=Saturday):
 
@@ -1981,7 +1990,7 @@ Creates a recurring rule. `next_due_date` is computed from the schedule (first o
 }
 ```
 
-Currency uses the user's primary currency.
+Currency is inherited from the wallet (not from primary preference alone).
 
 ### DELETE /api/recurring-transactions/:id
 
@@ -1994,7 +2003,7 @@ Delete a recurring rule owned by the authenticated user.
 List open pending recurring occurrences for the authenticated user. Also runs due enqueue (same as GET recurring) so visiting Dashboard/Transactions can surface new pendings without opening Recurring.
 
 **Response** — array of:
-- `id`, `user_id`, `recurring_transaction_id`, `due_date`, `amount`, `description`, `type`, `category_id`, `status` (`pending`), `category`, `created_at`
+- `id`, `user_id`, `wallet_id`, `currency_id`, `recurring_transaction_id`, `due_date`, `amount`, `description`, `type`, `category_id`, `status` (`pending`), `category`, `created_at`
 
 ### POST /api/pending-transactions/:id/confirm
 
@@ -2204,6 +2213,11 @@ Keep this file in sync with the running API. When routes, request/response shape
 ---
 
 ## Version History
+
+- **v2.22.0**: **Primary-currency aggregates + currency_id on recurring/pending**
+  - `GET /api/analytics` — sums/breakdowns use primary currency only (no FX); response adds `currency_id`, `excluded_transaction_count`
+  - `GET /api/transactions` — `total_incomes` / `total_expenses` are primary-currency only for the current page; response adds `currency_id`
+  - Recurring + pending list responses include `currency_id` (from wallet); create recurring inherits wallet currency
 
 - **v2.21.0**: **Pro differentiation gates (P1/P2)**
   - `POST /api/wallets` — Free max 1 non-archived wallet; **403** `PREMIUM_REQUIRED` (`feature`: `wallets`)

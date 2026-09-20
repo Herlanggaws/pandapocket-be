@@ -13,6 +13,7 @@ type PendingTransactionResponse struct {
 	ID                     int               `json:"id"`
 	UserID                 int               `json:"user_id"`
 	WalletID               int               `json:"wallet_id"`
+	CurrencyID             int               `json:"currency_id"`
 	RecurringTransactionID int               `json:"recurring_transaction_id"`
 	DueDate                string            `json:"due_date"`
 	Amount                 float64           `json:"amount"`
@@ -239,6 +240,7 @@ func toPendingResponse(pt *domainFinance.PendingTransaction, category *domainFin
 		ID:                     pt.ID().Value(),
 		UserID:                 pt.UserID().Value(),
 		WalletID:               pt.WalletID().Value(),
+		CurrencyID:             pt.CurrencyID().Value(),
 		RecurringTransactionID: pt.RecurringTransactionID().Value(),
 		DueDate:                pt.DueDate().Format("2006-01-02"),
 		Amount:                 pt.Amount().Amount(),

@@ -28,6 +28,7 @@ type GetAllTransactionsResponse struct {
 	TotalPages    int                       `json:"total_pages"`
 	TotalIncomes  float64                   `json:"total_incomes"`
 	TotalExpenses float64                   `json:"total_expenses"`
+	CurrencyID    int                       `json:"currency_id"`
 	Filters       GetAllTransactionsRequest `json:"filters"`
 }
 
@@ -35,13 +36,19 @@ type GetAllTransactionsResponse struct {
 type GetAllTransactionsUseCase struct {
 	transactionService *finance.TransactionService
 	categoryService    *finance.CategoryService
+	currencyService    *finance.CurrencyService
 }
 
 // NewGetAllTransactionsUseCase creates a new get all transactions use case
-func NewGetAllTransactionsUseCase(transactionService *finance.TransactionService, categoryService *finance.CategoryService) *GetAllTransactionsUseCase {
+func NewGetAllTransactionsUseCase(
+	transactionService *finance.TransactionService,
+	categoryService *finance.CategoryService,
+	currencyService *finance.CurrencyService,
+) *GetAllTransactionsUseCase {
 	return &GetAllTransactionsUseCase{
 		transactionService: transactionService,
 		categoryService:    categoryService,
+		currencyService:    currencyService,
 	}
 }
 
@@ -126,6 +133,12 @@ func (uc *GetAllTransactionsUseCase) Execute(ctx context.Context, userID int, re
 		return nil, err
 	}
 
+	primary, err := uc.currencyService.GetPrimaryCurrency(ctx, finance.NewUserID(userID))
+	if err != nil {
+		return nil, err
+	}
+	primaryCurrencyID := primary.ID().Value()
+
 	// Convert to response format
 	var totalIncomes float64
 	var totalExpenses float64
@@ -139,10 +152,12 @@ func (uc *GetAllTransactionsUseCase) Execute(ctx context.Context, userID int, re
 		}
 
 		amt := transaction.Amount().Amount()
-		if transaction.Type() == finance.TransactionTypeIncome {
-			totalIncomes += amt
-		} else if transaction.Type() == finance.TransactionTypeExpense {
-			totalExpenses += amt
+		if transaction.CurrencyID().Value() == primaryCurrencyID {
+			if transaction.Type() == finance.TransactionTypeIncome {
+				totalIncomes += amt
+			} else if transaction.Type() == finance.TransactionTypeExpense {
+				totalExpenses += amt
+			}
 		}
 
 		transactionResponses[i] = TransactionResponse{
@@ -179,6 +194,7 @@ func (uc *GetAllTransactionsUseCase) Execute(ctx context.Context, userID int, re
 		TotalPages:    totalPages,
 		TotalIncomes:  totalIncomes,
 		TotalExpenses: totalExpenses,
+		CurrencyID:    primaryCurrencyID,
 		Filters:       req,
 	}, nil
 }

@@ -13,6 +13,7 @@ type RecurringTransactionResponse struct {
 	ID            int               `json:"id"`
 	Type          string            `json:"type"`
 	WalletID      int               `json:"wallet_id"`
+	CurrencyID    int               `json:"currency_id"`
 	CategoryID    int               `json:"category_id"`
 	Amount        float64           `json:"amount"`
 	Description   string            `json:"description"`
@@ -192,6 +193,7 @@ func toRecurringResponse(rt *domainFinance.RecurringTransaction, category *domai
 		ID:            rt.ID().Value(),
 		Type:          string(rt.Type()),
 		WalletID:      rt.WalletID().Value(),
+		CurrencyID:    rt.CurrencyID().Value(),
 		CategoryID:    rt.CategoryID().Value(),
 		Amount:        rt.Amount().Amount(),
 		Description:   rt.Description(),
