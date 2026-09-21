@@ -174,11 +174,13 @@ type FinancialGoal struct {
 	CurrentAmount float64   `gorm:"type:decimal(14,2);not null;default:0" json:"current_amount"`
 	TargetDate    time.Time `gorm:"type:date;not null" json:"target_date"`
 	Status        string    `gorm:"not null;default:'active';check:status IN ('active', 'completed', 'archived')" json:"status"`
+	WalletID      *uint     `gorm:"index" json:"wallet_id,omitempty"`
 	CreatedAt     time.Time `json:"created_at"`
 	UpdatedAt     time.Time `json:"updated_at"`
 
 	User     *User     `gorm:"foreignKey:UserID" json:"user,omitempty"`
 	Currency *Currency `gorm:"foreignKey:CurrencyID" json:"currency,omitempty"`
+	Wallet   *Wallet   `gorm:"foreignKey:WalletID" json:"wallet,omitempty"`
 }
 
 // Asset represents a non-wallet asset position
@@ -339,6 +341,7 @@ type UserPreferences struct {
 	EmailNotifications bool      `gorm:"default:true" json:"email_notifications"`
 	BudgetAlerts       bool      `gorm:"default:true" json:"budget_alerts"`
 	RecurringReminders bool      `gorm:"default:true" json:"recurring_reminders"`
+	GoalDeadlineAlerts bool      `gorm:"default:true" json:"goal_deadline_alerts"`
 	Language           string    `gorm:"size:8;default:'id'" json:"language"`
 	Onboarding         JSONRaw   `gorm:"type:text;default:'{}'" json:"onboarding"`
 	CreatedAt          time.Time `json:"created_at"`

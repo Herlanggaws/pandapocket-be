@@ -39,6 +39,7 @@ type App struct {
 	AuthMiddleware              *middleware.AuthMiddleware
 	purgeDeletedAccountsUseCase *appIdentity.PurgeDeletedAccountsUseCase
 	cleanupExpiredTokensUseCase *appIdentity.CleanupExpiredTokensUseCase
+	checkGoalDeadlineAlertsUseCase *appFinance.CheckGoalDeadlineAlertsUseCase
 }
 
 // NewApp creates a new application instance with all dependencies wired up
@@ -166,15 +167,21 @@ func NewApp(db *gorm.DB) *App {
 	getWalletUseCase := appFinance.NewGetWalletUseCase(walletService)
 	updateWalletUseCase := appFinance.NewUpdateWalletUseCase(walletService)
 	setDefaultWalletUseCase := appFinance.NewSetDefaultWalletUseCase(walletService)
-	archiveWalletUseCase := appFinance.NewArchiveWalletUseCase(walletService)
+	archiveWalletUseCase := appFinance.NewArchiveWalletUseCase(walletService, goalService)
 	unarchiveWalletUseCase := appFinance.NewUnarchiveWalletUseCase(walletService)
 	getWalletBalanceUseCase := appFinance.NewGetWalletBalanceUseCase(walletService)
 	getWalletSummaryUseCase := appFinance.NewGetWalletSummaryUseCase(walletService, currencyService)
-	createGoalUseCase := appFinance.NewCreateGoalUseCase(goalService, currencyService)
-	getGoalsUseCase := appFinance.NewGetGoalsUseCase(goalService)
-	getGoalUseCase := appFinance.NewGetGoalUseCase(goalService)
-	updateGoalUseCase := appFinance.NewUpdateGoalUseCase(goalService)
+	createGoalUseCase := appFinance.NewCreateGoalUseCase(goalService, currencyService, walletService, notificationHelper)
+	getGoalsUseCase := appFinance.NewGetGoalsUseCase(goalService, walletService, notificationHelper)
+	getGoalUseCase := appFinance.NewGetGoalUseCase(goalService, walletService, notificationHelper)
+	updateGoalUseCase := appFinance.NewUpdateGoalUseCase(goalService, walletService, notificationHelper)
 	deleteGoalUseCase := appFinance.NewDeleteGoalUseCase(goalService)
+	checkGoalDeadlineAlertsUseCase := appFinance.NewCheckGoalDeadlineAlertsUseCase(
+		goalService,
+		walletService,
+		prefsRepo,
+		notificationHelper,
+	)
 	createAssetUseCase := appFinance.NewCreateAssetUseCase(assetService)
 	getAssetsUseCase := appFinance.NewGetAssetsUseCase(assetService)
 	updateAssetUseCase := appFinance.NewUpdateAssetUseCase(assetService)
@@ -299,18 +306,19 @@ func NewApp(db *gorm.DB) *App {
 	authMiddleware := middleware.NewAuthMiddleware(tokenService, userRepo)
 
 	return &App{
-		DB:                          db,
-		IdentityHandlers:            identityHandlers,
-		FinanceHandlers:             financeHandlers,
-		ExportHandlers:              exportHandlers,
-		DashboardHandlers:           dashboardHandlers,
-		NotificationHandlers:        notificationHandlers,
-		FeedbackHandlers:            feedbackHandlers,
-		TicketHandlers:              ticketHandlers,
-		BillingHandlers:             billingHandlers,
-		AuthMiddleware:              authMiddleware,
-		purgeDeletedAccountsUseCase: purgeDeletedAccountsUseCase,
-		cleanupExpiredTokensUseCase: cleanupExpiredTokensUseCase,
+		DB:                             db,
+		IdentityHandlers:               identityHandlers,
+		FinanceHandlers:                financeHandlers,
+		ExportHandlers:                 exportHandlers,
+		DashboardHandlers:              dashboardHandlers,
+		NotificationHandlers:           notificationHandlers,
+		FeedbackHandlers:               feedbackHandlers,
+		TicketHandlers:                 ticketHandlers,
+		BillingHandlers:                billingHandlers,
+		AuthMiddleware:                 authMiddleware,
+		purgeDeletedAccountsUseCase:    purgeDeletedAccountsUseCase,
+		cleanupExpiredTokensUseCase:    cleanupExpiredTokensUseCase,
+		checkGoalDeadlineAlertsUseCase: checkGoalDeadlineAlertsUseCase,
 	}
 }
 
@@ -495,8 +503,16 @@ func (app *App) StartBackgroundJobs(ctx context.Context) {
 			}
 		}
 
+		runGoalDeadlineAlerts := func() {
+			if app.checkGoalDeadlineAlertsUseCase == nil {
+				return
+			}
+			app.checkGoalDeadlineAlertsUseCase.Execute(context.Background())
+		}
+
 		runPurge()
 		runTokenCleanup()
+		runGoalDeadlineAlerts()
 
 		ticker := time.NewTicker(time.Hour)
 		defer ticker.Stop()
@@ -508,6 +524,7 @@ func (app *App) StartBackgroundJobs(ctx context.Context) {
 			case <-ticker.C:
 				runPurge()
 				runTokenCleanup()
+				runGoalDeadlineAlerts()
 			}
 		}
 	}()

@@ -165,7 +165,7 @@ func (uc *CompleteOnboardingUseCase) Execute(ctx context.Context, userID int, re
 		if cerr != nil {
 			return nil, errors.New("unable to load preferences")
 		}
-		prefs = domainIdentity.NewUserPreferences(user, currency.ID().Value(), true, true, true, json.RawMessage("{}"))
+		prefs = domainIdentity.NewUserPreferences(user, currency.ID().Value(), true, true, true, true, json.RawMessage("{}"))
 	}
 
 	if req.PrimaryCurrencyID != nil && *req.PrimaryCurrencyID > 0 {

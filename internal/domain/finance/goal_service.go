@@ -10,6 +10,8 @@ type GoalRepository interface {
 	Save(ctx context.Context, goal *FinancialGoal) error
 	FindByID(ctx context.Context, id GoalID) (*FinancialGoal, error)
 	FindByUserID(ctx context.Context, userID UserID, includeArchived bool) ([]*FinancialGoal, error)
+	FindByWalletID(ctx context.Context, walletID WalletID) ([]*FinancialGoal, error)
+	FindActiveForDeadlineDates(ctx context.Context, dates []time.Time) ([]*FinancialGoal, error)
 	Delete(ctx context.Context, id GoalID, userID UserID) error
 }
 
@@ -29,10 +31,16 @@ func (s *GoalService) CreateGoal(
 	currencyID CurrencyID,
 	currentAmount float64,
 	targetDate time.Time,
+	walletID *WalletID,
 ) (*FinancialGoal, error) {
 	goal, err := NewFinancialGoal(userID, name, targetAmount, currencyID, currentAmount, targetDate)
 	if err != nil {
 		return nil, err
+	}
+	if walletID != nil {
+		if err := goal.LinkWallet(*walletID, currencyID, currentAmount); err != nil {
+			return nil, err
+		}
 	}
 	if err := s.goalRepo.Save(ctx, goal); err != nil {
 		return nil, err
@@ -76,6 +84,18 @@ func (s *GoalService) UpdateGoal(
 		return nil, err
 	}
 	return goal, nil
+}
+
+func (s *GoalService) Save(ctx context.Context, goal *FinancialGoal) error {
+	return s.goalRepo.Save(ctx, goal)
+}
+
+func (s *GoalService) FindByWalletID(ctx context.Context, walletID WalletID) ([]*FinancialGoal, error) {
+	return s.goalRepo.FindByWalletID(ctx, walletID)
+}
+
+func (s *GoalService) FindActiveForDeadlineDates(ctx context.Context, dates []time.Time) ([]*FinancialGoal, error) {
+	return s.goalRepo.FindActiveForDeadlineDates(ctx, dates)
 }
 
 func (s *GoalService) DeleteGoal(ctx context.Context, userID UserID, id GoalID) error {

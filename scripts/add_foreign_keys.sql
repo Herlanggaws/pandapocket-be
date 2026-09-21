@@ -211,6 +211,12 @@ BEGIN
       FOREIGN KEY (currency_id) REFERENCES currencies(id) ON DELETE RESTRICT;
   END IF;
 
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_financial_goals_wallet') THEN
+    ALTER TABLE financial_goals
+      ADD CONSTRAINT fk_financial_goals_wallet
+      FOREIGN KEY (wallet_id) REFERENCES wallets(id) ON DELETE SET NULL;
+  END IF;
+
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_assets_user') THEN
     ALTER TABLE assets
       ADD CONSTRAINT fk_assets_user

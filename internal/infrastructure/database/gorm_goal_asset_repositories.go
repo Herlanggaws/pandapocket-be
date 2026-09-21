@@ -19,6 +19,11 @@ func NewGormGoalRepository(db *gorm.DB) *GormGoalRepository {
 }
 
 func (r *GormGoalRepository) toDomain(model FinancialGoal) *finance.FinancialGoal {
+	var walletID *finance.WalletID
+	if model.WalletID != nil {
+		id := finance.NewWalletID(int(*model.WalletID))
+		walletID = &id
+	}
 	return finance.ReconstituteFinancialGoal(
 		finance.NewGoalID(int(model.ID)),
 		finance.NewUserID(int(model.UserID)),
@@ -28,6 +33,7 @@ func (r *GormGoalRepository) toDomain(model FinancialGoal) *finance.FinancialGoa
 		model.CurrentAmount,
 		model.TargetDate,
 		finance.GoalStatus(model.Status),
+		walletID,
 		model.CreatedAt,
 	)
 }
@@ -42,14 +48,20 @@ func (r *GormGoalRepository) Save(ctx context.Context, goal *finance.FinancialGo
 		TargetDate:    goal.TargetDate(),
 		Status:        string(goal.Status()),
 	}
+	if goal.WalletID() != nil {
+		id := uint(goal.WalletID().Value())
+		model.WalletID = &id
+	}
 	if goal.ID().Value() != 0 {
 		model.ID = uint(goal.ID().Value())
 		return r.db.WithContext(ctx).Model(&FinancialGoal{}).Where("id = ?", model.ID).Updates(map[string]interface{}{
 			"name":           model.Name,
 			"target_amount":  model.TargetAmount,
+			"currency_id":    model.CurrencyID,
 			"current_amount": model.CurrentAmount,
 			"target_date":    model.TargetDate,
 			"status":         model.Status,
+			"wallet_id":      model.WalletID,
 			"updated_at":     time.Now(),
 		}).Error
 	}
@@ -78,6 +90,43 @@ func (r *GormGoalRepository) FindByUserID(ctx context.Context, userID finance.Us
 	}
 	var models []FinancialGoal
 	if err := query.Order("target_date ASC, id DESC").Find(&models).Error; err != nil {
+		return nil, err
+	}
+	result := make([]*finance.FinancialGoal, 0, len(models))
+	for _, m := range models {
+		result = append(result, r.toDomain(m))
+	}
+	return result, nil
+}
+
+func (r *GormGoalRepository) FindByWalletID(ctx context.Context, walletID finance.WalletID) ([]*finance.FinancialGoal, error) {
+	var models []FinancialGoal
+	if err := r.db.WithContext(ctx).
+		Where("wallet_id = ?", walletID.Value()).
+		Order("id ASC").
+		Find(&models).Error; err != nil {
+		return nil, err
+	}
+	result := make([]*finance.FinancialGoal, 0, len(models))
+	for _, m := range models {
+		result = append(result, r.toDomain(m))
+	}
+	return result, nil
+}
+
+func (r *GormGoalRepository) FindActiveForDeadlineDates(ctx context.Context, dates []time.Time) ([]*finance.FinancialGoal, error) {
+	if len(dates) == 0 {
+		return []*finance.FinancialGoal{}, nil
+	}
+	dayStrings := make([]string, 0, len(dates))
+	for _, d := range dates {
+		dayStrings = append(dayStrings, d.Format("2006-01-02"))
+	}
+	var models []FinancialGoal
+	if err := r.db.WithContext(ctx).
+		Where("status = ? AND target_date IN ?", "active", dayStrings).
+		Order("user_id ASC, id ASC").
+		Find(&models).Error; err != nil {
 		return nil, err
 	}
 	result := make([]*finance.FinancialGoal, 0, len(models))

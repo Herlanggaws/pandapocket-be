@@ -18,6 +18,7 @@ type PreferencesResponse struct {
 	EmailNotifications bool            `json:"email_notifications"`
 	BudgetAlerts       bool            `json:"budget_alerts"`
 	RecurringReminders bool            `json:"recurring_reminders"`
+	GoalDeadlineAlerts bool            `json:"goal_deadline_alerts"`
 	Language           string          `json:"language"`
 	Onboarding         json.RawMessage `json:"onboarding"`
 	Goal               interface{}     `json:"goal,omitempty"`
@@ -57,7 +58,7 @@ func (uc *GetPreferencesUseCase) Execute(ctx context.Context, userID int) (*Pref
 		prefs = domainIdentity.NewUserPreferences(
 			domainIdentity.NewUserID(userID),
 			currencyID,
-			true, true, true,
+			true, true, true, true,
 			json.RawMessage("{}"),
 		)
 		if err := uc.prefsRepo.Save(ctx, prefs); err != nil {
@@ -73,6 +74,7 @@ type UpdatePreferencesRequest struct {
 	EmailNotifications  *bool       `json:"email_notifications"`
 	BudgetAlerts        *bool       `json:"budget_alerts"`
 	RecurringReminders  *bool       `json:"recurring_reminders"`
+	GoalDeadlineAlerts  *bool       `json:"goal_deadline_alerts"`
 	Language            *string     `json:"language"`
 	OnboardingCompleted *bool       `json:"onboarding_completed"`
 	Goal                interface{} `json:"goal"`
@@ -122,6 +124,9 @@ func (uc *UpdatePreferencesUseCase) Execute(ctx context.Context, userID int, req
 	}
 	if req.RecurringReminders != nil {
 		prefs.SetRecurringReminders(*req.RecurringReminders)
+	}
+	if req.GoalDeadlineAlerts != nil {
+		prefs.SetGoalDeadlineAlerts(*req.GoalDeadlineAlerts)
 	}
 	if req.Language != nil {
 		prefs.SetLanguage(*req.Language)
@@ -173,6 +178,7 @@ func toPreferencesResponse(prefs *domainIdentity.UserPreferences) *PreferencesRe
 		EmailNotifications: prefs.EmailNotifications(),
 		BudgetAlerts:       prefs.BudgetAlerts(),
 		RecurringReminders: prefs.RecurringReminders(),
+		GoalDeadlineAlerts: prefs.GoalDeadlineAlerts(),
 		Language:           prefs.Language(),
 		Onboarding:         prefs.Onboarding(),
 	}

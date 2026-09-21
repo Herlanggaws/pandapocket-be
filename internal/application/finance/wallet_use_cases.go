@@ -246,14 +246,22 @@ func (uc *SetDefaultWalletUseCase) Execute(ctx context.Context, userID, id int) 
 
 type ArchiveWalletUseCase struct {
 	walletService *finance.WalletService
+	goalService   *finance.GoalService
 }
 
-func NewArchiveWalletUseCase(walletService *finance.WalletService) *ArchiveWalletUseCase {
-	return &ArchiveWalletUseCase{walletService: walletService}
+func NewArchiveWalletUseCase(walletService *finance.WalletService, goalService *finance.GoalService) *ArchiveWalletUseCase {
+	return &ArchiveWalletUseCase{walletService: walletService, goalService: goalService}
 }
 
 func (uc *ArchiveWalletUseCase) Execute(ctx context.Context, userID, id int) (*WalletResponse, error) {
-	wallet, err := uc.walletService.Archive(ctx, finance.NewUserID(userID), finance.NewWalletID(id))
+	user := finance.NewUserID(userID)
+	walletID := finance.NewWalletID(id)
+	if uc.goalService != nil {
+		if err := UnlinkGoalsForWallet(ctx, uc.goalService, uc.walletService, user, walletID); err != nil {
+			return nil, err
+		}
+	}
+	wallet, err := uc.walletService.Archive(ctx, user, walletID)
 	if err != nil {
 		return nil, err
 	}

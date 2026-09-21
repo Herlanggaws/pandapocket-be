@@ -45,6 +45,7 @@ type FinancialGoal struct {
 	currentAmount float64
 	targetDate    time.Time
 	status        GoalStatus
+	walletID      *WalletID
 	createdAt     time.Time
 }
 
@@ -95,6 +96,7 @@ func ReconstituteFinancialGoal(
 	currentAmount float64,
 	targetDate time.Time,
 	status GoalStatus,
+	walletID *WalletID,
 	createdAt time.Time,
 ) *FinancialGoal {
 	return &FinancialGoal{
@@ -106,6 +108,7 @@ func ReconstituteFinancialGoal(
 		currentAmount: currentAmount,
 		targetDate:    targetDate,
 		status:        status,
+		walletID:      walletID,
 		createdAt:     createdAt,
 	}
 }
@@ -128,13 +131,22 @@ func (g *FinancialGoal) Status() GoalStatus {
 	}
 	return g.status
 }
+func (g *FinancialGoal) WalletID() *WalletID { return g.walletID }
 func (g *FinancialGoal) CreatedAt() time.Time { return g.createdAt }
 
+func (g *FinancialGoal) IsLinked() bool {
+	return g.walletID != nil
+}
+
 func (g *FinancialGoal) ProgressPercent() float64 {
-	if g.targetAmount <= 0 {
+	return ProgressPercent(g.currentAmount, g.targetAmount)
+}
+
+func ProgressPercent(currentAmount, targetAmount float64) float64 {
+	if targetAmount <= 0 {
 		return 0
 	}
-	pct := (g.currentAmount / g.targetAmount) * 100
+	pct := (currentAmount / targetAmount) * 100
 	if pct > 100 {
 		return 100
 	}
@@ -177,6 +189,51 @@ func (g *FinancialGoal) Update(
 		g.status = parsed
 	}
 	return nil
+}
+
+func (g *FinancialGoal) LinkWallet(walletID WalletID, currencyID CurrencyID, currentAmount float64) error {
+	if currentAmount < 0 {
+		return errors.New("current amount cannot be negative")
+	}
+	id := walletID
+	g.walletID = &id
+	g.currencyID = currencyID
+	g.currentAmount = currentAmount
+	if g.status != GoalStatusArchived && currentAmount >= g.targetAmount {
+		g.status = GoalStatusCompleted
+	}
+	return nil
+}
+
+func (g *FinancialGoal) UnlinkWallet(freezeAmount float64) error {
+	if freezeAmount < 0 {
+		return errors.New("current amount cannot be negative")
+	}
+	g.walletID = nil
+	g.currentAmount = freezeAmount
+	if g.status != GoalStatusArchived && freezeAmount >= g.targetAmount {
+		g.status = GoalStatusCompleted
+	} else if g.status == GoalStatusCompleted && freezeAmount < g.targetAmount {
+		g.status = GoalStatusActive
+	}
+	return nil
+}
+
+func (g *FinancialGoal) SetCurrentAmount(amount float64) error {
+	if amount < 0 {
+		return errors.New("current amount cannot be negative")
+	}
+	g.currentAmount = amount
+	if g.status != GoalStatusArchived && amount >= g.targetAmount {
+		g.status = GoalStatusCompleted
+	}
+	return nil
+}
+
+func (g *FinancialGoal) MarkCompleted() {
+	if g.status != GoalStatusArchived {
+		g.status = GoalStatusCompleted
+	}
 }
 
 func (g *FinancialGoal) Archive() {

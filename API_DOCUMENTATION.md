@@ -1500,11 +1500,20 @@ Newest-first monthly snapshots. Query `limit` (default 12, max 24).
 
 ## Goals
 
-Savings goals with a required deadline. Progress is manual (`current_amount`). Auto-`completed` when `current_amount >= target_amount`. Currency = user primary on create.
+Savings goals with a required deadline. Progress is **manual** (`current_amount`) by default, or **wallet-linked** when `wallet_id` is set (effective progress = full wallet balance). Auto-`completed` when effective amount ≥ `target_amount`.
+
+- Manual create: currency = user primary.
+- Linked create: currency = wallet currency; `current_amount` in body is ignored.
+- Linked GET responses refresh `current_amount` from wallet balance; may persist `completed` + `goal_completed` notification.
+- Unlink (`wallet_id: null` on PUT): freezes last wallet balance into `current_amount`.
+- Archive wallet: auto-unlinks goals on that wallet (freeze amount).
+- Deadline alerts (in-app `goal_deadline`): D−7 and D−1 for active incomplete goals when `goal_deadline_alerts` pref is on (hourly job).
 
 ### GET /api/goals
 
 Query: `include_archived=true` to include archived goals.
+
+Response goal fields include: `wallet_id`, `wallet_name` (when linked), `progress_source` (`manual` | `wallet`), effective `current_amount` / `progress_percent`.
 
 ### POST /api/goals
 
@@ -1513,9 +1522,12 @@ Query: `include_archived=true` to include archived goals.
   "name": "Emergency fund",
   "target_amount": 10000000,
   "current_amount": 1500000,
-  "target_date": "2026-12-31"
+  "target_date": "2026-12-31",
+  "wallet_id": 3
 }
 ```
+
+`wallet_id` optional. When set, wallet must belong to the user, not archived.
 
 ### GET /api/goals/:id
 
@@ -1527,11 +1539,13 @@ Query: `include_archived=true` to include archived goals.
   "target_amount": 10000000,
   "current_amount": 2000000,
   "target_date": "2026-12-31",
-  "status": "active"
+  "status": "active",
+  "wallet_id": 3
 }
 ```
 
-`status`: `active` | `completed` | `archived`
+`status`: `active` | `completed` | `archived`  
+`wallet_id`: set to link; `null` to unlink (clients should always send this field on edit). Currency must match when linking an existing goal.
 
 ### DELETE /api/goals/:id
 
@@ -1659,7 +1673,7 @@ Returns the authenticated user's preferences. Creates defaults on first access.
 
 Partial update. Accepts any of:
 - `primary_currency_id`
-- `email_notifications`, `budget_alerts`, `recurring_reminders`
+- `email_notifications`, `budget_alerts`, `recurring_reminders`, `goal_deadline_alerts`
 - `language` (`id` | `en`, default `id`)
 - Onboarding fields: `onboarding_completed`, `goal`, `topics`, `cadence`, `start_path`
 
@@ -1676,6 +1690,7 @@ Partial update. Accepts any of:
       "email_notifications": true,
       "budget_alerts": true,
       "recurring_reminders": true,
+      "goal_deadline_alerts": true,
       "language": "id",
       "onboarding": {},
       "onboarding_completed": true
@@ -2213,6 +2228,12 @@ Keep this file in sync with the running API. When routes, request/response shape
 ---
 
 ## Version History
+
+- **v2.23.0**: **Goals wallet link + deadline alerts (C7)**
+  - Optional `wallet_id` on goals; linked progress mirrors wallet balance
+  - Response: `wallet_id`, `wallet_name`, `progress_source`
+  - Pref `goal_deadline_alerts`; in-app `goal_deadline` (D−7/D−1) and `goal_completed`
+  - Archive wallet unlinks linked goals (freeze amount)
 
 - **v2.22.0**: **Primary-currency aggregates + currency_id on recurring/pending**
   - `GET /api/analytics` — sums/breakdowns use primary currency only (no FX); response adds `currency_id`, `excluded_transaction_count`

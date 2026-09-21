@@ -30,6 +30,7 @@ func (r *GormPreferencesRepository) toDomain(model UserPreferences) *identity.Us
 		model.EmailNotifications,
 		model.BudgetAlerts,
 		model.RecurringReminders,
+		model.GoalDeadlineAlerts,
 		model.Language,
 		onboarding,
 		model.CreatedAt,
@@ -49,6 +50,7 @@ func (r *GormPreferencesRepository) Save(ctx context.Context, prefs *identity.Us
 		EmailNotifications: prefs.EmailNotifications(),
 		BudgetAlerts:       prefs.BudgetAlerts(),
 		RecurringReminders: prefs.RecurringReminders(),
+		GoalDeadlineAlerts: prefs.GoalDeadlineAlerts(),
 		Language:           prefs.Language(),
 		Onboarding:         JSONRaw(onboarding),
 	}
@@ -56,12 +58,13 @@ func (r *GormPreferencesRepository) Save(ctx context.Context, prefs *identity.Us
 	if prefs.ID().Value() != 0 {
 		model.ID = uint(prefs.ID().Value())
 		return r.db.WithContext(ctx).Model(&UserPreferences{}).Where("id = ?", model.ID).Updates(map[string]interface{}{
-			"primary_currency_id": model.PrimaryCurrencyID,
-			"email_notifications": model.EmailNotifications,
-			"budget_alerts":       model.BudgetAlerts,
-			"recurring_reminders": model.RecurringReminders,
-			"language":            model.Language,
-			"onboarding":          string(onboarding),
+			"primary_currency_id":  model.PrimaryCurrencyID,
+			"email_notifications":  model.EmailNotifications,
+			"budget_alerts":        model.BudgetAlerts,
+			"recurring_reminders":  model.RecurringReminders,
+			"goal_deadline_alerts": model.GoalDeadlineAlerts,
+			"language":             model.Language,
+			"onboarding":           string(onboarding),
 		}).Error
 	}
 
