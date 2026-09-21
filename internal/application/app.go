@@ -16,6 +16,7 @@ import (
 	domainFinance "panda-pocket/internal/domain/finance"
 	domainIdentity "panda-pocket/internal/domain/identity"
 	"panda-pocket/internal/infrastructure/database"
+	"panda-pocket/internal/infrastructure/doit"
 	"panda-pocket/internal/infrastructure/notification"
 	"panda-pocket/internal/interfaces/http/handlers"
 	"panda-pocket/internal/interfaces/http/middleware"
@@ -27,18 +28,18 @@ import (
 
 // App represents the application with all its dependencies
 type App struct {
-	DB                          *gorm.DB
-	IdentityHandlers            *handlers.IdentityHandlers
-	FinanceHandlers             *handlers.FinanceHandlers
-	ExportHandlers              *handlers.ExportHandlers
-	DashboardHandlers           *handlers.DashboardHandlers
-	NotificationHandlers        *handlers.NotificationHandlers
-	FeedbackHandlers            *handlers.FeedbackHandlers
-	TicketHandlers              *handlers.TicketHandlers
-	BillingHandlers             *handlers.BillingHandlers
-	AuthMiddleware              *middleware.AuthMiddleware
-	purgeDeletedAccountsUseCase *appIdentity.PurgeDeletedAccountsUseCase
-	cleanupExpiredTokensUseCase *appIdentity.CleanupExpiredTokensUseCase
+	DB                             *gorm.DB
+	IdentityHandlers               *handlers.IdentityHandlers
+	FinanceHandlers                *handlers.FinanceHandlers
+	ExportHandlers                 *handlers.ExportHandlers
+	DashboardHandlers              *handlers.DashboardHandlers
+	NotificationHandlers           *handlers.NotificationHandlers
+	FeedbackHandlers               *handlers.FeedbackHandlers
+	TicketHandlers                 *handlers.TicketHandlers
+	BillingHandlers                *handlers.BillingHandlers
+	AuthMiddleware                 *middleware.AuthMiddleware
+	purgeDeletedAccountsUseCase    *appIdentity.PurgeDeletedAccountsUseCase
+	cleanupExpiredTokensUseCase    *appIdentity.CleanupExpiredTokensUseCase
 	checkGoalDeadlineAlertsUseCase *appFinance.CheckGoalDeadlineAlertsUseCase
 }
 
@@ -54,6 +55,7 @@ func NewApp(db *gorm.DB) *App {
 	authTokenRepo := database.NewGormTokenRepository(db)
 	prefsRepo := database.NewGormPreferencesRepository(db)
 	subscriptionRepo := database.NewGormSubscriptionRepository(db)
+	billingWebhookEventRepo := database.NewGormBillingWebhookEventRepository(db)
 	notificationRepo := database.NewGormNotificationRepository(db)
 	feedbackRepo := database.NewGormFeedbackRepository(db)
 	ticketRepo := database.NewGormTicketRepository(db)
@@ -103,7 +105,10 @@ func NewApp(db *gorm.DB) *App {
 	deleteNotificationUseCase := appNotification.NewDeleteNotificationUseCase(notificationRepo)
 	submitFeedbackUseCase := appFeedback.NewSubmitFeedbackUseCase(feedbackRepo)
 	entitlementChecker := entitlement.NewSubscriptionChecker(subscriptionRepo)
+	doitClient := doit.NewClient()
 	getSubscriptionUseCase := appBilling.NewGetSubscriptionUseCase(subscriptionRepo)
+	createCheckoutUseCase := appBilling.NewCreateCheckoutUseCase(doitClient)
+	handleDoitWebhookUseCase := appBilling.NewHandleDoitWebhookUseCase(billingWebhookEventRepo, subscriptionRepo)
 	createTicketUseCase := appTicket.NewCreateTicketUseCase(ticketRepo, entitlementChecker)
 	listTicketsUseCase := appTicket.NewListTicketsUseCase(ticketRepo)
 	getTicketUseCase := appTicket.NewGetTicketUseCase(ticketRepo)
@@ -302,7 +307,7 @@ func NewApp(db *gorm.DB) *App {
 		getAdminTicketUseCase,
 		updateTicketStatusUseCase,
 	)
-	billingHandlers := handlers.NewBillingHandlers(getSubscriptionUseCase)
+	billingHandlers := handlers.NewBillingHandlers(getSubscriptionUseCase, createCheckoutUseCase, handleDoitWebhookUseCase)
 	authMiddleware := middleware.NewAuthMiddleware(tokenService, userRepo)
 
 	return &App{
@@ -423,6 +428,7 @@ func (app *App) SetupRoutes() *gin.Engine {
 			protected.GET("/preferences", app.IdentityHandlers.GetPreferences)
 			protected.PUT("/preferences", app.IdentityHandlers.UpdatePreferences)
 			protected.GET("/me/subscription", app.BillingHandlers.GetSubscription)
+			protected.POST("/billing/checkout", app.BillingHandlers.Checkout)
 			protected.POST("/account/reset/challenge", app.IdentityHandlers.CreateAccountResetChallenge)
 			protected.POST("/account/reset", app.IdentityHandlers.ResetAccountData)
 			protected.POST("/onboarding/complete", app.FinanceHandlers.CompleteOnboarding)
@@ -464,6 +470,7 @@ func (app *App) SetupRoutes() *gin.Engine {
 	r.GET("/health", func(c *gin.Context) {
 		handlers.SuccessResponse(c, http.StatusOK, gin.H{"status": "ok"})
 	})
+	r.POST("/webhooks/doit", app.BillingHandlers.HandleDoitWebhook)
 
 	return r
 }

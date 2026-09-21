@@ -155,3 +155,57 @@ func TestExpireTrialIfNeeded(t *testing.T) {
 		}
 	})
 }
+
+func TestActivatePro(t *testing.T) {
+	now := time.Date(2026, 9, 21, 12, 0, 0, 0, time.UTC)
+
+	t.Run("monthly sets 30 day period", func(t *testing.T) {
+		sub, err := NewFreeSubscription(1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := sub.ActivatePro(IntervalMonthly, now); err != nil {
+			t.Fatal(err)
+		}
+		if sub.Plan() != PlanPro || sub.Status() != StatusActive {
+			t.Fatalf("expected pro/active, got %s/%s", sub.Plan(), sub.Status())
+		}
+		if sub.BillingInterval() == nil || *sub.BillingInterval() != IntervalMonthly {
+			t.Fatal("expected monthly interval")
+		}
+		wantEnd := now.AddDate(0, 0, 30)
+		if sub.CurrentPeriodEnd() == nil || !sub.CurrentPeriodEnd().Equal(wantEnd) {
+			t.Fatalf("period end want %v got %v", wantEnd, sub.CurrentPeriodEnd())
+		}
+		if sub.GraceEndsAt() != nil || sub.CancelAtPeriodEnd() {
+			t.Fatal("grace and cancel flag should be cleared")
+		}
+		if !sub.IsPro(now) {
+			t.Fatal("should be Pro after activate")
+		}
+	})
+
+	t.Run("yearly sets 365 day period", func(t *testing.T) {
+		sub, err := NewFreeSubscription(2)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := sub.ActivatePro(IntervalYearly, now); err != nil {
+			t.Fatal(err)
+		}
+		wantEnd := now.AddDate(0, 0, 365)
+		if sub.CurrentPeriodEnd() == nil || !sub.CurrentPeriodEnd().Equal(wantEnd) {
+			t.Fatalf("period end want %v got %v", wantEnd, sub.CurrentPeriodEnd())
+		}
+	})
+
+	t.Run("rejects bad interval", func(t *testing.T) {
+		sub, err := NewFreeSubscription(3)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := sub.ActivatePro(BillingInterval("weekly"), now); err == nil {
+			t.Fatal("expected error")
+		}
+	})
+}

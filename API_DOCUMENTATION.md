@@ -27,6 +27,7 @@ PandaPocket (product brand: **Berbudget**) is a personal finance management API 
 - **Dashboard**: Admin-only dashboard statistics
 - **Users**: Admin-only user list
 - **Health Check**: Server status (`GET /health`)
+- **Billing**: Subscription status, Doit checkout, Doit webhook
 
 ### 📊 Architecture Overview
 The application follows Domain-Driven Design principles with the following structure:
@@ -58,6 +59,7 @@ CORS currently allows all origins (`*`). Allowed request headers: `Origin`, `Con
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
 | GET | `/health` | No | Health check (outside `/api`) |
+| POST | `/webhooks/doit` | No | Doit payment webhooks (`PayBridge-Signature`) |
 | POST | `/api/auth/register` | No | |
 | POST | `/api/auth/login` | No | |
 | POST | `/api/auth/refresh` | No | Refresh access token |
@@ -99,6 +101,7 @@ CORS currently allows all origins (`*`). Allowed request headers: `Origin`, `Con
 | GET | `/api/net-worth/summary` | Yes | Liquid + assets − liabilities (primary currency) |
 | GET/PUT | `/api/preferences` | Yes | User preferences & onboarding |
 | GET | `/api/me/subscription` | Yes | Current billing subscription + `is_pro` |
+| POST | `/api/billing/checkout` | Yes | Start Doit checkout; returns `hosted_url` (does not unlock Pro) |
 | POST | `/api/account/reset/challenge` | Yes | Issue one-time confirmation string for data reset |
 | POST | `/api/account/reset` | Yes | Wipe user financial data after typing confirmation |
 | POST | `/api/onboarding/complete` | Yes | Finish onboarding; seed pending income/expense + budget/(debt) |
@@ -1728,6 +1731,57 @@ Returns the authenticated user's current subscription. Creates a Free row (`plan
 
 ---
 
+### POST /api/billing/checkout
+
+Authenticated. Creates a Doit one-shot payment and returns the hosted checkout URL. **Does not** set Pro — unlock happens only via `POST /webhooks/doit` on `payment.paid`.
+
+Requires env `DOIT_API_KEY` (and optionally `DOIT_RETURN_URL`).
+
+**Request:**
+```json
+{
+  "interval": "monthly"
+}
+```
+
+`interval`: `monthly` (Rp19.000) or `yearly` (Rp149.000).
+
+**Response:**
+```json
+{
+  "status": "success",
+  "data": {
+    "hosted_url": "https://pay.doit.id/pay/…",
+    "payment_id": "pay_…",
+    "reference": "user:42:monthly"
+  },
+  "error": null
+}
+```
+
+**Errors:** `400 VALIDATION_ERROR` (bad interval); `500 BILLING_NOT_CONFIGURED` / `CHECKOUT_ERROR`.
+
+---
+
+### POST /webhooks/doit
+
+Public (no JWT). Doit sends signed events. Read **raw body** for signature verification.
+
+**Header:** `PayBridge-Signature: t=…,v1=…` (HMAC-SHA256 of `t + "." + rawBody` with `DOIT_WEBHOOK_SECRET`).
+
+| Event | Behavior |
+| --- | --- |
+| `payment.paid` | Activate Pro (`plan=pro`, `status=active`, period +30d/+365d from metadata interval) |
+| `payment.expired` | 200, no entitlement change |
+| `webhook.test` | 200, ignore |
+| Other | 200, ignore |
+
+Dedup by event `id` in `billing_webhook_events`. Duplicate deliveries return **200**. Invalid signature → **401**.
+
+**Response:** empty body with status `200` on success.
+
+---
+
 ## Freemium create gates (billing PR2)
 
 Free users are limited on **create** writes. GET list/read stays open (including data created while Pro).
@@ -2229,6 +2283,11 @@ Keep this file in sync with the running API. When routes, request/response shape
 
 ## Version History
 
+- **v2.24.0**: **Doit checkout + webhook (billing PR4/PR5)**
+  - `POST /api/billing/checkout` — one-shot Doit payment (`monthly`/`yearly`); returns `hosted_url` (no Pro unlock)
+  - `POST /webhooks/doit` — verify `PayBridge-Signature`, dedup events, `payment.paid` → ActivatePro
+  - Env: `DOIT_API_KEY`, `DOIT_WEBHOOK_SECRET`, `DOIT_RETURN_URL`
+
 - **v2.23.0**: **Goals wallet link + deadline alerts (C7)**
   - Optional `wallet_id` on goals; linked progress mirrors wallet balance
   - Response: `wallet_id`, `wallet_name`, `progress_source`
@@ -2255,7 +2314,7 @@ Keep this file in sync with the running API. When routes, request/response shape
   - `403 PREMIUM_REQUIRED` includes optional `feature` / `limit` / `used`
   - Onboarding seed bypasses gates via trusted context (Free users can still complete onboarding)
 - **v2.18.0**: **Subscription schema (billing PR1)**
-  - Tables `subscriptions` + `billing_webhook_events` (webhook handler later)
+  - Tables `subscriptions` + `billing_webhook_events`
   - Register creates subscription row; existing users backfilled Free
   - `GET /api/me/subscription` returns plan/status/period/trial fields + `is_pro`
   - Domain `IsPro(now)`

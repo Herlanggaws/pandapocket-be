@@ -189,6 +189,34 @@ func (s *Subscription) IsPro(now time.Time) bool {
 	return false
 }
 
+const (
+	monthlyPeriodDays = 30
+	yearlyPeriodDays  = 365
+)
+
+// ActivatePro unlocks paid Pro from a verified payment.paid webhook.
+// Period length is +30d (monthly) or +365d (yearly) from paidAt.
+func (s *Subscription) ActivatePro(interval BillingInterval, paidAt time.Time) error {
+	if interval != IntervalMonthly && interval != IntervalYearly {
+		return fmt.Errorf("unsupported billing interval: %s", interval)
+	}
+	paidAt = paidAt.UTC()
+	days := monthlyPeriodDays
+	if interval == IntervalYearly {
+		days = yearlyPeriodDays
+	}
+	periodEnd := paidAt.AddDate(0, 0, days)
+
+	s.plan = PlanPro
+	s.status = StatusActive
+	s.billingInterval = &interval
+	s.currentPeriodEnd = &periodEnd
+	s.graceEndsAt = nil
+	s.cancelAtPeriodEnd = false
+	s.updatedAt = paidAt
+	return nil
+}
+
 type SubscriptionRepository interface {
 	Save(ctx context.Context, sub *Subscription) error
 	FindByUserID(ctx context.Context, userID int) (*Subscription, error)
