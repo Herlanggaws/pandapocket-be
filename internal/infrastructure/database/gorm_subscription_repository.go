@@ -88,3 +88,15 @@ func (r *GormSubscriptionRepository) FindByUserID(ctx context.Context, userID in
 	}
 	return r.toDomain(model), nil
 }
+
+func (r *GormSubscriptionRepository) ListAll(ctx context.Context) ([]*billing.Subscription, error) {
+	var models []Subscription
+	if err := r.db.WithContext(ctx).Find(&models).Error; err != nil {
+		return nil, err
+	}
+	result := make([]*billing.Subscription, 0, len(models))
+	for _, model := range models {
+		result = append(result, r.toDomain(model))
+	}
+	return result, nil
+}

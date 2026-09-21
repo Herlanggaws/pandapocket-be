@@ -16,6 +16,8 @@ const (
 	FreeCustomCategories     = 10
 	FreeActiveBudgets        = 3
 	FreeWallets              = 1
+	FreeAssets               = 1
+	FreeDebts                = 1
 )
 
 const (
@@ -27,6 +29,8 @@ const (
 	FeatureExport       = "export"
 	FeatureWallets      = "wallets"
 	FeatureInsights     = "insights"
+	FeatureAssets       = "assets"
+	FeatureDebts        = "debts"
 )
 
 // Checker decides whether a user may use Pro-only features.

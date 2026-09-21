@@ -3,8 +3,10 @@ package finance
 import (
 	"context"
 	"errors"
-	"panda-pocket/internal/domain/finance"
 	"time"
+
+	"panda-pocket/internal/domain/entitlement"
+	"panda-pocket/internal/domain/finance"
 )
 
 type AssetResponse struct {
@@ -99,14 +101,14 @@ type RecordLiabilityPaymentRequest struct {
 }
 
 type NetWorthSummaryResponse struct {
-	CurrencyID              int     `json:"currency_id"`
-	LiquidNetWorth          float64 `json:"liquid_net_worth"`
-	AssetsTotal             float64 `json:"assets_total"`
-	LiabilitiesTotal        float64 `json:"liabilities_total"`
-	NetWorth                float64 `json:"net_worth"`
-	ExcludedAssetCount      int     `json:"excluded_asset_count"`
-	ExcludedLiabilityCount  int     `json:"excluded_liability_count"`
-	ExcludedWalletCount     int     `json:"excluded_wallet_count"`
+	CurrencyID             int     `json:"currency_id"`
+	LiquidNetWorth         float64 `json:"liquid_net_worth"`
+	AssetsTotal            float64 `json:"assets_total"`
+	LiabilitiesTotal       float64 `json:"liabilities_total"`
+	NetWorth               float64 `json:"net_worth"`
+	ExcludedAssetCount     int     `json:"excluded_asset_count"`
+	ExcludedLiabilityCount int     `json:"excluded_liability_count"`
+	ExcludedWalletCount    int     `json:"excluded_wallet_count"`
 }
 
 func parseOptionalDate(value *string) (*time.Time, error) {
@@ -187,13 +189,27 @@ func debtDetailsFromRequest(original *float64, apr *float64, minimum float64, ne
 	}, nil
 }
 
-type CreateAssetUseCase struct{ assetService *finance.AssetService }
+type CreateAssetUseCase struct {
+	assetService *finance.AssetService
+	entitlement  entitlement.Checker
+}
 
-func NewCreateAssetUseCase(s *finance.AssetService) *CreateAssetUseCase {
-	return &CreateAssetUseCase{assetService: s}
+func NewCreateAssetUseCase(s *finance.AssetService, checker entitlement.Checker) *CreateAssetUseCase {
+	return &CreateAssetUseCase{assetService: s, entitlement: checker}
 }
 
 func (uc *CreateAssetUseCase) Execute(ctx context.Context, userID int, req CreateAssetRequest) (*AssetResponse, error) {
+	existing, err := uc.assetService.List(ctx, finance.NewUserID(userID), false)
+	if err != nil {
+		return nil, err
+	}
+	if err := entitlement.EnforceCreateLimit(
+		ctx, uc.entitlement, userID,
+		entitlement.FeatureAssets, len(existing), entitlement.FreeAssets,
+	); err != nil {
+		return nil, err
+	}
+
 	assetType, err := finance.ParseAssetType(req.Type)
 	if err != nil {
 		return nil, err
@@ -299,13 +315,27 @@ func (uc *UnarchiveAssetUseCase) Execute(ctx context.Context, userID, id int) (*
 	return &resp, nil
 }
 
-type CreateLiabilityUseCase struct{ liabilityService *finance.LiabilityService }
+type CreateLiabilityUseCase struct {
+	liabilityService *finance.LiabilityService
+	entitlement      entitlement.Checker
+}
 
-func NewCreateLiabilityUseCase(s *finance.LiabilityService) *CreateLiabilityUseCase {
-	return &CreateLiabilityUseCase{liabilityService: s}
+func NewCreateLiabilityUseCase(s *finance.LiabilityService, checker entitlement.Checker) *CreateLiabilityUseCase {
+	return &CreateLiabilityUseCase{liabilityService: s, entitlement: checker}
 }
 
 func (uc *CreateLiabilityUseCase) Execute(ctx context.Context, userID int, req CreateLiabilityRequest) (*LiabilityResponse, error) {
+	existing, err := uc.liabilityService.List(ctx, finance.NewUserID(userID), false)
+	if err != nil {
+		return nil, err
+	}
+	if err := entitlement.EnforceCreateLimit(
+		ctx, uc.entitlement, userID,
+		entitlement.FeatureDebts, len(existing), entitlement.FreeDebts,
+	); err != nil {
+		return nil, err
+	}
+
 	liabilityType, err := finance.ParseLiabilityType(req.Type)
 	if err != nil {
 		return nil, err
@@ -516,9 +546,9 @@ func (uc *ListLiabilityPaymentsUseCase) Execute(ctx context.Context, userID, lia
 }
 
 type RecordLiabilityPaymentUseCase struct {
-	liabilityService       *finance.LiabilityService
+	liabilityService         *finance.LiabilityService
 	createTransactionUseCase *CreateTransactionUseCase
-	categoryService        *finance.CategoryService
+	categoryService          *finance.CategoryService
 }
 
 func NewRecordLiabilityPaymentUseCase(

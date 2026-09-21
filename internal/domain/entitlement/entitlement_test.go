@@ -26,6 +26,14 @@ func (r *memSubRepo) FindByUserID(_ context.Context, userID int) (*billing.Subsc
 	return sub, nil
 }
 
+func (r *memSubRepo) ListAll(_ context.Context) ([]*billing.Subscription, error) {
+	out := make([]*billing.Subscription, 0, len(r.byUser))
+	for _, sub := range r.byUser {
+		out = append(out, sub)
+	}
+	return out, nil
+}
+
 func TestCheckFreeLimit(t *testing.T) {
 	if err := CheckFreeLimit(FeatureBudgets, 2, 3); err != nil {
 		t.Fatalf("expected under limit ok, got %v", err)
@@ -68,6 +76,12 @@ func TestEnforceCreateLimit(t *testing.T) {
 	}
 	if err := EnforceCreateLimit(ctx, StaticChecker{Pro: true}, 1, FeatureWallets, 5, FreeWallets); err != nil {
 		t.Fatalf("pro should skip wallet limits: %v", err)
+	}
+	if err := EnforceCreateLimit(ctx, StaticChecker{Pro: false}, 1, FeatureAssets, 1, FreeAssets); err == nil {
+		t.Fatal("free at assets limit should fail")
+	}
+	if err := EnforceCreateLimit(ctx, StaticChecker{Pro: false}, 1, FeatureDebts, 1, FreeDebts); err == nil {
+		t.Fatal("free at debts limit should fail")
 	}
 	bypassCtx := WithEntitlementBypass(ctx)
 	if err := EnforceCreateLimit(bypassCtx, StaticChecker{Pro: false}, 1, FeatureRecurring, 0, 0); err != nil {

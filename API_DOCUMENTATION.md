@@ -102,6 +102,7 @@ CORS currently allows all origins (`*`). Allowed request headers: `Origin`, `Con
 | GET/PUT | `/api/preferences` | Yes | User preferences & onboarding |
 | GET | `/api/me/subscription` | Yes | Current billing subscription + `is_pro` |
 | POST | `/api/billing/checkout` | Yes | Start Doit checkout; returns `hosted_url` (does not unlock Pro) |
+| POST | `/api/billing/cancel` | Yes | Schedule cancel at period end |
 | POST | `/api/account/reset/challenge` | Yes | Issue one-time confirmation string for data reset |
 | POST | `/api/account/reset` | Yes | Wipe user financial data after typing confirmation |
 | POST | `/api/onboarding/complete` | Yes | Finish onboarding; seed pending income/expense + budget/(debt) |
@@ -1558,6 +1559,8 @@ Response goal fields include: `wallet_id`, `wallet_name` (when linked), `progres
 
 Manual balance-sheet positions (no market feeds). Wallets remain liquid assets.
 
+**Free limits:** max **1** non-archived asset and **1** non-archived liability. Extra creates → **403** `PREMIUM_REQUIRED` (`feature`: `assets` / `debts`). GET list + net-worth summary stay open.
+
 ### Assets
 
 `type`: `property` | `vehicle` | `investment` | `other`
@@ -1581,7 +1584,7 @@ Create/update body fields:
 
 Response extras:
 - `payoff_progress_percent` when `original_principal` is set
-- `estimated_months_remaining` when `minimum_payment > 0` and balance remains
+- `estimated_months_remaining` when `minimum_payment > 0` and balance remains (zero APR: `ceil(balance/payment)`; with APR: standard amortizing formula; `null` if payment ≤ first-month interest)
 
 - `GET/POST /api/liabilities`
 - `PUT /api/liabilities/:id`
@@ -1744,7 +1747,7 @@ Requires env `DOIT_API_KEY` (and optionally `DOIT_RETURN_URL`).
 }
 ```
 
-`interval`: `monthly` (Rp19.000) or `yearly` (Rp149.000).
+`interval`: `monthly` (Rp19.000) or `yearly` (Rp149.000). Monthly→Yearly mid-cycle is allowed: pay full yearly (no prorate); new period starts from payment date (+365d).
 
 **Response:**
 ```json
@@ -1760,6 +1763,16 @@ Requires env `DOIT_API_KEY` (and optionally `DOIT_RETURN_URL`).
 ```
 
 **Errors:** `400 VALIDATION_ERROR` (bad interval); `500 BILLING_NOT_CONFIGURED` / `CHECKOUT_ERROR`.
+
+---
+
+### POST /api/billing/cancel
+
+Authenticated. Schedules Pro cancellation at period end (`cancel_at_period_end=true`). User keeps Pro until `current_period_end`. Hourly billing job then downgrades to Free.
+
+**Response:** same shape as `GET /api/me/subscription` (`subscription` object).
+
+**Errors:** `400` if not on a cancelable paid Pro period; `404` if no subscription.
 
 ---
 
@@ -1794,6 +1807,9 @@ Free users are limited on **create** writes. GET list/read stays open (including
 | Create recurring | blocked | Unlimited |
 | Create support ticket | blocked | Allowed |
 | Export transactions | blocked | Allowed |
+| Create wallet (non-archived) | max **1** | Unlimited |
+| Create asset (non-archived) | max **1** | Unlimited |
+| Create liability / debt (non-archived) | max **1** | Unlimited |
 
 Over limit / Pro-only → **403** with:
 
@@ -1811,7 +1827,7 @@ Over limit / Pro-only → **403** with:
 }
 ```
 
-`feature` values: `transactions`, `categories`, `budgets`, `recurring`, `tickets`, `export`.
+`feature` values: `transactions`, `categories`, `budgets`, `recurring`, `tickets`, `export`, `wallets`, `assets`, `debts`.
 
 ---
 
@@ -2283,6 +2299,11 @@ Keep this file in sync with the running API. When routes, request/response shape
 
 ## Version History
 
+- **v2.25.0**: **Billing cancel/dunning + Free asset/debt gates**
+  - `POST /api/billing/cancel` — schedule cancel at period end
+  - Hourly job: expire trial/`past_due` grace / canceled period → Free
+  - `POST /api/assets`, `POST /api/liabilities` — Free max 1 non-archived each (`feature`: `assets` / `debts`)
+  - Liability `estimated_months_remaining` uses APR amortization when APR > 0
 - **v2.24.0**: **Doit checkout + webhook (billing PR4/PR5)**
   - `POST /api/billing/checkout` — one-shot Doit payment (`monthly`/`yearly`); returns `hosted_url` (no Pro unlock)
   - `POST /webhooks/doit` — verify `PayBridge-Signature`, dedup events, `payment.paid` → ActivatePro

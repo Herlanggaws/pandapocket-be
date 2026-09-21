@@ -12,20 +12,23 @@ import (
 )
 
 type BillingHandlers struct {
-	getSubscriptionUseCase   *appBilling.GetSubscriptionUseCase
-	createCheckoutUseCase    *appBilling.CreateCheckoutUseCase
-	handleDoitWebhookUseCase *appBilling.HandleDoitWebhookUseCase
+	getSubscriptionUseCase    *appBilling.GetSubscriptionUseCase
+	createCheckoutUseCase     *appBilling.CreateCheckoutUseCase
+	handleDoitWebhookUseCase  *appBilling.HandleDoitWebhookUseCase
+	cancelSubscriptionUseCase *appBilling.CancelSubscriptionUseCase
 }
 
 func NewBillingHandlers(
 	getSubscriptionUseCase *appBilling.GetSubscriptionUseCase,
 	createCheckoutUseCase *appBilling.CreateCheckoutUseCase,
 	handleDoitWebhookUseCase *appBilling.HandleDoitWebhookUseCase,
+	cancelSubscriptionUseCase *appBilling.CancelSubscriptionUseCase,
 ) *BillingHandlers {
 	return &BillingHandlers{
-		getSubscriptionUseCase:   getSubscriptionUseCase,
-		createCheckoutUseCase:    createCheckoutUseCase,
-		handleDoitWebhookUseCase: handleDoitWebhookUseCase,
+		getSubscriptionUseCase:    getSubscriptionUseCase,
+		createCheckoutUseCase:     createCheckoutUseCase,
+		handleDoitWebhookUseCase:  handleDoitWebhookUseCase,
+		cancelSubscriptionUseCase: cancelSubscriptionUseCase,
 	}
 }
 
@@ -67,6 +70,21 @@ func (h *BillingHandlers) Checkout(c *gin.Context) {
 		"payment_id": response.PaymentID,
 		"reference":  response.Reference,
 	})
+}
+
+func (h *BillingHandlers) CancelSubscription(c *gin.Context) {
+	userID := c.GetInt("user_id")
+	response, err := h.cancelSubscriptionUseCase.Execute(c.Request.Context(), userID)
+	if err != nil {
+		msg := err.Error()
+		if strings.Contains(msg, "no active") {
+			ValidationErrorResponse(c, msg)
+			return
+		}
+		InternalServerErrorResponse(c, "CANCEL_SUBSCRIPTION_ERROR", "Failed to cancel subscription")
+		return
+	}
+	SuccessResponse(c, http.StatusOK, gin.H{"subscription": response})
 }
 
 func (h *BillingHandlers) HandleDoitWebhook(c *gin.Context) {

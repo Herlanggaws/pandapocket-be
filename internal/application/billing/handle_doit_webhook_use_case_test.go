@@ -46,6 +46,14 @@ func (m *memorySubs) FindByUserID(_ context.Context, userID int) (*domainBilling
 	return nil, domainBilling.ErrNotFound
 }
 
+func (m *memorySubs) ListAll(_ context.Context) ([]*domainBilling.Subscription, error) {
+	out := make([]*domainBilling.Subscription, 0, len(m.byUser))
+	for _, sub := range m.byUser {
+		out = append(out, sub)
+	}
+	return out, nil
+}
+
 func signBody(secret string, body []byte) string {
 	ts := "1755612912"
 	mac := hmac.New(sha256.New, []byte(secret))

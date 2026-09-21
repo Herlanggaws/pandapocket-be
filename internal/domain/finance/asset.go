@@ -2,6 +2,7 @@ package finance
 
 import (
 	"errors"
+	"math"
 	"time"
 )
 
@@ -338,7 +339,31 @@ func (l *Liability) EstimatedMonthsRemaining() *int {
 	if l.minimumPayment <= 0 || l.currentBalance <= 0 {
 		return nil
 	}
-	months := int((l.currentBalance + l.minimumPayment - 1e-9) / l.minimumPayment)
+
+	apr := 0.0
+	if l.interestRateAPR != nil && *l.interestRateAPR > 0 {
+		apr = *l.interestRateAPR
+	}
+
+	// Zero APR: classic ceil(balance / payment).
+	if apr == 0 {
+		months := int((l.currentBalance + l.minimumPayment - 1e-9) / l.minimumPayment)
+		if months < 1 {
+			months = 1
+		}
+		return &months
+	}
+
+	monthlyRate := apr / 100 / 12
+	interestFirst := l.currentBalance * monthlyRate
+	if l.minimumPayment <= interestFirst {
+		return nil
+	}
+
+	// n = log(P / (P - r*B)) / log(1+r) for standard amortizing loan.
+	ratio := l.minimumPayment / (l.minimumPayment - interestFirst)
+	monthsFloat := math.Log(ratio) / math.Log(1+monthlyRate)
+	months := int(math.Ceil(monthsFloat - 1e-9))
 	if months < 1 {
 		months = 1
 	}

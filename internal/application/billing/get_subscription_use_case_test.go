@@ -34,6 +34,14 @@ func (r *memSubscriptionRepo) FindByUserID(_ context.Context, userID int) (*doma
 	return sub, nil
 }
 
+func (r *memSubscriptionRepo) ListAll(_ context.Context) ([]*domainBilling.Subscription, error) {
+	out := make([]*domainBilling.Subscription, 0, len(r.byUser))
+	for _, sub := range r.byUser {
+		out = append(out, sub)
+	}
+	return out, nil
+}
+
 func TestGetSubscriptionCreatesFreeWhenMissing(t *testing.T) {
 	repo := newMemSubscriptionRepo()
 	uc := NewGetSubscriptionUseCase(repo)

@@ -175,23 +175,10 @@ func (s *Subscription) ExpireTrialIfNeeded(now time.Time) bool {
 	return true
 }
 
-// IsPro returns true when the user currently has Pro entitlement.
-func (s *Subscription) IsPro(now time.Time) bool {
-	if s.trialEndsAt != nil && s.trialEndsAt.After(now) {
-		return true
-	}
-	if s.status == StatusActive && s.currentPeriodEnd != nil && s.currentPeriodEnd.After(now) {
-		return true
-	}
-	if s.status == StatusPastDue && s.graceEndsAt != nil && s.graceEndsAt.After(now) {
-		return true
-	}
-	return false
-}
-
 const (
 	monthlyPeriodDays = 30
 	yearlyPeriodDays  = 365
+	GraceDurationDays = 7
 )
 
 // ActivatePro unlocks paid Pro from a verified payment.paid webhook.
@@ -217,7 +204,88 @@ func (s *Subscription) ActivatePro(interval BillingInterval, paidAt time.Time) e
 	return nil
 }
 
+// ScheduleCancelAtPeriodEnd keeps Pro until current_period_end, then Free.
+func (s *Subscription) ScheduleCancelAtPeriodEnd(now time.Time) error {
+	if !s.IsPro(now) {
+		return errors.New("no active Pro subscription to cancel")
+	}
+	if s.currentPeriodEnd == nil || !s.currentPeriodEnd.After(now) {
+		return errors.New("no active billing period to cancel")
+	}
+	s.cancelAtPeriodEnd = true
+	s.status = StatusCanceled
+	s.updatedAt = now.UTC()
+	return nil
+}
+
+// MarkPastDue starts a 7-day grace window after an unpaid period end.
+func (s *Subscription) MarkPastDue(now time.Time) {
+	now = now.UTC()
+	graceEnd := now.AddDate(0, 0, GraceDurationDays)
+	s.status = StatusPastDue
+	s.plan = PlanPro
+	s.graceEndsAt = &graceEnd
+	s.cancelAtPeriodEnd = false
+	s.updatedAt = now
+}
+
+// DowngradeToFree clears paid entitlement (data retained).
+func (s *Subscription) DowngradeToFree(now time.Time) {
+	now = now.UTC()
+	s.plan = PlanFree
+	s.status = StatusExpired
+	s.graceEndsAt = nil
+	s.cancelAtPeriodEnd = false
+	s.updatedAt = now
+}
+
+// ApplyBillingTransitions mutates subscription for trial expiry, cancel end, past_due, and grace end.
+// Returns true when the row should be saved.
+func (s *Subscription) ApplyBillingTransitions(now time.Time) bool {
+	now = now.UTC()
+	changed := s.ExpireTrialIfNeeded(now)
+
+	if s.cancelAtPeriodEnd && s.currentPeriodEnd != nil && !s.currentPeriodEnd.After(now) {
+		s.DowngradeToFree(now)
+		return true
+	}
+
+	if s.status == StatusActive && s.currentPeriodEnd != nil && !s.currentPeriodEnd.After(now) {
+		s.MarkPastDue(now)
+		return true
+	}
+
+	if s.status == StatusCanceled && s.currentPeriodEnd != nil && !s.currentPeriodEnd.After(now) {
+		s.DowngradeToFree(now)
+		return true
+	}
+
+	if s.status == StatusPastDue && s.graceEndsAt != nil && !s.graceEndsAt.After(now) {
+		s.DowngradeToFree(now)
+		return true
+	}
+
+	return changed
+}
+
+// IsPro returns true when the user currently has Pro entitlement.
+func (s *Subscription) IsPro(now time.Time) bool {
+	if s.trialEndsAt != nil && s.trialEndsAt.After(now) {
+		return true
+	}
+	if s.currentPeriodEnd != nil && s.currentPeriodEnd.After(now) {
+		if s.status == StatusActive || s.status == StatusCanceled {
+			return true
+		}
+	}
+	if s.status == StatusPastDue && s.graceEndsAt != nil && s.graceEndsAt.After(now) {
+		return true
+	}
+	return false
+}
+
 type SubscriptionRepository interface {
 	Save(ctx context.Context, sub *Subscription) error
 	FindByUserID(ctx context.Context, userID int) (*Subscription, error)
+	ListAll(ctx context.Context) ([]*Subscription, error)
 }

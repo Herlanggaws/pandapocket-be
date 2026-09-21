@@ -28,19 +28,20 @@ import (
 
 // App represents the application with all its dependencies
 type App struct {
-	DB                             *gorm.DB
-	IdentityHandlers               *handlers.IdentityHandlers
-	FinanceHandlers                *handlers.FinanceHandlers
-	ExportHandlers                 *handlers.ExportHandlers
-	DashboardHandlers              *handlers.DashboardHandlers
-	NotificationHandlers           *handlers.NotificationHandlers
-	FeedbackHandlers               *handlers.FeedbackHandlers
-	TicketHandlers                 *handlers.TicketHandlers
-	BillingHandlers                *handlers.BillingHandlers
-	AuthMiddleware                 *middleware.AuthMiddleware
-	purgeDeletedAccountsUseCase    *appIdentity.PurgeDeletedAccountsUseCase
-	cleanupExpiredTokensUseCase    *appIdentity.CleanupExpiredTokensUseCase
-	checkGoalDeadlineAlertsUseCase *appFinance.CheckGoalDeadlineAlertsUseCase
+	DB                                 *gorm.DB
+	IdentityHandlers                   *handlers.IdentityHandlers
+	FinanceHandlers                    *handlers.FinanceHandlers
+	ExportHandlers                     *handlers.ExportHandlers
+	DashboardHandlers                  *handlers.DashboardHandlers
+	NotificationHandlers               *handlers.NotificationHandlers
+	FeedbackHandlers                   *handlers.FeedbackHandlers
+	TicketHandlers                     *handlers.TicketHandlers
+	BillingHandlers                    *handlers.BillingHandlers
+	AuthMiddleware                     *middleware.AuthMiddleware
+	purgeDeletedAccountsUseCase        *appIdentity.PurgeDeletedAccountsUseCase
+	cleanupExpiredTokensUseCase        *appIdentity.CleanupExpiredTokensUseCase
+	checkGoalDeadlineAlertsUseCase     *appFinance.CheckGoalDeadlineAlertsUseCase
+	processBillingSubscriptionsUseCase *appBilling.ProcessBillingSubscriptionsUseCase
 }
 
 // NewApp creates a new application instance with all dependencies wired up
@@ -109,6 +110,8 @@ func NewApp(db *gorm.DB) *App {
 	getSubscriptionUseCase := appBilling.NewGetSubscriptionUseCase(subscriptionRepo)
 	createCheckoutUseCase := appBilling.NewCreateCheckoutUseCase(doitClient)
 	handleDoitWebhookUseCase := appBilling.NewHandleDoitWebhookUseCase(billingWebhookEventRepo, subscriptionRepo)
+	cancelSubscriptionUseCase := appBilling.NewCancelSubscriptionUseCase(subscriptionRepo)
+	processBillingSubscriptionsUseCase := appBilling.NewProcessBillingSubscriptionsUseCase(subscriptionRepo)
 	createTicketUseCase := appTicket.NewCreateTicketUseCase(ticketRepo, entitlementChecker)
 	listTicketsUseCase := appTicket.NewListTicketsUseCase(ticketRepo)
 	getTicketUseCase := appTicket.NewGetTicketUseCase(ticketRepo)
@@ -187,12 +190,12 @@ func NewApp(db *gorm.DB) *App {
 		prefsRepo,
 		notificationHelper,
 	)
-	createAssetUseCase := appFinance.NewCreateAssetUseCase(assetService)
+	createAssetUseCase := appFinance.NewCreateAssetUseCase(assetService, entitlementChecker)
 	getAssetsUseCase := appFinance.NewGetAssetsUseCase(assetService)
 	updateAssetUseCase := appFinance.NewUpdateAssetUseCase(assetService)
 	archiveAssetUseCase := appFinance.NewArchiveAssetUseCase(assetService)
 	unarchiveAssetUseCase := appFinance.NewUnarchiveAssetUseCase(assetService)
-	createLiabilityUseCase := appFinance.NewCreateLiabilityUseCase(liabilityService)
+	createLiabilityUseCase := appFinance.NewCreateLiabilityUseCase(liabilityService, entitlementChecker)
 	getLiabilitiesUseCase := appFinance.NewGetLiabilitiesUseCase(liabilityService)
 	updateLiabilityUseCase := appFinance.NewUpdateLiabilityUseCase(liabilityService)
 	archiveLiabilityUseCase := appFinance.NewArchiveLiabilityUseCase(liabilityService)
@@ -307,23 +310,29 @@ func NewApp(db *gorm.DB) *App {
 		getAdminTicketUseCase,
 		updateTicketStatusUseCase,
 	)
-	billingHandlers := handlers.NewBillingHandlers(getSubscriptionUseCase, createCheckoutUseCase, handleDoitWebhookUseCase)
+	billingHandlers := handlers.NewBillingHandlers(
+		getSubscriptionUseCase,
+		createCheckoutUseCase,
+		handleDoitWebhookUseCase,
+		cancelSubscriptionUseCase,
+	)
 	authMiddleware := middleware.NewAuthMiddleware(tokenService, userRepo)
 
 	return &App{
-		DB:                             db,
-		IdentityHandlers:               identityHandlers,
-		FinanceHandlers:                financeHandlers,
-		ExportHandlers:                 exportHandlers,
-		DashboardHandlers:              dashboardHandlers,
-		NotificationHandlers:           notificationHandlers,
-		FeedbackHandlers:               feedbackHandlers,
-		TicketHandlers:                 ticketHandlers,
-		BillingHandlers:                billingHandlers,
-		AuthMiddleware:                 authMiddleware,
-		purgeDeletedAccountsUseCase:    purgeDeletedAccountsUseCase,
-		cleanupExpiredTokensUseCase:    cleanupExpiredTokensUseCase,
-		checkGoalDeadlineAlertsUseCase: checkGoalDeadlineAlertsUseCase,
+		DB:                                 db,
+		IdentityHandlers:                   identityHandlers,
+		FinanceHandlers:                    financeHandlers,
+		ExportHandlers:                     exportHandlers,
+		DashboardHandlers:                  dashboardHandlers,
+		NotificationHandlers:               notificationHandlers,
+		FeedbackHandlers:                   feedbackHandlers,
+		TicketHandlers:                     ticketHandlers,
+		BillingHandlers:                    billingHandlers,
+		AuthMiddleware:                     authMiddleware,
+		purgeDeletedAccountsUseCase:        purgeDeletedAccountsUseCase,
+		cleanupExpiredTokensUseCase:        cleanupExpiredTokensUseCase,
+		checkGoalDeadlineAlertsUseCase:     checkGoalDeadlineAlertsUseCase,
+		processBillingSubscriptionsUseCase: processBillingSubscriptionsUseCase,
 	}
 }
 
@@ -429,6 +438,7 @@ func (app *App) SetupRoutes() *gin.Engine {
 			protected.PUT("/preferences", app.IdentityHandlers.UpdatePreferences)
 			protected.GET("/me/subscription", app.BillingHandlers.GetSubscription)
 			protected.POST("/billing/checkout", app.BillingHandlers.Checkout)
+			protected.POST("/billing/cancel", app.BillingHandlers.CancelSubscription)
 			protected.POST("/account/reset/challenge", app.IdentityHandlers.CreateAccountResetChallenge)
 			protected.POST("/account/reset", app.IdentityHandlers.ResetAccountData)
 			protected.POST("/onboarding/complete", app.FinanceHandlers.CompleteOnboarding)
@@ -517,9 +527,24 @@ func (app *App) StartBackgroundJobs(ctx context.Context) {
 			app.checkGoalDeadlineAlertsUseCase.Execute(context.Background())
 		}
 
+		runBillingMaintenance := func() {
+			if app.processBillingSubscriptionsUseCase == nil {
+				return
+			}
+			updated, err := app.processBillingSubscriptionsUseCase.Execute(context.Background())
+			if err != nil {
+				log.Printf("billing maintenance job failed: %v", err)
+				return
+			}
+			if updated > 0 {
+				log.Printf("billing maintenance job updated %d subscription(s)", updated)
+			}
+		}
+
 		runPurge()
 		runTokenCleanup()
 		runGoalDeadlineAlerts()
+		runBillingMaintenance()
 
 		ticker := time.NewTicker(time.Hour)
 		defer ticker.Stop()
@@ -532,6 +557,7 @@ func (app *App) StartBackgroundJobs(ctx context.Context) {
 				runPurge()
 				runTokenCleanup()
 				runGoalDeadlineAlerts()
+				runBillingMaintenance()
 			}
 		}
 	}()
