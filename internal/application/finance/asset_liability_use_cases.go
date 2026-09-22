@@ -627,6 +627,9 @@ func (uc *RecordLiabilityPaymentUseCase) Execute(
 		if txErr != nil {
 			return nil, txErr
 		}
+		if tx.ID == 0 {
+			return nil, errors.New("created expense is missing id")
+		}
 		id := tx.ID
 		expenseID = &id
 	}

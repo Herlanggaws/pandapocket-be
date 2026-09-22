@@ -148,6 +148,10 @@ func NewTransaction(
 	}
 }
 
+func (t *Transaction) AssignID(id TransactionID) {
+	t.id = id
+}
+
 // Getters
 func (t *Transaction) ID() TransactionID {
 	return t.id

@@ -65,6 +65,13 @@ func (r *GormTransactionRepository) Save(ctx context.Context, transaction *finan
 		return err
 	}
 
+	switch model := transactionModel.(type) {
+	case *Expense:
+		transaction.AssignID(finance.NewTransactionID(int(model.ID)))
+	case *Income:
+		transaction.AssignID(finance.NewTransactionID(int(model.ID)))
+	}
+
 	return nil
 }
 
