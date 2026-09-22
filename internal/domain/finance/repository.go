@@ -34,6 +34,7 @@ type TransactionRepository interface {
 	FindByUserIDAndCategory(ctx context.Context, userID UserID, categoryID CategoryID) ([]*Transaction, error)
 	FindByUserIDWithFilters(ctx context.Context, userID UserID, filters TransactionFilters) ([]*Transaction, int64, error)
 	Delete(ctx context.Context, id TransactionID) error
+	DeleteByIDAndType(ctx context.Context, id TransactionID, transactionType TransactionType) error
 	// Dashboard stats methods
 	GetTotalCount(ctx context.Context) (int, error)
 	GetTotalExpenses(ctx context.Context) (float64, error)

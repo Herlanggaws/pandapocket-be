@@ -192,6 +192,23 @@ func (r *GormTransactionRepository) Delete(ctx context.Context, id finance.Trans
 	return result.Error
 }
 
+// DeleteByIDAndType deletes a transaction from the table matching transactionType
+func (r *GormTransactionRepository) DeleteByIDAndType(ctx context.Context, id finance.TransactionID, transactionType finance.TransactionType) error {
+	var result *gorm.DB
+	if transactionType == finance.TransactionTypeExpense {
+		result = r.db.WithContext(ctx).Delete(&Expense{}, id.Value())
+	} else {
+		result = r.db.WithContext(ctx).Delete(&Income{}, id.Value())
+	}
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
 // ExistsByID checks if a transaction exists with the given ID
 func (r *GormTransactionRepository) ExistsByID(ctx context.Context, id finance.TransactionID) (bool, error) {
 	var count int64

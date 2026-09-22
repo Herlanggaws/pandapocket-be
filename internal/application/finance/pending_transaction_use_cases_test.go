@@ -190,6 +190,9 @@ func (r *memTxRepo) FindByUserIDWithFilters(ctx context.Context, userID domainFi
 func (r *memTxRepo) Delete(ctx context.Context, id domainFinance.TransactionID) error {
 	return nil
 }
+func (r *memTxRepo) DeleteByIDAndType(ctx context.Context, id domainFinance.TransactionID, transactionType domainFinance.TransactionType) error {
+	return nil
+}
 func (r *memTxRepo) GetTotalCount(ctx context.Context) (int, error)        { return 0, nil }
 func (r *memTxRepo) GetTotalExpenses(ctx context.Context) (float64, error) { return 0, nil }
 func (r *memTxRepo) GetTotalIncome(ctx context.Context) (float64, error)   { return 0, nil }

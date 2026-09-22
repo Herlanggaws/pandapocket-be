@@ -18,18 +18,15 @@ func NewDeleteTransactionUseCase(transactionService *finance.TransactionService)
 	}
 }
 
-// Execute deletes a transaction
-func (uc *DeleteTransactionUseCase) Execute(ctx context.Context, transactionIDStr string, userID int) error {
-	// Parse transaction ID
+// Execute deletes a transaction of the expected type
+func (uc *DeleteTransactionUseCase) Execute(ctx context.Context, transactionIDStr string, userID int, expectedType finance.TransactionType) error {
 	transactionIDInt, err := strconv.Atoi(transactionIDStr)
 	if err != nil {
 		return err
 	}
 
-	// Convert to domain types
 	transactionID := finance.NewTransactionID(transactionIDInt)
 	userIDDomain := finance.NewUserID(userID)
 
-	// Delete transaction
-	return uc.transactionService.DeleteTransaction(ctx, transactionID, userIDDomain)
+	return uc.transactionService.DeleteTransaction(ctx, transactionID, userIDDomain, expectedType)
 }

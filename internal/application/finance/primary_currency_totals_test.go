@@ -37,6 +37,9 @@ func (r *analyticsTxRepo) FindByUserIDWithFilters(ctx context.Context, userID do
 func (r *analyticsTxRepo) Delete(ctx context.Context, id domainFinance.TransactionID) error {
 	return nil
 }
+func (r *analyticsTxRepo) DeleteByIDAndType(ctx context.Context, id domainFinance.TransactionID, transactionType domainFinance.TransactionType) error {
+	return nil
+}
 func (r *analyticsTxRepo) GetTotalCount(ctx context.Context) (int, error) {
 	return len(r.items), nil
 }

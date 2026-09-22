@@ -202,10 +202,9 @@ func (s *TransactionService) UpdateTransaction(
 	return transaction, nil
 }
 
-// DeleteTransaction deletes a transaction
-func (s *TransactionService) DeleteTransaction(ctx context.Context, transactionID TransactionID, userID UserID) error {
-	// Get transaction to verify ownership
-	transaction, err := s.transactionRepo.FindByID(ctx, transactionID)
+// DeleteTransaction deletes a transaction of the expected type
+func (s *TransactionService) DeleteTransaction(ctx context.Context, transactionID TransactionID, userID UserID, expectedType TransactionType) error {
+	transaction, err := s.transactionRepo.FindByIDAndType(ctx, transactionID, expectedType)
 	if err != nil {
 		return errors.New("transaction not found")
 	}
@@ -214,7 +213,11 @@ func (s *TransactionService) DeleteTransaction(ctx context.Context, transactionI
 		return errors.New("access denied")
 	}
 
-	return s.transactionRepo.Delete(ctx, transactionID)
+	if transaction.Type() != expectedType {
+		return errors.New("transaction type mismatch")
+	}
+
+	return s.transactionRepo.DeleteByIDAndType(ctx, transactionID, expectedType)
 }
 
 // CategoryService handles category-related domain operations

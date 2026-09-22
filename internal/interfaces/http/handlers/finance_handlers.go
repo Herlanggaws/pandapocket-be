@@ -460,8 +460,7 @@ func (h *FinanceHandlers) DeleteExpense(c *gin.Context) {
 	userID := c.GetInt("user_id")
 	expenseID := c.Param("id")
 
-	// Delete the expense transaction
-	err := h.deleteTransactionUseCase.Execute(c.Request.Context(), expenseID, userID)
+	err := h.deleteTransactionUseCase.Execute(c.Request.Context(), expenseID, userID, domainFinance.TransactionTypeExpense)
 	if err != nil {
 		HandleError(c, err, http.StatusBadRequest)
 		return
@@ -477,8 +476,7 @@ func (h *FinanceHandlers) DeleteIncome(c *gin.Context) {
 	userID := c.GetInt("user_id")
 	incomeID := c.Param("id")
 
-	// Delete the income transaction
-	err := h.deleteTransactionUseCase.Execute(c.Request.Context(), incomeID, userID)
+	err := h.deleteTransactionUseCase.Execute(c.Request.Context(), incomeID, userID, domainFinance.TransactionTypeIncome)
 	if err != nil {
 		HandleError(c, err, http.StatusBadRequest)
 		return
