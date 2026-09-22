@@ -546,9 +546,9 @@ func (uc *RecordGoalContributionUseCase) Execute(
 		return nil, err
 	}
 
-	description := req.Note
-	if description == "" {
-		description = fmt.Sprintf("Goal savings (%s)", goal.Name())
+	description := fmt.Sprintf("Goal savings (%s)", goal.Name())
+	if req.Note != "" {
+		description = fmt.Sprintf("%s: %s", description, req.Note)
 	}
 
 	var expenseID, incomeID, transferID *int
