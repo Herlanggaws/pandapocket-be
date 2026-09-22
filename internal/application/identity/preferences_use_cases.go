@@ -32,6 +32,11 @@ type preferencesDefaultCurrencyFinder interface {
 	FindDefaultCurrencyID(ctx context.Context) (int, error)
 }
 
+// primaryCurrencyWalletSyncer aligns default wallet currency when primary changes.
+type primaryCurrencyWalletSyncer interface {
+	SyncOnPrimaryCurrencyChange(ctx context.Context, userID int, currencyID int) error
+}
+
 // GetPreferencesUseCase loads preferences, creating defaults if missing
 type GetPreferencesUseCase struct {
 	prefsRepo      domainIdentity.PreferencesRepository
@@ -88,13 +93,19 @@ type UpdatePreferencesRequest struct {
 type UpdatePreferencesUseCase struct {
 	prefsRepo      domainIdentity.PreferencesRepository
 	currencyFinder preferencesDefaultCurrencyFinder
+	walletSyncer   primaryCurrencyWalletSyncer
 }
 
 func NewUpdatePreferencesUseCase(
 	prefsRepo domainIdentity.PreferencesRepository,
 	currencyFinder preferencesDefaultCurrencyFinder,
+	walletSyncer primaryCurrencyWalletSyncer,
 ) *UpdatePreferencesUseCase {
-	return &UpdatePreferencesUseCase{prefsRepo: prefsRepo, currencyFinder: currencyFinder}
+	return &UpdatePreferencesUseCase{
+		prefsRepo:      prefsRepo,
+		currencyFinder: currencyFinder,
+		walletSyncer:   walletSyncer,
+	}
 }
 
 type UpdatePreferencesResponse struct {
@@ -162,6 +173,12 @@ func (uc *UpdatePreferencesUseCase) Execute(ctx context.Context, userID int, req
 
 	if err := uc.prefsRepo.Save(ctx, prefs); err != nil {
 		return nil, err
+	}
+
+	if req.PrimaryCurrencyID != nil && uc.walletSyncer != nil {
+		if err := uc.walletSyncer.SyncOnPrimaryCurrencyChange(ctx, userID, *req.PrimaryCurrencyID); err != nil {
+			return nil, err
+		}
 	}
 
 	return &UpdatePreferencesResponse{

@@ -80,9 +80,12 @@ func (s *WalletService) GetDefaultWallet(ctx context.Context, userID UserID) (*W
 }
 
 func (s *WalletService) EnsureDefaultWallet(ctx context.Context, userID UserID, currencyID CurrencyID) (*Wallet, error) {
-	wallet, err := s.walletRepo.FindDefaultByUserID(ctx, userID)
+	_, err := s.walletRepo.FindDefaultByUserID(ctx, userID)
 	if err == nil {
-		return wallet, nil
+		if syncErr := s.SyncDefaultWalletCurrency(ctx, userID, currencyID); syncErr != nil {
+			return nil, syncErr
+		}
+		return s.GetDefaultWallet(ctx, userID)
 	}
 	return s.CreateWallet(ctx, userID, "Cash", WalletTypeCash, currencyID, 0, true)
 }

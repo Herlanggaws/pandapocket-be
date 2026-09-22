@@ -94,7 +94,11 @@ func NewApp(db *gorm.DB) *App {
 	refreshTokenUseCase := appIdentity.NewRefreshTokenUseCase(userService, tokenService)
 	changePasswordUseCase := appIdentity.NewChangePasswordUseCase(userRepo)
 	getPreferencesUseCase := appIdentity.NewGetPreferencesUseCase(prefsRepo, prefsRepo)
-	updatePreferencesUseCase := appIdentity.NewUpdatePreferencesUseCase(prefsRepo, prefsRepo)
+	updatePreferencesUseCase := appIdentity.NewUpdatePreferencesUseCase(
+		prefsRepo,
+		prefsRepo,
+		&primaryWalletCurrencySyncAdapter{walletService: walletService},
+	)
 	accountResetChallengeRepo := database.NewGormAccountResetChallengeRepository(db)
 	userDataWiper := database.NewGormUserDataWiper(db)
 	resetAccountDataUseCase := appIdentity.NewResetAccountDataUseCase(accountResetChallengeRepo, userDataWiper)
@@ -561,4 +565,16 @@ func (app *App) StartBackgroundJobs(ctx context.Context) {
 			}
 		}
 	}()
+}
+
+type primaryWalletCurrencySyncAdapter struct {
+	walletService *domainFinance.WalletService
+}
+
+func (a *primaryWalletCurrencySyncAdapter) SyncOnPrimaryCurrencyChange(ctx context.Context, userID int, currencyID int) error {
+	return a.walletService.SyncDefaultWalletCurrency(
+		ctx,
+		domainFinance.NewUserID(userID),
+		domainFinance.NewCurrencyID(currencyID),
+	)
 }
