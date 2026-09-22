@@ -9,12 +9,17 @@ import (
 // SetDefaultCurrencyUseCase handles setting the default currency for a user
 type SetDefaultCurrencyUseCase struct {
 	currencyService *finance.CurrencyService
+	walletService   *finance.WalletService
 }
 
 // NewSetDefaultCurrencyUseCase creates a new SetDefaultCurrencyUseCase
-func NewSetDefaultCurrencyUseCase(currencyService *finance.CurrencyService) *SetDefaultCurrencyUseCase {
+func NewSetDefaultCurrencyUseCase(
+	currencyService *finance.CurrencyService,
+	walletService *finance.WalletService,
+) *SetDefaultCurrencyUseCase {
 	return &SetDefaultCurrencyUseCase{
 		currencyService: currencyService,
+		walletService:   walletService,
 	}
 }
 
@@ -24,16 +29,16 @@ func (uc *SetDefaultCurrencyUseCase) Execute(
 	userID int,
 	currencyIDStr string,
 ) error {
-	// Parse currency ID
 	currencyIDInt, err := strconv.Atoi(currencyIDStr)
 	if err != nil {
 		return err
 	}
 
-	// Convert to domain types
 	userIDDomain := finance.NewUserID(userID)
 	currencyID := finance.NewCurrencyID(currencyIDInt)
 
-	// Set default currency
-	return uc.currencyService.SetDefaultCurrency(ctx, userIDDomain, currencyID)
+	if err := uc.currencyService.SetDefaultCurrency(ctx, userIDDomain, currencyID); err != nil {
+		return err
+	}
+	return uc.walletService.SyncDefaultWalletCurrency(ctx, userIDDomain, currencyID)
 }

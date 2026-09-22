@@ -166,6 +166,36 @@ func (s *WalletService) SetDefault(ctx context.Context, userID UserID, id Wallet
 	return wallet, nil
 }
 
+// SyncDefaultWalletCurrency updates the default wallet currency when it has no ledger history.
+func (s *WalletService) SyncDefaultWalletCurrency(ctx context.Context, userID UserID, currencyID CurrencyID) error {
+	wallet, err := s.GetDefaultWallet(ctx, userID)
+	if err != nil {
+		return nil
+	}
+	if wallet.CurrencyID().Value() == currencyID.Value() {
+		return nil
+	}
+
+	currency, err := s.currencyRepo.FindByID(ctx, currencyID)
+	if err != nil {
+		return errors.New("currency not found")
+	}
+	if !currency.IsDefault() && (currency.UserID() == nil || currency.UserID().Value() != userID.Value()) {
+		return errors.New("access denied to currency")
+	}
+
+	hasTx, err := s.walletRepo.HasTransactions(ctx, wallet.ID())
+	if err != nil {
+		return err
+	}
+	if hasTx {
+		return nil
+	}
+
+	wallet.UpdateCurrencyID(currencyID)
+	return s.walletRepo.Save(ctx, wallet)
+}
+
 func (s *WalletService) Archive(ctx context.Context, userID UserID, id WalletID) (*Wallet, error) {
 	wallet, err := s.GetWalletForUser(ctx, userID, id)
 	if err != nil {

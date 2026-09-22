@@ -131,6 +131,10 @@ func (w *Wallet) UpdateOpeningBalance(amount float64) {
 	w.openingBalance = amount
 }
 
+func (w *Wallet) UpdateCurrencyID(currencyID CurrencyID) {
+	w.currencyID = currencyID
+}
+
 func (w *Wallet) MarkDefault() {
 	w.isDefault = true
 }

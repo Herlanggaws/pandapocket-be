@@ -141,7 +141,7 @@ func NewApp(db *gorm.DB) *App {
 	getCurrenciesUseCase := appFinance.NewGetCurrenciesUseCase(currencyService)
 	updateCurrencyUseCase := appFinance.NewUpdateCurrencyUseCase(currencyService)
 	deleteCurrencyUseCase := appFinance.NewDeleteCurrencyUseCase(currencyService)
-	setDefaultCurrencyUseCase := appFinance.NewSetDefaultCurrencyUseCase(currencyService)
+	setDefaultCurrencyUseCase := appFinance.NewSetDefaultCurrencyUseCase(currencyService, walletService)
 	getDefaultCurrencyUseCase := appFinance.NewGetDefaultCurrencyUseCase(currencyService)
 	checkBudgetAlertsUseCase := appFinance.NewCheckBudgetAlertsUseCase(
 		budgetService,
