@@ -85,6 +85,9 @@ func (r *walletSummaryWalletRepo) GetBalanceBreakdown(ctx context.Context, id do
 	balance := r.balances[id.Value()]
 	return domainFinance.WalletBalanceBreakdown{Balance: balance}, nil
 }
+func (r *walletSummaryWalletRepo) AlignPendingCurrency(ctx context.Context, id domainFinance.WalletID, currencyID domainFinance.CurrencyID) error {
+	return nil
+}
 
 func mustReconstituteWallet(
 	t *testing.T,

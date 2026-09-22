@@ -184,3 +184,9 @@ func (r *GormWalletRepository) GetBalanceBreakdown(ctx context.Context, id finan
 		transfersOut,
 	), nil
 }
+
+func (r *GormWalletRepository) AlignPendingCurrency(ctx context.Context, id finance.WalletID, currencyID finance.CurrencyID) error {
+	return r.db.WithContext(ctx).Model(&PendingTransaction{}).
+		Where("wallet_id = ? AND status = ?", id.Value(), "pending").
+		Update("currency_id", currencyID.Value()).Error
+}

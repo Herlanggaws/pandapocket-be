@@ -293,6 +293,9 @@ func (s *stubWalletRepo) HasTransactions(ctx context.Context, id domainFinance.W
 func (s *stubWalletRepo) GetBalanceBreakdown(ctx context.Context, id domainFinance.WalletID) (domainFinance.WalletBalanceBreakdown, error) {
 	return domainFinance.WalletBalanceBreakdown{}, nil
 }
+func (s *stubWalletRepo) AlignPendingCurrency(ctx context.Context, id domainFinance.WalletID, currencyID domainFinance.CurrencyID) error {
+	return nil
+}
 
 func mustDueRecurring(t *testing.T) *domainFinance.RecurringTransaction {
 	t.Helper()

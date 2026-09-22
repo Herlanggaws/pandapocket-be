@@ -15,6 +15,7 @@ type WalletRepository interface {
 	ClearDefaultForUser(ctx context.Context, userID UserID) error
 	HasTransactions(ctx context.Context, id WalletID) (bool, error)
 	GetBalanceBreakdown(ctx context.Context, id WalletID) (WalletBalanceBreakdown, error)
+	AlignPendingCurrency(ctx context.Context, id WalletID, currencyID CurrencyID) error
 }
 
 // TransferRepository defines persistence for transfers.
