@@ -3,6 +3,7 @@ package finance
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"panda-pocket/internal/domain/entitlement"
@@ -612,9 +613,17 @@ func (uc *RecordLiabilityPaymentUseCase) Execute(
 		if catErr != nil {
 			return nil, catErr
 		}
+		liabilityForExpense, getErr := uc.liabilityService.GetForUser(
+			ctx,
+			finance.NewUserID(userID),
+			finance.NewLiabilityID(liabilityID),
+		)
+		if getErr != nil {
+			return nil, getErr
+		}
 		description := req.Note
 		if description == "" {
-			description = "Debt payment"
+			description = fmt.Sprintf("Debt payment (%s)", liabilityForExpense.Name())
 		}
 		tx, txErr := uc.createTransactionUseCase.Execute(ctx, userID, CreateTransactionRequest{
 			CategoryID:  categoryID,
