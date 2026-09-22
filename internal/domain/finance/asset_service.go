@@ -21,6 +21,8 @@ type LiabilityRepository interface {
 type LiabilityPaymentRepository interface {
 	Save(ctx context.Context, payment *LiabilityPayment) error
 	FindByLiabilityID(ctx context.Context, liabilityID LiabilityID) ([]*LiabilityPayment, error)
+	FindByExpenseID(ctx context.Context, expenseID int) (*LiabilityPayment, error)
+	Delete(ctx context.Context, id LiabilityPaymentID) error
 }
 
 type AssetService struct {
@@ -245,4 +247,32 @@ func (s *LiabilityService) ListPayments(ctx context.Context, userID UserID, id L
 		return []*LiabilityPayment{}, nil
 	}
 	return s.paymentRepo.FindByLiabilityID(ctx, id)
+}
+
+func (s *LiabilityService) ReversePaymentByExpenseID(ctx context.Context, userID UserID, expenseID int) error {
+	if s.paymentRepo == nil {
+		return nil
+	}
+	payment, err := s.paymentRepo.FindByExpenseID(ctx, expenseID)
+	if err != nil {
+		return err
+	}
+	if payment == nil {
+		return nil
+	}
+	if payment.UserID().Value() != userID.Value() {
+		return errors.New("liability payment not found")
+	}
+
+	liability, err := s.GetForUser(ctx, userID, payment.LiabilityID())
+	if err != nil {
+		return err
+	}
+	if err := liability.ReversePayment(payment.Amount()); err != nil {
+		return err
+	}
+	if err := s.liabilityRepo.Save(ctx, liability); err != nil {
+		return err
+	}
+	return s.paymentRepo.Delete(ctx, payment.ID())
 }

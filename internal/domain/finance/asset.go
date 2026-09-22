@@ -320,6 +320,14 @@ func (l *Liability) ApplyPayment(amount float64) error {
 	return nil
 }
 
+func (l *Liability) ReversePayment(amount float64) error {
+	if amount <= 0 {
+		return errors.New("payment amount must be greater than zero")
+	}
+	l.currentBalance += amount
+	return nil
+}
+
 func (l *Liability) PayoffProgressPercent() *float64 {
 	if l.originalPrincipal == nil || *l.originalPrincipal <= 0 {
 		return nil

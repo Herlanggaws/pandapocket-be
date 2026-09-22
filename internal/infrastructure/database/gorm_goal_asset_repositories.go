@@ -361,23 +361,43 @@ func (r *GormLiabilityPaymentRepository) FindByLiabilityID(ctx context.Context, 
 	}
 	result := make([]*finance.LiabilityPayment, 0, len(models))
 	for _, m := range models {
-		var expenseID *int
-		if m.ExpenseID != nil {
-			v := int(*m.ExpenseID)
-			expenseID = &v
-		}
-		result = append(result, finance.ReconstituteLiabilityPayment(
-			finance.NewLiabilityPaymentID(int(m.ID)),
-			finance.NewLiabilityID(int(m.LiabilityID)),
-			finance.NewUserID(int(m.UserID)),
-			m.Amount,
-			m.PaidAt,
-			expenseID,
-			m.Note,
-			m.CreatedAt,
-		))
+		result = append(result, toDomainLiabilityPayment(m))
 	}
 	return result, nil
+}
+
+func (r *GormLiabilityPaymentRepository) FindByExpenseID(ctx context.Context, expenseID int) (*finance.LiabilityPayment, error) {
+	var model LiabilityPayment
+	err := r.db.WithContext(ctx).Where("expense_id = ?", expenseID).First(&model).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return toDomainLiabilityPayment(model), nil
+}
+
+func (r *GormLiabilityPaymentRepository) Delete(ctx context.Context, id finance.LiabilityPaymentID) error {
+	return r.db.WithContext(ctx).Delete(&LiabilityPayment{}, id.Value()).Error
+}
+
+func toDomainLiabilityPayment(m LiabilityPayment) *finance.LiabilityPayment {
+	var expenseID *int
+	if m.ExpenseID != nil {
+		v := int(*m.ExpenseID)
+		expenseID = &v
+	}
+	return finance.ReconstituteLiabilityPayment(
+		finance.NewLiabilityPaymentID(int(m.ID)),
+		finance.NewLiabilityID(int(m.LiabilityID)),
+		finance.NewUserID(int(m.UserID)),
+		m.Amount,
+		m.PaidAt,
+		expenseID,
+		m.Note,
+		m.CreatedAt,
+	)
 }
 
 type GormHealthScoreSnapshotRepository struct {
