@@ -58,6 +58,8 @@ type FinanceHandlers struct {
 	getGoalUseCase                *finance.GetGoalUseCase
 	updateGoalUseCase             *finance.UpdateGoalUseCase
 	deleteGoalUseCase             *finance.DeleteGoalUseCase
+	listGoalContributionsUseCase  *finance.ListGoalContributionsUseCase
+	recordGoalContributionUseCase *finance.RecordGoalContributionUseCase
 	createAssetUseCase            *finance.CreateAssetUseCase
 	getAssetsUseCase              *finance.GetAssetsUseCase
 	updateAssetUseCase            *finance.UpdateAssetUseCase
@@ -74,6 +76,7 @@ type FinanceHandlers struct {
 	getNetWorthSummaryUseCase     *finance.GetNetWorthSummaryUseCase
 	createTransferUseCase         *finance.CreateTransferUseCase
 	getTransfersUseCase           *finance.GetTransfersUseCase
+	deleteTransferUseCase         *finance.DeleteTransferUseCase
 }
 
 // NewFinanceHandlers creates a new finance handlers instance
@@ -121,6 +124,8 @@ func NewFinanceHandlers(
 	getGoalUseCase *finance.GetGoalUseCase,
 	updateGoalUseCase *finance.UpdateGoalUseCase,
 	deleteGoalUseCase *finance.DeleteGoalUseCase,
+	listGoalContributionsUseCase *finance.ListGoalContributionsUseCase,
+	recordGoalContributionUseCase *finance.RecordGoalContributionUseCase,
 	createAssetUseCase *finance.CreateAssetUseCase,
 	getAssetsUseCase *finance.GetAssetsUseCase,
 	updateAssetUseCase *finance.UpdateAssetUseCase,
@@ -137,6 +142,7 @@ func NewFinanceHandlers(
 	getNetWorthSummaryUseCase *finance.GetNetWorthSummaryUseCase,
 	createTransferUseCase *finance.CreateTransferUseCase,
 	getTransfersUseCase *finance.GetTransfersUseCase,
+	deleteTransferUseCase *finance.DeleteTransferUseCase,
 ) *FinanceHandlers {
 	return &FinanceHandlers{
 		createTransactionUseCase:      createTransactionUseCase,
@@ -182,6 +188,8 @@ func NewFinanceHandlers(
 		getGoalUseCase:                getGoalUseCase,
 		updateGoalUseCase:             updateGoalUseCase,
 		deleteGoalUseCase:             deleteGoalUseCase,
+		listGoalContributionsUseCase:  listGoalContributionsUseCase,
+		recordGoalContributionUseCase: recordGoalContributionUseCase,
 		createAssetUseCase:            createAssetUseCase,
 		getAssetsUseCase:              getAssetsUseCase,
 		updateAssetUseCase:            updateAssetUseCase,
@@ -198,6 +206,7 @@ func NewFinanceHandlers(
 		getNetWorthSummaryUseCase:     getNetWorthSummaryUseCase,
 		createTransferUseCase:         createTransferUseCase,
 		getTransfersUseCase:           getTransfersUseCase,
+		deleteTransferUseCase:         deleteTransferUseCase,
 	}
 }
 
@@ -1108,4 +1117,18 @@ func (h *FinanceHandlers) GetTransfers(c *gin.Context) {
 		return
 	}
 	SuccessResponse(c, http.StatusOK, gin.H{"transfers": response})
+}
+
+func (h *FinanceHandlers) DeleteTransfer(c *gin.Context) {
+	userID := c.GetInt("user_id")
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		ValidationErrorResponse(c, "invalid transfer id")
+		return
+	}
+	if err := h.deleteTransferUseCase.Execute(c.Request.Context(), userID, id); err != nil {
+		HandleError(c, err, http.StatusNotFound)
+		return
+	}
+	SuccessResponse(c, http.StatusOK, gin.H{"message": "Transfer deleted successfully"})
 }

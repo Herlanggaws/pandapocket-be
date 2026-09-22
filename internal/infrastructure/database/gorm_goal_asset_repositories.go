@@ -400,6 +400,127 @@ func toDomainLiabilityPayment(m LiabilityPayment) *finance.LiabilityPayment {
 	)
 }
 
+type GormGoalContributionRepository struct {
+	db *gorm.DB
+}
+
+func NewGormGoalContributionRepository(db *gorm.DB) *GormGoalContributionRepository {
+	return &GormGoalContributionRepository{db: db}
+}
+
+func toDomainGoalContribution(m GoalContribution) *finance.GoalContribution {
+	var expenseID, incomeID, transferID *int
+	if m.ExpenseID != nil {
+		v := int(*m.ExpenseID)
+		expenseID = &v
+	}
+	if m.IncomeID != nil {
+		v := int(*m.IncomeID)
+		incomeID = &v
+	}
+	if m.TransferID != nil {
+		v := int(*m.TransferID)
+		transferID = &v
+	}
+	return finance.ReconstituteGoalContribution(
+		finance.NewGoalContributionID(int(m.ID)),
+		finance.NewGoalID(int(m.GoalID)),
+		finance.NewUserID(int(m.UserID)),
+		m.Amount,
+		m.ContributedAt,
+		expenseID,
+		incomeID,
+		transferID,
+		m.Note,
+		m.CreatedAt,
+	)
+}
+
+func (r *GormGoalContributionRepository) Save(ctx context.Context, contribution *finance.GoalContribution) error {
+	model := &GoalContribution{
+		GoalID:        uint(contribution.GoalID().Value()),
+		UserID:        uint(contribution.UserID().Value()),
+		Amount:        contribution.Amount(),
+		ContributedAt: contribution.ContributedAt(),
+		Note:          contribution.Note(),
+	}
+	if contribution.ExpenseID() != nil {
+		id := uint(*contribution.ExpenseID())
+		model.ExpenseID = &id
+	}
+	if contribution.IncomeID() != nil {
+		id := uint(*contribution.IncomeID())
+		model.IncomeID = &id
+	}
+	if contribution.TransferID() != nil {
+		id := uint(*contribution.TransferID())
+		model.TransferID = &id
+	}
+	if contribution.ID().Value() != 0 {
+		model.ID = uint(contribution.ID().Value())
+	}
+	if err := r.db.WithContext(ctx).Create(model).Error; err != nil {
+		return err
+	}
+	contribution.AssignID(finance.NewGoalContributionID(int(model.ID)))
+	return nil
+}
+
+func (r *GormGoalContributionRepository) FindByGoalID(ctx context.Context, goalID finance.GoalID) ([]*finance.GoalContribution, error) {
+	var models []GoalContribution
+	if err := r.db.WithContext(ctx).
+		Where("goal_id = ?", goalID.Value()).
+		Order("contributed_at DESC, id DESC").
+		Find(&models).Error; err != nil {
+		return nil, err
+	}
+	result := make([]*finance.GoalContribution, 0, len(models))
+	for _, m := range models {
+		result = append(result, toDomainGoalContribution(m))
+	}
+	return result, nil
+}
+
+func (r *GormGoalContributionRepository) FindByExpenseID(ctx context.Context, expenseID int) (*finance.GoalContribution, error) {
+	var model GoalContribution
+	err := r.db.WithContext(ctx).Where("expense_id = ?", expenseID).First(&model).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return toDomainGoalContribution(model), nil
+}
+
+func (r *GormGoalContributionRepository) FindByIncomeID(ctx context.Context, incomeID int) (*finance.GoalContribution, error) {
+	var model GoalContribution
+	err := r.db.WithContext(ctx).Where("income_id = ?", incomeID).First(&model).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return toDomainGoalContribution(model), nil
+}
+
+func (r *GormGoalContributionRepository) FindByTransferID(ctx context.Context, transferID int) (*finance.GoalContribution, error) {
+	var model GoalContribution
+	err := r.db.WithContext(ctx).Where("transfer_id = ?", transferID).First(&model).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return toDomainGoalContribution(model), nil
+}
+
+func (r *GormGoalContributionRepository) Delete(ctx context.Context, id finance.GoalContributionID) error {
+	return r.db.WithContext(ctx).Delete(&GoalContribution{}, id.Value()).Error
+}
+
 type GormHealthScoreSnapshotRepository struct {
 	db *gorm.DB
 }

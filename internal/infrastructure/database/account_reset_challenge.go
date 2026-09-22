@@ -95,6 +95,7 @@ func NewGormUserDataWiper(db *gorm.DB) *GormUserDataWiper {
 func wipeUserOwnedRows(tx *gorm.DB, userID uint) error {
 	deletes := []func() error{
 		func() error { return tx.Where("user_id = ?", userID).Delete(&PendingTransaction{}).Error },
+		func() error { return tx.Where("user_id = ?", userID).Delete(&GoalContribution{}).Error },
 		func() error { return tx.Where("user_id = ?", userID).Delete(&LiabilityPayment{}).Error },
 		func() error { return tx.Where("user_id = ?", userID).Delete(&RecurringTransaction{}).Error },
 		func() error { return tx.Where("user_id = ?", userID).Delete(&Transfer{}).Error },

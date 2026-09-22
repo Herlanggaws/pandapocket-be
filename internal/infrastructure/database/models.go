@@ -242,6 +242,27 @@ func (LiabilityPayment) TableName() string {
 	return "liability_payments"
 }
 
+// GoalContribution records a savings contribution toward a goal.
+type GoalContribution struct {
+	ID            uint      `gorm:"primaryKey" json:"id"`
+	GoalID        uint      `gorm:"not null;index" json:"goal_id"`
+	UserID        uint      `gorm:"not null;index" json:"user_id"`
+	Amount        float64   `gorm:"type:decimal(14,2);not null" json:"amount"`
+	ContributedAt time.Time `gorm:"type:date;not null" json:"contributed_at"`
+	ExpenseID     *uint     `gorm:"index" json:"expense_id,omitempty"`
+	IncomeID      *uint     `gorm:"index" json:"income_id,omitempty"`
+	TransferID    *uint     `gorm:"index" json:"transfer_id,omitempty"`
+	Note          string    `gorm:"type:text" json:"note"`
+	CreatedAt     time.Time `json:"created_at"`
+
+	Goal *FinancialGoal `gorm:"foreignKey:GoalID" json:"goal,omitempty"`
+	User *User          `gorm:"foreignKey:UserID" json:"user,omitempty"`
+}
+
+func (GoalContribution) TableName() string {
+	return "goal_contributions"
+}
+
 // HealthScoreSnapshot stores monthly health score history
 type HealthScoreSnapshot struct {
 	ID              uint      `gorm:"primaryKey" json:"id"`

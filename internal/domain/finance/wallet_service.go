@@ -296,3 +296,21 @@ func (s *TransferService) CreateTransfer(
 func (s *TransferService) ListTransfers(ctx context.Context, userID UserID, filters TransferFilters) ([]*Transfer, error) {
 	return s.transferRepo.FindByUserID(ctx, userID, filters)
 }
+
+func (s *TransferService) GetTransferForUser(ctx context.Context, userID UserID, id TransferID) (*Transfer, error) {
+	transfer, err := s.transferRepo.FindByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if transfer.UserID().Value() != userID.Value() {
+		return nil, errors.New("transfer not found")
+	}
+	return transfer, nil
+}
+
+func (s *TransferService) DeleteTransfer(ctx context.Context, userID UserID, id TransferID) error {
+	if _, err := s.GetTransferForUser(ctx, userID, id); err != nil {
+		return err
+	}
+	return s.transferRepo.Delete(ctx, id)
+}

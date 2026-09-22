@@ -15,12 +15,22 @@ type GoalRepository interface {
 	Delete(ctx context.Context, id GoalID, userID UserID) error
 }
 
-type GoalService struct {
-	goalRepo GoalRepository
+type GoalContributionRepository interface {
+	Save(ctx context.Context, contribution *GoalContribution) error
+	FindByGoalID(ctx context.Context, goalID GoalID) ([]*GoalContribution, error)
+	FindByExpenseID(ctx context.Context, expenseID int) (*GoalContribution, error)
+	FindByIncomeID(ctx context.Context, incomeID int) (*GoalContribution, error)
+	FindByTransferID(ctx context.Context, transferID int) (*GoalContribution, error)
+	Delete(ctx context.Context, id GoalContributionID) error
 }
 
-func NewGoalService(goalRepo GoalRepository) *GoalService {
-	return &GoalService{goalRepo: goalRepo}
+type GoalService struct {
+	goalRepo         GoalRepository
+	contributionRepo GoalContributionRepository
+}
+
+func NewGoalService(goalRepo GoalRepository, contributionRepo GoalContributionRepository) *GoalService {
+	return &GoalService{goalRepo: goalRepo, contributionRepo: contributionRepo}
 }
 
 func (s *GoalService) CreateGoal(
@@ -103,4 +113,108 @@ func (s *GoalService) DeleteGoal(ctx context.Context, userID UserID, id GoalID) 
 		return err
 	}
 	return s.goalRepo.Delete(ctx, id, userID)
+}
+
+func (s *GoalService) RecordContribution(
+	ctx context.Context,
+	userID UserID,
+	goalID GoalID,
+	amount float64,
+	contributedAt time.Time,
+	expenseID *int,
+	incomeID *int,
+	transferID *int,
+	note string,
+	bumpCurrentAmount bool,
+) (*FinancialGoal, *GoalContribution, error) {
+	goal, err := s.GetGoalForUser(ctx, userID, goalID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if bumpCurrentAmount {
+		if err := goal.ApplyContribution(amount); err != nil {
+			return nil, nil, err
+		}
+		if err := s.goalRepo.Save(ctx, goal); err != nil {
+			return nil, nil, err
+		}
+	}
+	contribution, err := NewGoalContribution(goalID, userID, amount, contributedAt, expenseID, incomeID, transferID, note)
+	if err != nil {
+		return nil, nil, err
+	}
+	if s.contributionRepo == nil {
+		return nil, nil, errors.New("contribution repository is not available")
+	}
+	if err := s.contributionRepo.Save(ctx, contribution); err != nil {
+		return nil, nil, err
+	}
+	return goal, contribution, nil
+}
+
+func (s *GoalService) ListContributions(ctx context.Context, userID UserID, goalID GoalID) ([]*GoalContribution, error) {
+	if _, err := s.GetGoalForUser(ctx, userID, goalID); err != nil {
+		return nil, err
+	}
+	if s.contributionRepo == nil {
+		return []*GoalContribution{}, nil
+	}
+	return s.contributionRepo.FindByGoalID(ctx, goalID)
+}
+
+func (s *GoalService) ReverseContributionByExpenseID(ctx context.Context, userID UserID, expenseID int) error {
+	return s.reverseByRef(ctx, userID, func() (*GoalContribution, error) {
+		if s.contributionRepo == nil {
+			return nil, nil
+		}
+		return s.contributionRepo.FindByExpenseID(ctx, expenseID)
+	})
+}
+
+func (s *GoalService) ReverseContributionByIncomeID(ctx context.Context, userID UserID, incomeID int) error {
+	return s.reverseByRef(ctx, userID, func() (*GoalContribution, error) {
+		if s.contributionRepo == nil {
+			return nil, nil
+		}
+		return s.contributionRepo.FindByIncomeID(ctx, incomeID)
+	})
+}
+
+func (s *GoalService) ReverseContributionByTransferID(ctx context.Context, userID UserID, transferID int) error {
+	return s.reverseByRef(ctx, userID, func() (*GoalContribution, error) {
+		if s.contributionRepo == nil {
+			return nil, nil
+		}
+		return s.contributionRepo.FindByTransferID(ctx, transferID)
+	})
+}
+
+func (s *GoalService) reverseByRef(
+	ctx context.Context,
+	userID UserID,
+	find func() (*GoalContribution, error),
+) error {
+	contribution, err := find()
+	if err != nil {
+		return err
+	}
+	if contribution == nil {
+		return nil
+	}
+	if contribution.UserID().Value() != userID.Value() {
+		return errors.New("goal contribution not found")
+	}
+	if contribution.BumpsCurrentAmount() {
+		goal, err := s.GetGoalForUser(ctx, userID, contribution.GoalID())
+		if err != nil {
+			return err
+		}
+		if err := goal.ReverseContribution(contribution.Amount()); err != nil {
+			return err
+		}
+		if err := s.goalRepo.Save(ctx, goal); err != nil {
+			return err
+		}
+	}
+	return s.contributionRepo.Delete(ctx, contribution.ID())
 }

@@ -32,6 +32,7 @@ func setupWipeTestDB(t *testing.T) *gorm.DB {
 		&Asset{},
 		&Liability{},
 		&LiabilityPayment{},
+		&GoalContribution{},
 		&HealthScoreSnapshot{},
 		&RecurringTransaction{},
 		&PendingTransaction{},

@@ -419,3 +419,258 @@ func UnlinkGoalsForWallet(
 	}
 	return nil
 }
+
+type GoalContributionResponse struct {
+	ID            int     `json:"id"`
+	GoalID        int     `json:"goal_id"`
+	Amount        float64 `json:"amount"`
+	ContributedAt string  `json:"contributed_at"`
+	ExpenseID     *int    `json:"expense_id,omitempty"`
+	IncomeID      *int    `json:"income_id,omitempty"`
+	TransferID    *int    `json:"transfer_id,omitempty"`
+	Note          string  `json:"note"`
+	CreatedAt     string  `json:"created_at"`
+}
+
+func toGoalContributionResponse(c *finance.GoalContribution) GoalContributionResponse {
+	return GoalContributionResponse{
+		ID:            c.ID().Value(),
+		GoalID:        c.GoalID().Value(),
+		Amount:        c.Amount(),
+		ContributedAt: c.ContributedAt().Format("2006-01-02"),
+		ExpenseID:     c.ExpenseID(),
+		IncomeID:      c.IncomeID(),
+		TransferID:    c.TransferID(),
+		Note:          c.Note(),
+		CreatedAt:     c.CreatedAt().Format(time.RFC3339),
+	}
+}
+
+type RecordGoalContributionRequest struct {
+	Amount         float64 `json:"amount" binding:"required,gt=0"`
+	ContributedAt  string  `json:"contributed_at" binding:"required"`
+	Note           string  `json:"note"`
+	FromWalletID   *int    `json:"from_wallet_id"`
+}
+
+type RecordGoalContributionResponse struct {
+	Goal         *GoalResponse               `json:"goal"`
+	Contribution *GoalContributionResponse   `json:"contribution"`
+	Kind         string                      `json:"kind"` // expense | income | transfer
+}
+
+type ListGoalContributionsUseCase struct {
+	goalService *finance.GoalService
+}
+
+func NewListGoalContributionsUseCase(goalService *finance.GoalService) *ListGoalContributionsUseCase {
+	return &ListGoalContributionsUseCase{goalService: goalService}
+}
+
+func (uc *ListGoalContributionsUseCase) Execute(ctx context.Context, userID, goalID int) ([]GoalContributionResponse, error) {
+	list, err := uc.goalService.ListContributions(ctx, finance.NewUserID(userID), finance.NewGoalID(goalID))
+	if err != nil {
+		return nil, err
+	}
+	result := make([]GoalContributionResponse, 0, len(list))
+	for _, item := range list {
+		result = append(result, toGoalContributionResponse(item))
+	}
+	return result, nil
+}
+
+type RecordGoalContributionUseCase struct {
+	goalService              *finance.GoalService
+	walletService            *finance.WalletService
+	transferService          *finance.TransferService
+	createTransactionUseCase *CreateTransactionUseCase
+	categoryService          *finance.CategoryService
+	notificationHelper       *appNotification.CreateNotificationHelper
+}
+
+func NewRecordGoalContributionUseCase(
+	goalService *finance.GoalService,
+	walletService *finance.WalletService,
+	transferService *finance.TransferService,
+	createTransactionUseCase *CreateTransactionUseCase,
+	categoryService *finance.CategoryService,
+	notificationHelper *appNotification.CreateNotificationHelper,
+) *RecordGoalContributionUseCase {
+	return &RecordGoalContributionUseCase{
+		goalService:              goalService,
+		walletService:            walletService,
+		transferService:          transferService,
+		createTransactionUseCase: createTransactionUseCase,
+		categoryService:          categoryService,
+		notificationHelper:       notificationHelper,
+	}
+}
+
+func (uc *RecordGoalContributionUseCase) resolveCategoryID(
+	ctx context.Context,
+	userID int,
+	categoryType finance.CategoryType,
+	preferred ...string,
+) (int, error) {
+	categories, err := uc.categoryService.GetCategoriesByUserAndType(ctx, finance.NewUserID(userID), categoryType)
+	if err != nil {
+		return 0, err
+	}
+	for _, name := range preferred {
+		for _, category := range categories {
+			if category.Name() == name {
+				return category.ID().Value(), nil
+			}
+		}
+	}
+	if len(categories) == 0 {
+		return 0, errors.New("no category available for goal contribution")
+	}
+	return categories[0].ID().Value(), nil
+}
+
+func (uc *RecordGoalContributionUseCase) Execute(
+	ctx context.Context,
+	userID int,
+	goalID int,
+	req RecordGoalContributionRequest,
+) (*RecordGoalContributionResponse, error) {
+	contributedAt, err := time.Parse("2006-01-02", req.ContributedAt)
+	if err != nil {
+		return nil, errors.New("invalid contributed_at format. Expected YYYY-MM-DD")
+	}
+
+	user := finance.NewUserID(userID)
+	goal, err := uc.goalService.GetGoalForUser(ctx, user, finance.NewGoalID(goalID))
+	if err != nil {
+		return nil, err
+	}
+
+	description := req.Note
+	if description == "" {
+		description = fmt.Sprintf("Goal savings (%s)", goal.Name())
+	}
+
+	var expenseID, incomeID, transferID *int
+	var kind string
+	bumpCurrent := false
+
+	if goal.IsLinked() {
+		linkedID := goal.WalletID().Value()
+		wallets, wErr := uc.walletService.GetWallets(ctx, user, false)
+		if wErr != nil {
+			return nil, wErr
+		}
+		otherWallets := make([]*finance.Wallet, 0)
+		for _, w := range wallets {
+			if w.ID().Value() != linkedID && w.CurrencyID().Value() == goal.CurrencyID().Value() {
+				otherWallets = append(otherWallets, w)
+			}
+		}
+
+		if len(otherWallets) > 0 {
+			if req.FromWalletID == nil || *req.FromWalletID <= 0 {
+				return nil, errors.New("from_wallet_id is required when transferring to a linked goal wallet")
+			}
+			if *req.FromWalletID == linkedID {
+				return nil, errors.New("from_wallet_id must differ from the linked goal wallet")
+			}
+			transfer, tErr := uc.transferService.CreateTransfer(
+				ctx,
+				user,
+				finance.NewWalletID(*req.FromWalletID),
+				finance.NewWalletID(linkedID),
+				req.Amount,
+				description,
+				contributedAt,
+			)
+			if tErr != nil {
+				return nil, tErr
+			}
+			id := transfer.ID().Value()
+			transferID = &id
+			kind = "transfer"
+		} else {
+			categoryID, cErr := uc.resolveCategoryID(ctx, userID, finance.CategoryTypeIncome, "Salary", "Other")
+			if cErr != nil {
+				return nil, cErr
+			}
+			wid := linkedID
+			tx, txErr := uc.createTransactionUseCase.Execute(ctx, userID, CreateTransactionRequest{
+				CategoryID:  categoryID,
+				WalletID:    &wid,
+				Amount:      req.Amount,
+				Description: description,
+				Date:        req.ContributedAt,
+				Type:        "income",
+			})
+			if txErr != nil {
+				return nil, txErr
+			}
+			if tx.ID == 0 {
+				return nil, errors.New("created income is missing id")
+			}
+			id := tx.ID
+			incomeID = &id
+			kind = "income"
+		}
+	} else {
+		if req.FromWalletID == nil || *req.FromWalletID <= 0 {
+			return nil, errors.New("from_wallet_id is required for manual goal contributions")
+		}
+		categoryID, cErr := uc.resolveCategoryID(ctx, userID, finance.CategoryTypeExpense, "Savings", "Goals", "Other")
+		if cErr != nil {
+			return nil, cErr
+		}
+		tx, txErr := uc.createTransactionUseCase.Execute(ctx, userID, CreateTransactionRequest{
+			CategoryID:  categoryID,
+			WalletID:    req.FromWalletID,
+			Amount:      req.Amount,
+			Description: description,
+			Date:        req.ContributedAt,
+			Type:        "expense",
+		})
+		if txErr != nil {
+			return nil, txErr
+		}
+		if tx.ID == 0 {
+			return nil, errors.New("created expense is missing id")
+		}
+		id := tx.ID
+		expenseID = &id
+		kind = "expense"
+		bumpCurrent = true
+	}
+
+	updatedGoal, contribution, err := uc.goalService.RecordContribution(
+		ctx,
+		user,
+		finance.NewGoalID(goalID),
+		req.Amount,
+		contributedAt,
+		expenseID,
+		incomeID,
+		transferID,
+		req.Note,
+		bumpCurrent,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	builder := &goalResponseBuilder{
+		walletService:      uc.walletService,
+		goalService:        uc.goalService,
+		notificationHelper: uc.notificationHelper,
+	}
+	goalResp, err := builder.build(ctx, updatedGoal, true)
+	if err != nil {
+		return nil, err
+	}
+	contribResp := toGoalContributionResponse(contribution)
+	return &RecordGoalContributionResponse{
+		Goal:         &goalResp,
+		Contribution: &contribResp,
+		Kind:         kind,
+	}, nil
+}

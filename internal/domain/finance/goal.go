@@ -230,6 +230,31 @@ func (g *FinancialGoal) SetCurrentAmount(amount float64) error {
 	return nil
 }
 
+func (g *FinancialGoal) ApplyContribution(amount float64) error {
+	if amount <= 0 {
+		return errors.New("contribution amount must be greater than zero")
+	}
+	g.currentAmount += amount
+	if g.status != GoalStatusArchived && g.currentAmount >= g.targetAmount {
+		g.status = GoalStatusCompleted
+	}
+	return nil
+}
+
+func (g *FinancialGoal) ReverseContribution(amount float64) error {
+	if amount <= 0 {
+		return errors.New("contribution amount must be greater than zero")
+	}
+	g.currentAmount -= amount
+	if g.currentAmount < 0 {
+		g.currentAmount = 0
+	}
+	if g.status == GoalStatusCompleted && g.currentAmount < g.targetAmount {
+		g.status = GoalStatusActive
+	}
+	return nil
+}
+
 func (g *FinancialGoal) MarkCompleted() {
 	if g.status != GoalStatusArchived {
 		g.status = GoalStatusCompleted
@@ -239,3 +264,100 @@ func (g *FinancialGoal) MarkCompleted() {
 func (g *FinancialGoal) Archive() {
 	g.status = GoalStatusArchived
 }
+
+type GoalContributionID struct{ value int }
+
+func NewGoalContributionID(id int) GoalContributionID { return GoalContributionID{value: id} }
+func (c GoalContributionID) Value() int               { return c.value }
+
+// GoalContribution records a savings contribution toward a goal.
+type GoalContribution struct {
+	id            GoalContributionID
+	goalID        GoalID
+	userID        UserID
+	amount        float64
+	contributedAt time.Time
+	expenseID     *int
+	incomeID      *int
+	transferID    *int
+	note          string
+	createdAt     time.Time
+}
+
+func NewGoalContribution(
+	goalID GoalID,
+	userID UserID,
+	amount float64,
+	contributedAt time.Time,
+	expenseID *int,
+	incomeID *int,
+	transferID *int,
+	note string,
+) (*GoalContribution, error) {
+	if amount <= 0 {
+		return nil, errors.New("contribution amount must be greater than zero")
+	}
+	refs := 0
+	if expenseID != nil {
+		refs++
+	}
+	if incomeID != nil {
+		refs++
+	}
+	if transferID != nil {
+		refs++
+	}
+	if refs != 1 {
+		return nil, errors.New("contribution must reference exactly one of expense, income, or transfer")
+	}
+	return &GoalContribution{
+		goalID:        goalID,
+		userID:        userID,
+		amount:        amount,
+		contributedAt: contributedAt,
+		expenseID:     expenseID,
+		incomeID:      incomeID,
+		transferID:    transferID,
+		note:          note,
+		createdAt:     time.Now(),
+	}, nil
+}
+
+func ReconstituteGoalContribution(
+	id GoalContributionID,
+	goalID GoalID,
+	userID UserID,
+	amount float64,
+	contributedAt time.Time,
+	expenseID *int,
+	incomeID *int,
+	transferID *int,
+	note string,
+	createdAt time.Time,
+) *GoalContribution {
+	return &GoalContribution{
+		id:            id,
+		goalID:        goalID,
+		userID:        userID,
+		amount:        amount,
+		contributedAt: contributedAt,
+		expenseID:     expenseID,
+		incomeID:      incomeID,
+		transferID:    transferID,
+		note:          note,
+		createdAt:     createdAt,
+	}
+}
+
+func (c *GoalContribution) AssignID(id GoalContributionID) { c.id = id }
+func (c *GoalContribution) ID() GoalContributionID         { return c.id }
+func (c *GoalContribution) GoalID() GoalID                 { return c.goalID }
+func (c *GoalContribution) UserID() UserID                 { return c.userID }
+func (c *GoalContribution) Amount() float64                { return c.amount }
+func (c *GoalContribution) ContributedAt() time.Time       { return c.contributedAt }
+func (c *GoalContribution) ExpenseID() *int                { return c.expenseID }
+func (c *GoalContribution) IncomeID() *int                 { return c.incomeID }
+func (c *GoalContribution) TransferID() *int               { return c.transferID }
+func (c *GoalContribution) Note() string                   { return c.note }
+func (c *GoalContribution) CreatedAt() time.Time           { return c.createdAt }
+func (c *GoalContribution) BumpsCurrentAmount() bool       { return c.expenseID != nil }

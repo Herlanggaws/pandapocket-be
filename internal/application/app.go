@@ -63,6 +63,7 @@ func NewApp(db *gorm.DB) *App {
 	walletRepo := database.NewGormWalletRepository(db)
 	transferRepo := database.NewGormTransferRepository(db)
 	goalRepo := database.NewGormGoalRepository(db)
+	goalContributionRepo := database.NewGormGoalContributionRepository(db)
 	assetRepo := database.NewGormAssetRepository(db)
 	liabilityRepo := database.NewGormLiabilityRepository(db)
 	liabilityPaymentRepo := database.NewGormLiabilityPaymentRepository(db)
@@ -78,7 +79,7 @@ func NewApp(db *gorm.DB) *App {
 	budgetService := domainFinance.NewBudgetService(budgetRepo, categoryRepo)
 	walletService := domainFinance.NewWalletService(walletRepo, currencyRepo)
 	transferService := domainFinance.NewTransferService(transferRepo, walletRepo)
-	goalService := domainFinance.NewGoalService(goalRepo)
+	goalService := domainFinance.NewGoalService(goalRepo, goalContributionRepo)
 	assetService := domainFinance.NewAssetService(assetRepo)
 	liabilityService := domainFinance.NewLiabilityService(liabilityRepo, liabilityPaymentRepo)
 
@@ -129,7 +130,7 @@ func NewApp(db *gorm.DB) *App {
 	getAllTransactionsUseCase := appFinance.NewGetAllTransactionsUseCase(transactionService, categoryService, currencyService)
 	exportTransactionsUseCase := appFinance.NewExportTransactionsUseCase(transactionService, categoryService, entitlementChecker)
 	updateTransactionUseCase := appFinance.NewUpdateTransactionUseCase(transactionService)
-	deleteTransactionUseCase := appFinance.NewDeleteTransactionUseCase(transactionService, liabilityService)
+	deleteTransactionUseCase := appFinance.NewDeleteTransactionUseCase(transactionService, liabilityService, goalService)
 	createCategoryUseCase := appFinance.NewCreateCategoryUseCase(categoryService, entitlementChecker)
 	updateCategoryUseCase := appFinance.NewUpdateCategoryUseCase(categoryService)
 	deleteCategoryUseCase := appFinance.NewDeleteCategoryUseCase(categoryService)
@@ -188,6 +189,15 @@ func NewApp(db *gorm.DB) *App {
 	getGoalUseCase := appFinance.NewGetGoalUseCase(goalService, walletService, notificationHelper)
 	updateGoalUseCase := appFinance.NewUpdateGoalUseCase(goalService, walletService, notificationHelper)
 	deleteGoalUseCase := appFinance.NewDeleteGoalUseCase(goalService)
+	listGoalContributionsUseCase := appFinance.NewListGoalContributionsUseCase(goalService)
+	recordGoalContributionUseCase := appFinance.NewRecordGoalContributionUseCase(
+		goalService,
+		walletService,
+		transferService,
+		createTransactionUseCase,
+		categoryService,
+		notificationHelper,
+	)
 	checkGoalDeadlineAlertsUseCase := appFinance.NewCheckGoalDeadlineAlertsUseCase(
 		goalService,
 		walletService,
@@ -220,6 +230,7 @@ func NewApp(db *gorm.DB) *App {
 	getNetWorthSummaryUseCase := appFinance.NewGetNetWorthSummaryUseCase(getWalletSummaryUseCase, assetService, liabilityService, currencyService)
 	createTransferUseCase := appFinance.NewCreateTransferUseCase(transferService)
 	getTransfersUseCase := appFinance.NewGetTransfersUseCase(transferService)
+	deleteTransferUseCase := appFinance.NewDeleteTransferUseCase(transferService, goalService)
 
 	// Interface layer - handlers and middleware
 	identityHandlers := handlers.NewIdentityHandlers(
@@ -280,6 +291,8 @@ func NewApp(db *gorm.DB) *App {
 		getGoalUseCase,
 		updateGoalUseCase,
 		deleteGoalUseCase,
+		listGoalContributionsUseCase,
+		recordGoalContributionUseCase,
 		createAssetUseCase,
 		getAssetsUseCase,
 		updateAssetUseCase,
@@ -296,6 +309,7 @@ func NewApp(db *gorm.DB) *App {
 		getNetWorthSummaryUseCase,
 		createTransferUseCase,
 		getTransfersUseCase,
+		deleteTransferUseCase,
 	)
 	exportHandlers := handlers.NewExportHandlers(exportTransactionsUseCase)
 	dashboardHandlers := handlers.NewDashboardHandlers(getDashboardStatsUseCase)
@@ -423,6 +437,8 @@ func (app *App) SetupRoutes() *gin.Engine {
 			protected.GET("/goals/:id", app.FinanceHandlers.GetGoal)
 			protected.PUT("/goals/:id", app.FinanceHandlers.UpdateGoal)
 			protected.DELETE("/goals/:id", app.FinanceHandlers.DeleteGoal)
+			protected.GET("/goals/:id/contributions", app.FinanceHandlers.GetGoalContributions)
+			protected.POST("/goals/:id/contributions", app.FinanceHandlers.RecordGoalContribution)
 
 			protected.GET("/assets", app.FinanceHandlers.GetAssets)
 			protected.POST("/assets", app.FinanceHandlers.CreateAsset)
@@ -480,6 +496,7 @@ func (app *App) SetupRoutes() *gin.Engine {
 
 			protected.GET("/transfers", app.FinanceHandlers.GetTransfers)
 			protected.POST("/transfers", app.FinanceHandlers.CreateTransfer)
+			protected.DELETE("/transfers/:id", app.FinanceHandlers.DeleteTransfer)
 		}
 	}
 

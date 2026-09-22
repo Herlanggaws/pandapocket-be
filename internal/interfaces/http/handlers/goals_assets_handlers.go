@@ -95,6 +95,41 @@ func (h *FinanceHandlers) DeleteGoal(c *gin.Context) {
 	SuccessResponse(c, http.StatusOK, gin.H{"message": "Goal deleted successfully"})
 }
 
+func (h *FinanceHandlers) GetGoalContributions(c *gin.Context) {
+	userID := c.GetInt("user_id")
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		ValidationErrorResponse(c, "invalid goal id")
+		return
+	}
+	response, err := h.listGoalContributionsUseCase.Execute(c.Request.Context(), userID, id)
+	if err != nil {
+		HandleError(c, err, http.StatusBadRequest)
+		return
+	}
+	SuccessResponse(c, http.StatusOK, gin.H{"contributions": response})
+}
+
+func (h *FinanceHandlers) RecordGoalContribution(c *gin.Context) {
+	userID := c.GetInt("user_id")
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		ValidationErrorResponse(c, "invalid goal id")
+		return
+	}
+	var req finance.RecordGoalContributionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		ValidationErrorResponse(c, err.Error())
+		return
+	}
+	response, err := h.recordGoalContributionUseCase.Execute(c.Request.Context(), userID, id, req)
+	if err != nil {
+		HandleError(c, err, http.StatusBadRequest)
+		return
+	}
+	SuccessResponse(c, http.StatusCreated, response)
+}
+
 func (h *FinanceHandlers) CreateAsset(c *gin.Context) {
 	userID := c.GetInt("user_id")
 	var req finance.CreateAssetRequest

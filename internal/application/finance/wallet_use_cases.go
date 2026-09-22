@@ -381,6 +381,31 @@ func (uc *GetTransfersUseCase) Execute(ctx context.Context, userID int, walletID
 	return result, nil
 }
 
+type DeleteTransferUseCase struct {
+	transferService *finance.TransferService
+	goalService     *finance.GoalService
+}
+
+func NewDeleteTransferUseCase(
+	transferService *finance.TransferService,
+	goalService *finance.GoalService,
+) *DeleteTransferUseCase {
+	return &DeleteTransferUseCase{
+		transferService: transferService,
+		goalService:     goalService,
+	}
+}
+
+func (uc *DeleteTransferUseCase) Execute(ctx context.Context, userID, transferID int) error {
+	user := finance.NewUserID(userID)
+	if uc.goalService != nil {
+		if err := uc.goalService.ReverseContributionByTransferID(ctx, user, transferID); err != nil {
+			return err
+		}
+	}
+	return uc.transferService.DeleteTransfer(ctx, user, finance.NewTransferID(transferID))
+}
+
 type WalletSummaryResponse struct {
 	CurrencyID          int     `json:"currency_id"`
 	LiquidNetWorth      float64 `json:"liquid_net_worth"`

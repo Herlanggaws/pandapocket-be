@@ -157,6 +157,7 @@ func autoMigrate(db *gorm.DB) error {
 		&Asset{},
 		&Liability{},
 		&LiabilityPayment{},
+		&GoalContribution{},
 		&HealthScoreSnapshot{},
 		&RecurringTransaction{},
 		&PendingTransaction{},

@@ -45,6 +45,22 @@ func (r *GormTransferRepository) Save(ctx context.Context, transfer *finance.Tra
 	return nil
 }
 
+func (r *GormTransferRepository) FindByID(ctx context.Context, id finance.TransferID) (*finance.Transfer, error) {
+	var model Transfer
+	err := r.db.WithContext(ctx).First(&model, id.Value()).Error
+	if err == gorm.ErrRecordNotFound {
+		return nil, gorm.ErrRecordNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return r.toDomain(model), nil
+}
+
+func (r *GormTransferRepository) Delete(ctx context.Context, id finance.TransferID) error {
+	return r.db.WithContext(ctx).Delete(&Transfer{}, id.Value()).Error
+}
+
 func (r *GormTransferRepository) FindByUserID(
 	ctx context.Context,
 	userID finance.UserID,

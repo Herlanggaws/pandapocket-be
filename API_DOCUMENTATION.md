@@ -90,6 +90,7 @@ CORS currently allows all origins (`*`). Allowed request headers: `Origin`, `Con
 | GET | `/api/health-score/history` | Yes | Monthly score history (`limit`, default 12) |
 | GET/POST | `/api/goals` | Yes | Savings goals with deadline |
 | GET/PUT/DELETE | `/api/goals/:id` | Yes | |
+| GET/POST | `/api/goals/:id/contributions` | Yes | Catat tabungan (C8) |
 | GET/POST | `/api/assets` | Yes | Non-wallet assets |
 | PUT | `/api/assets/:id` | Yes | |
 | POST | `/api/assets/:id/archive` | Yes | |
@@ -131,6 +132,7 @@ CORS currently allows all origins (`*`). Allowed request headers: `Origin`, `Con
 | POST | `/api/wallets/:id/unarchive` | Yes | Unarchive wallet |
 | GET | `/api/wallets/:id/balance` | Yes | Ledger balance breakdown |
 | GET/POST | `/api/transfers` | Yes | List/create same-currency transfers |
+| DELETE | `/api/transfers/:id` | Yes | Delete transfer (+ reverse goal contribution if linked) |
 
 ## Health Check
 
@@ -1566,6 +1568,31 @@ Response goal fields include: `wallet_id`, `wallet_name` (when linked), `progres
 
 ### DELETE /api/goals/:id
 
+### GET /api/goals/:id/contributions
+
+List savings contributions for a goal (newest first).
+
+### POST /api/goals/:id/contributions
+
+Record savings toward a goal. Always creates a ledger entry visible on Transactions.
+
+```json
+{
+  "amount": 500000,
+  "contributed_at": "2026-09-22",
+  "note": "optional",
+  "from_wallet_id": 1
+}
+```
+
+| Goal mode | Behavior | `kind` in response |
+| --- | --- | --- |
+| Manual | Expense from `from_wallet_id` (required) + bump `current_amount` | `expense` |
+| Linked + other same-currency wallet | Transfer `from_wallet_id` → linked wallet | `transfer` |
+| Linked + only one wallet | Income into linked wallet (`from_wallet_id` ignored) | `income` |
+
+Deleting the linked expense / income / transfer rolls back the contribution (manual expense also decreases `current_amount`).
+
 ---
 
 ## Assets & Liabilities
@@ -2207,6 +2234,10 @@ Same-currency moves between wallets. Transfers are **not** income/expense and do
 }
 ```
 
+### DELETE /api/transfers/:id
+
+Deletes the transfer (wallet balances recompute without it). If the transfer was created via goal catat tabungan, the contribution row is removed.
+
 ---
 
 ## Error Responses
@@ -2312,6 +2343,11 @@ Keep this file in sync with the running API. When routes, request/response shape
 
 ## Version History
 
+- **v2.27.0**: **Goals catat tabungan (C8)**
+  - `POST/GET /api/goals/:id/contributions` — manual expense / linked transfer / income fallback
+  - `DELETE /api/transfers/:id` — reverse transfer (+ goal contribution if any)
+  - Deleting expense/income linked to a contribution rolls back goal progress
+  - FE: Goals “Catat tabungan”; Transactions surfaces transfers
 - **v2.26.0**: **Public currency catalog for onboarding**
   - `GET /api/currencies` — auth optional; no header → system catalog (`user_id IS NULL`); valid token → + caller customs; bad token → `401` (no silent downgrade)
   - Mutations / default / set-default remain auth-required

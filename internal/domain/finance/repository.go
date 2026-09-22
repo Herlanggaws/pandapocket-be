@@ -21,7 +21,9 @@ type WalletRepository interface {
 // TransferRepository defines persistence for transfers.
 type TransferRepository interface {
 	Save(ctx context.Context, transfer *Transfer) error
+	FindByID(ctx context.Context, id TransferID) (*Transfer, error)
 	FindByUserID(ctx context.Context, userID UserID, filters TransferFilters) ([]*Transfer, error)
+	Delete(ctx context.Context, id TransferID) error
 }
 
 // TransactionRepository defines the contract for transaction persistence
