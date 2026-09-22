@@ -696,11 +696,24 @@ func (h *FinanceHandlers) DeleteBudget(c *gin.Context) {
 	})
 }
 
-// GetCurrencies handles getting currencies
+// GetCurrencies returns the currency list. With auth: system + user customs.
+// Without auth (onboarding): system catalog only.
 func (h *FinanceHandlers) GetCurrencies(c *gin.Context) {
-	userID := c.GetInt("user_id")
+	var (
+		response *finance.GetCurrenciesResponse
+		err      error
+	)
 
-	response, err := h.getCurrenciesUseCase.Execute(c.Request.Context(), domainFinance.NewUserID(userID))
+	if userID, ok := c.Get("user_id"); ok {
+		if id, isInt := userID.(int); isInt && id > 0 {
+			response, err = h.getCurrenciesUseCase.Execute(c.Request.Context(), domainFinance.NewUserID(id))
+		} else {
+			response, err = h.getCurrenciesUseCase.ExecuteCatalog(c.Request.Context())
+		}
+	} else {
+		response, err = h.getCurrenciesUseCase.ExecuteCatalog(c.Request.Context())
+	}
+
 	if err != nil {
 		InternalServerErrorResponse(c, "FETCH_CURRENCIES_ERROR", "Failed to fetch currencies")
 		return

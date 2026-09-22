@@ -369,6 +369,9 @@ func (app *App) SetupRoutes() *gin.Engine {
 			auth.DELETE("/account", app.AuthMiddleware.RequireAuth(), app.IdentityHandlers.DeleteAccount)
 		}
 
+		// Public catalog for onboarding (pre-auth); OptionalAuth enriches with user customs when logged in.
+		api.GET("/currencies", app.AuthMiddleware.OptionalAuth(), app.FinanceHandlers.GetCurrencies)
+
 		protected := api.Group("")
 		protected.Use(app.AuthMiddleware.RequireAuth())
 		{
@@ -405,7 +408,6 @@ func (app *App) SetupRoutes() *gin.Engine {
 			protected.PUT("/budgets/:id", app.FinanceHandlers.UpdateBudget)
 			protected.DELETE("/budgets/:id", app.FinanceHandlers.DeleteBudget)
 
-			protected.GET("/currencies", app.FinanceHandlers.GetCurrencies)
 			protected.POST("/currencies", app.FinanceHandlers.CreateCurrency)
 			protected.GET("/currencies/default", app.FinanceHandlers.GetDefaultCurrency)
 			protected.PUT("/currencies/:id/set-default", app.FinanceHandlers.SetDefaultCurrency)

@@ -28,6 +28,12 @@ func (s *CurrencyService) GetCurrenciesByUser(ctx context.Context, userID UserID
 	return s.currencyRepo.FindByUserID(ctx, userID)
 }
 
+// GetSystemCurrencies retrieves the shared catalog (is_default / user_id IS NULL).
+// Used by onboarding before the user has an account.
+func (s *CurrencyService) GetSystemCurrencies(ctx context.Context) ([]*Currency, error) {
+	return s.currencyRepo.FindDefaultCurrencies(ctx)
+}
+
 // CreateCurrency creates a new currency
 func (s *CurrencyService) CreateCurrency(
 	ctx context.Context,

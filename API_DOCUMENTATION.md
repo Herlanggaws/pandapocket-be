@@ -80,7 +80,8 @@ CORS currently allows all origins (`*`). Allowed request headers: `Origin`, `Con
 | GET | `/api/export/transactions` | Yes (Pro) | Download CSV or PDF (max 5000 rows) |
 | GET/POST | `/api/budgets` | Yes | `limit_type` fixed\|percent |
 | PUT/DELETE | `/api/budgets/:id` | Yes | |
-| GET/POST | `/api/currencies` | Yes | |
+| GET | `/api/currencies` | Optional | System catalog without auth; + user customs when authenticated |
+| POST | `/api/currencies` | Yes | |
 | GET | `/api/currencies/default` | Yes | |
 | PUT | `/api/currencies/:id/set-default` | Yes | |
 | PUT/DELETE | `/api/currencies/:id` | Yes | |
@@ -1253,7 +1254,17 @@ Delete a budget.
 
 ### GET /api/currencies
 
-Get all currencies available in the system.
+Get currencies available for selection.
+
+**Auth contract**
+
+| Caller | Behavior |
+| --- | --- |
+| No `Authorization` header | System catalog only (`is_default` + `user_id IS NULL`). Safe for pre-auth onboarding. |
+| Valid Bearer token | System catalog **plus** that user's custom currencies (`user_id = caller`). Never other users' rows. |
+| Invalid / expired / deleted-account token | `401` (session should clear). Does **not** silently fall back to the public catalog. |
+
+Mutations remain auth-required: `POST/PUT/DELETE /api/currencies*`, `GET /api/currencies/default`, `PUT .../set-default`.
 
 **Response:**
 ```json
@@ -1261,23 +1272,25 @@ Get all currencies available in the system.
   "status": "success",
   "data": [
     {
+      "id": 21,
+      "code": "IDR",
+      "name": "Indonesian Rupiah",
+      "symbol": "Rp",
+      "is_default": true
+    },
+    {
       "id": 1,
       "code": "USD",
       "name": "US Dollar",
       "symbol": "$",
       "is_default": true
-    },
-    {
-      "id": 2,
-      "code": "EUR",
-      "name": "Euro",
-      "symbol": "€",
-      "is_default": false
     }
   ],
   "error": null
 }
 ```
+
+Do not assume `id: 1` is IDR — resolve by `code`.
 
 ### POST /api/currencies
 
@@ -2299,6 +2312,10 @@ Keep this file in sync with the running API. When routes, request/response shape
 
 ## Version History
 
+- **v2.26.0**: **Public currency catalog for onboarding**
+  - `GET /api/currencies` — auth optional; no header → system catalog (`user_id IS NULL`); valid token → + caller customs; bad token → `401` (no silent downgrade)
+  - Mutations / default / set-default remain auth-required
+  - Fixes empty onboarding currency picker after removing hardcoded FE id→IDR fallback
 - **v2.25.0**: **Billing cancel/dunning + Free asset/debt gates**
   - `POST /api/billing/cancel` — schedule cancel at period end
   - Hourly job: expire trial/`past_due` grace / canceled period → Free

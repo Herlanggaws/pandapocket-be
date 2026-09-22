@@ -30,52 +30,87 @@ func NewAuthMiddleware(tokenService identity.TokenService, userChecker activeUse
 // RequireAuth is the middleware function that validates JWT tokens
 func (m *AuthMiddleware) RequireAuth() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		tokenString := c.GetHeader("Authorization")
-		if tokenString == "" {
-			handlers.UnauthorizedResponse(c, "AUTHORIZATION_HEADER_REQUIRED", "Authorization header required")
-			c.Abort()
+		if !m.authenticate(c, true) {
 			return
 		}
-
-		// Remove "Bearer " prefix if present
-		if len(tokenString) > 7 && tokenString[:7] == "Bearer " {
-			tokenString = tokenString[7:]
-		}
-
-		claims, err := m.tokenService.ValidateToken(tokenString)
-		if err != nil {
-			m.tokenService.CleanupExpiredToken(c.Request.Context(), tokenString)
-
-			handlers.UnauthorizedResponse(c, "INVALID_TOKEN", "Invalid token")
-			c.Abort()
-			return
-		}
-
-		if claims.UserID <= 0 {
-			handlers.UnauthorizedResponse(c, "INVALID_TOKEN", "Invalid token")
-			c.Abort()
-			return
-		}
-
-		if m.userChecker != nil {
-			active, err := m.userChecker.ExistsActive(c.Request.Context(), domainIdentity.NewUserID(claims.UserID))
-			if err != nil {
-				handlers.InternalServerErrorResponse(c, "USER_LOOKUP_FAILED", "Failed to verify user")
-				c.Abort()
-				return
-			}
-			if !active {
-				handlers.UnauthorizedResponse(c, "ACCOUNT_DELETED", "Account has been deleted")
-				c.Abort()
-				return
-			}
-		}
-
-		c.Set("user_id", claims.UserID)
-		c.Set("email", claims.Email)
-		c.Set("role", claims.Role)
 		c.Next()
 	}
+}
+
+// OptionalAuth attaches user claims when a valid Bearer token is present.
+// No Authorization header → anonymous (public catalog).
+// Authorization present but invalid/expired/deleted → 401 (same as RequireAuth),
+// so logged-in clients still clear session instead of silently getting a public view.
+func (m *AuthMiddleware) OptionalAuth() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		tokenString := c.GetHeader("Authorization")
+		if tokenString == "" {
+			c.Next()
+			return
+		}
+		if !m.authenticate(c, true) {
+			return
+		}
+		c.Next()
+	}
+}
+
+// authenticate validates Authorization when present. When requireAuth is true,
+// missing/invalid tokens abort with Unauthorized. Returns whether user context was set.
+func (m *AuthMiddleware) authenticate(c *gin.Context, requireAuth bool) bool {
+	tokenString := c.GetHeader("Authorization")
+	if tokenString == "" {
+		if requireAuth {
+			handlers.UnauthorizedResponse(c, "AUTHORIZATION_HEADER_REQUIRED", "Authorization header required")
+			c.Abort()
+		}
+		return false
+	}
+
+	if len(tokenString) > 7 && tokenString[:7] == "Bearer " {
+		tokenString = tokenString[7:]
+	}
+
+	claims, err := m.tokenService.ValidateToken(tokenString)
+	if err != nil {
+		m.tokenService.CleanupExpiredToken(c.Request.Context(), tokenString)
+		if requireAuth {
+			handlers.UnauthorizedResponse(c, "INVALID_TOKEN", "Invalid token")
+			c.Abort()
+		}
+		return false
+	}
+
+	if claims.UserID <= 0 {
+		if requireAuth {
+			handlers.UnauthorizedResponse(c, "INVALID_TOKEN", "Invalid token")
+			c.Abort()
+		}
+		return false
+	}
+
+	if m.userChecker != nil {
+		active, err := m.userChecker.ExistsActive(c.Request.Context(), domainIdentity.NewUserID(claims.UserID))
+		if err != nil {
+			if requireAuth {
+				handlers.InternalServerErrorResponse(c, "USER_LOOKUP_FAILED", "Failed to verify user")
+				c.Abort()
+			}
+			return false
+		}
+		if !active {
+			if requireAuth {
+				handlers.UnauthorizedResponse(c, "ACCOUNT_DELETED", "Account has been deleted")
+				c.Abort()
+			}
+			return false
+		}
+	}
+
+	c.Set("user_id", claims.UserID)
+	c.Set("email", claims.Email)
+	c.Set("role", claims.Role)
+	return true
 }
 
 // RequireRole is a middleware that checks if the user has the required role

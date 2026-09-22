@@ -151,11 +151,13 @@ func (r *GormCurrencyRepository) FindByCode(ctx context.Context, code string) (*
 	return currency, nil
 }
 
-// FindDefaultCurrencies finds all default currencies
+// FindDefaultCurrencies finds system-seeded currencies only (never user-owned rows).
 func (r *GormCurrencyRepository) FindDefaultCurrencies(ctx context.Context) ([]*finance.Currency, error) {
 	var currencyModels []Currency
 
-	err := r.db.WithContext(ctx).Where("is_default = ?", true).Find(&currencyModels).Error
+	err := r.db.WithContext(ctx).
+		Where("is_default = ? AND user_id IS NULL", true).
+		Find(&currencyModels).Error
 	if err != nil {
 		return nil, err
 	}
