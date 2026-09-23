@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -140,6 +141,7 @@ func (h *AIAdvisorHandlers) Topup(c *gin.Context) {
 			InternalServerErrorResponse(c, "BILLING_NOT_CONFIGURED", "Billing checkout is not configured")
 			return
 		}
+		log.Printf("AI topup error user=%d: %v", userID, err)
 		InternalServerErrorResponse(c, "AI_TOPUP_ERROR", "Failed to create AI credit top-up")
 		return
 	}

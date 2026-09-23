@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -92,7 +93,7 @@ func (c *Client) CreatePayment(ctx context.Context, idempotencyKey string, req C
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("doit create payment failed: status %d", resp.StatusCode)
+		return nil, fmt.Errorf("doit create payment failed: status %d: %s", resp.StatusCode, truncateDoitBody(respBody))
 	}
 
 	var out CreatePaymentResponse
@@ -110,4 +111,13 @@ func getEnv(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+func truncateDoitBody(body []byte) string {
+	const max = 300
+	s := strings.TrimSpace(string(body))
+	if len(s) <= max {
+		return s
+	}
+	return s[:max] + "…"
 }

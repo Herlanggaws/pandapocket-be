@@ -3,6 +3,7 @@ package handlers
 import (
 	"errors"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 
@@ -61,6 +62,7 @@ func (h *BillingHandlers) Checkout(c *gin.Context) {
 			InternalServerErrorResponse(c, "BILLING_NOT_CONFIGURED", "Billing checkout is not configured")
 			return
 		}
+		log.Printf("billing checkout error user=%d: %v", userID, err)
 		InternalServerErrorResponse(c, "CHECKOUT_ERROR", "Failed to create checkout")
 		return
 	}
