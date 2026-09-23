@@ -42,6 +42,7 @@ type UpdateWalletRequest struct {
 	Name           *string  `json:"name"`
 	Type           *string  `json:"type" binding:"omitempty,oneof=cash bank e_wallet"`
 	OpeningBalance *float64 `json:"opening_balance"`
+	CurrencyID     *int     `json:"currency_id"`
 }
 
 type CreateTransferRequest struct {
@@ -215,6 +216,7 @@ func (uc *UpdateWalletUseCase) Execute(ctx context.Context, userID, id int, req 
 		req.Name,
 		req.Type,
 		req.OpeningBalance,
+		req.CurrencyID,
 	)
 	if err != nil {
 		return nil, err

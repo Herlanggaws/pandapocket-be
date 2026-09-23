@@ -46,6 +46,7 @@ func (r *GormWalletRepository) Save(ctx context.Context, wallet *finance.Wallet)
 		return r.db.WithContext(ctx).Model(&Wallet{}).Where("id = ?", model.ID).Updates(map[string]interface{}{
 			"name":            model.Name,
 			"type":            model.Type,
+			"currency_id":     model.CurrencyID,
 			"opening_balance": model.OpeningBalance,
 			"is_default":      model.IsDefault,
 			"is_archived":     model.IsArchived,
@@ -188,5 +189,11 @@ func (r *GormWalletRepository) GetBalanceBreakdown(ctx context.Context, id finan
 func (r *GormWalletRepository) AlignPendingCurrency(ctx context.Context, id finance.WalletID, currencyID finance.CurrencyID) error {
 	return r.db.WithContext(ctx).Model(&PendingTransaction{}).
 		Where("wallet_id = ? AND status = ?", id.Value(), "pending").
+		Update("currency_id", currencyID.Value()).Error
+}
+
+func (r *GormWalletRepository) AlignRecurringCurrency(ctx context.Context, id finance.WalletID, currencyID finance.CurrencyID) error {
+	return r.db.WithContext(ctx).Model(&RecurringTransaction{}).
+		Where("wallet_id = ?", id.Value()).
 		Update("currency_id", currencyID.Value()).Error
 }

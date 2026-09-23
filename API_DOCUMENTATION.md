@@ -2250,7 +2250,16 @@ Register this route **before** `/wallets/:id`.
 
 ### PUT /api/wallets/:id
 
-Update `name`, `type`, and/or `opening_balance`. Currency is fixed after create.
+Update `name`, `type`, and/or `opening_balance`. Optional `currency_id` is allowed only when the wallet has **no** expenses/incomes/transfers, `opening_balance` is **0** (after applying any opening update in the same request), and **no** goals are linked. Otherwise returns 400 with messages such as `cannot change currency: wallet has transactions`, `… opening balance`, or `… unlink goals first`. On success, pending + recurring rows for that wallet are aligned to the new currency. Historical posted transactions are never rewritten.
+
+```json
+{
+  "name": "BCA",
+  "type": "bank",
+  "opening_balance": 0,
+  "currency_id": 21
+}
+```
 
 ### POST /api/wallets/:id/default
 
@@ -2404,6 +2413,11 @@ Keep this file in sync with the running API. When routes, request/response shape
 ---
 
 ## Version History
+
+- **v2.29.0**: **Wallet currency change when empty (F2)**
+  - `PUT /api/wallets/:id` accepts optional `currency_id` when ledger empty (no expense/income/transfer), opening 0, no linked goals
+  - Aligns pending + recurring `currency_id`; `Save` persists wallet `currency_id` (fixes primary→default sync)
+  - Primary set-default / prefs sync uses the same empty-wallet guards (skip if not empty)
 
 - **v2.28.0**: **Tanya AI / Ask AI (C1)**
   - `GET/DELETE /api/ai/advisor/thread`, `POST /api/ai/advisor/chat` (SSE), `POST /api/ai/advisor/topup`

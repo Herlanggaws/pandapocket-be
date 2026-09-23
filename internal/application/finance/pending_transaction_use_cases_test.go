@@ -300,6 +300,10 @@ func (s *stubWalletRepo) AlignPendingCurrency(ctx context.Context, id domainFina
 	return nil
 }
 
+func (s *stubWalletRepo) AlignRecurringCurrency(ctx context.Context, id domainFinance.WalletID, currencyID domainFinance.CurrencyID) error {
+	return nil
+}
+
 func mustDueRecurring(t *testing.T) *domainFinance.RecurringTransaction {
 	t.Helper()
 	amount, err := domainFinance.NewMoney(150000, domainFinance.NewCurrencyID(1))

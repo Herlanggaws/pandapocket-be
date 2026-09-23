@@ -89,6 +89,10 @@ func (r *walletSummaryWalletRepo) AlignPendingCurrency(ctx context.Context, id d
 	return nil
 }
 
+func (r *walletSummaryWalletRepo) AlignRecurringCurrency(ctx context.Context, id domainFinance.WalletID, currencyID domainFinance.CurrencyID) error {
+	return nil
+}
+
 func mustReconstituteWallet(
 	t *testing.T,
 	id int,

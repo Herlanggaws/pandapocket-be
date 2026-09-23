@@ -10,6 +10,12 @@ import (
 type WalletService struct {
 	walletRepo   WalletRepository
 	currencyRepo CurrencyRepository
+	linkedGoals  WalletLinkedGoalsChecker
+}
+
+// WalletLinkedGoalsChecker reports whether a wallet still has goals linked.
+type WalletLinkedGoalsChecker interface {
+	HasLinkedGoals(ctx context.Context, walletID WalletID) (bool, error)
 }
 
 func NewWalletService(walletRepo WalletRepository, currencyRepo CurrencyRepository) *WalletService {
@@ -17,6 +23,10 @@ func NewWalletService(walletRepo WalletRepository, currencyRepo CurrencyReposito
 		walletRepo:   walletRepo,
 		currencyRepo: currencyRepo,
 	}
+}
+
+func (s *WalletService) SetLinkedGoalsChecker(checker WalletLinkedGoalsChecker) {
+	s.linkedGoals = checker
 }
 
 func (s *WalletService) CreateWallet(
@@ -121,6 +131,7 @@ func (s *WalletService) UpdateWallet(
 	name *string,
 	walletType *string,
 	openingBalance *float64,
+	currencyID *int,
 ) (*Wallet, error) {
 	wallet, err := s.GetWalletForUser(ctx, userID, id)
 	if err != nil {
@@ -144,9 +155,19 @@ func (s *WalletService) UpdateWallet(
 	if openingBalance != nil {
 		wallet.UpdateOpeningBalance(*openingBalance)
 	}
+	if currencyID != nil {
+		if err := s.applyCurrencyChange(ctx, userID, wallet, NewCurrencyID(*currencyID), true); err != nil {
+			return nil, err
+		}
+	}
 
 	if err := s.walletRepo.Save(ctx, wallet); err != nil {
 		return nil, err
+	}
+	if currencyID != nil && wallet.CurrencyID().Value() == *currencyID {
+		if err := s.alignDerivedCurrencies(ctx, wallet.ID(), wallet.CurrencyID()); err != nil {
+			return nil, err
+		}
 	}
 	return wallet, nil
 }
@@ -169,12 +190,33 @@ func (s *WalletService) SetDefault(ctx context.Context, userID UserID, id Wallet
 	return wallet, nil
 }
 
-// SyncDefaultWalletCurrency updates the default wallet currency to match primary.
+// SyncDefaultWalletCurrency updates the default wallet currency to match primary when the wallet is empty.
 func (s *WalletService) SyncDefaultWalletCurrency(ctx context.Context, userID UserID, currencyID CurrencyID) error {
 	wallet, err := s.GetDefaultWallet(ctx, userID)
 	if err != nil {
 		return nil
 	}
+	if err := s.applyCurrencyChange(ctx, userID, wallet, currencyID, false); err != nil {
+		return err
+	}
+	if wallet.CurrencyID().Value() != currencyID.Value() {
+		return nil
+	}
+	if err := s.walletRepo.Save(ctx, wallet); err != nil {
+		return err
+	}
+	return s.alignDerivedCurrencies(ctx, wallet.ID(), currencyID)
+}
+
+// applyCurrencyChange mutates wallet currency when allowed.
+// When strict is true, violations return an error; when false (primary sync), skip silently.
+func (s *WalletService) applyCurrencyChange(
+	ctx context.Context,
+	userID UserID,
+	wallet *Wallet,
+	currencyID CurrencyID,
+	strict bool,
+) error {
 	if wallet.CurrencyID().Value() == currencyID.Value() {
 		return nil
 	}
@@ -187,11 +229,44 @@ func (s *WalletService) SyncDefaultWalletCurrency(ctx context.Context, userID Us
 		return errors.New("access denied to currency")
 	}
 
-	wallet.UpdateCurrencyID(currencyID)
-	if err := s.walletRepo.Save(ctx, wallet); err != nil {
+	hasTx, err := s.walletRepo.HasTransactions(ctx, wallet.ID())
+	if err != nil {
 		return err
 	}
-	return s.walletRepo.AlignPendingCurrency(ctx, wallet.ID(), currencyID)
+	if hasTx {
+		if strict {
+			return errors.New("cannot change currency: wallet has transactions")
+		}
+		return nil
+	}
+	if wallet.OpeningBalance() != 0 {
+		if strict {
+			return errors.New("cannot change currency: wallet has opening balance")
+		}
+		return nil
+	}
+	if s.linkedGoals != nil {
+		hasGoals, err := s.linkedGoals.HasLinkedGoals(ctx, wallet.ID())
+		if err != nil {
+			return err
+		}
+		if hasGoals {
+			if strict {
+				return errors.New("cannot change currency: unlink goals first")
+			}
+			return nil
+		}
+	}
+
+	wallet.UpdateCurrencyID(currencyID)
+	return nil
+}
+
+func (s *WalletService) alignDerivedCurrencies(ctx context.Context, walletID WalletID, currencyID CurrencyID) error {
+	if err := s.walletRepo.AlignPendingCurrency(ctx, walletID, currencyID); err != nil {
+		return err
+	}
+	return s.walletRepo.AlignRecurringCurrency(ctx, walletID, currencyID)
 }
 
 func (s *WalletService) Archive(ctx context.Context, userID UserID, id WalletID) (*Wallet, error) {
