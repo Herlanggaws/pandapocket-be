@@ -146,23 +146,6 @@ func NewApp(db *gorm.DB) *App {
 	getAnalyticsUseCase := appFinance.NewGetAnalyticsUseCase(transactionService, categoryService, currencyService, entitlementChecker)
 	getHealthScoreUseCase := appFinance.NewGetHealthScoreUseCase(budgetService, categoryService, transactionService, getAnalyticsUseCase, healthSnapshotRepo)
 	aiThreadUseCases := appAI.NewThreadUseCases(aiCreditService, aiThreadRepo, entitlementChecker)
-	aiChatUseCase := appAI.NewAdvisorChatUseCase(
-		aiCreditService,
-		aiThreadRepo,
-		entitlementChecker,
-		paasClient,
-		getAnalyticsUseCase,
-		func(ctx context.Context, userID int) string {
-			prefs, err := prefsRepo.FindByUserID(ctx, domainIdentity.NewUserID(userID))
-			if err != nil || prefs == nil {
-				return "id"
-			}
-			if prefs.Language() == "" {
-				return "id"
-			}
-			return prefs.Language()
-		},
-	)
 	aiTopupUseCase := appAI.NewCreateTopupUseCase(doitClient, entitlementChecker)
 	getHealthScoreHistoryUseCase := appFinance.NewGetHealthScoreHistoryUseCase(healthSnapshotRepo)
 	createBudgetUseCase := appFinance.NewCreateBudgetUseCase(budgetService, currencyService, categoryService, transactionService, entitlementChecker)
@@ -255,6 +238,31 @@ func NewApp(db *gorm.DB) *App {
 		getHealthScoreUseCase,
 	)
 	getNetWorthSummaryUseCase := appFinance.NewGetNetWorthSummaryUseCase(getWalletSummaryUseCase, assetService, liabilityService, currencyService)
+	aiChatUseCase := appAI.NewAdvisorChatUseCase(
+		aiCreditService,
+		aiThreadRepo,
+		entitlementChecker,
+		paasClient,
+		&appAI.AdvisorContextDeps{
+			Analytics:   getAnalyticsUseCase,
+			Liabilities: getLiabilitiesUseCase,
+			Assets:      getAssetsUseCase,
+			Goals:       getGoalsUseCase,
+			Budgets:     getBudgetsUseCase,
+			NetWorth:    getNetWorthSummaryUseCase,
+			Health:      getHealthScoreUseCase,
+		},
+		func(ctx context.Context, userID int) string {
+			prefs, err := prefsRepo.FindByUserID(ctx, domainIdentity.NewUserID(userID))
+			if err != nil || prefs == nil {
+				return "id"
+			}
+			if prefs.Language() == "" {
+				return "id"
+			}
+			return prefs.Language()
+		},
+	)
 	createTransferUseCase := appFinance.NewCreateTransferUseCase(transferService)
 	getTransfersUseCase := appFinance.NewGetTransfersUseCase(transferService)
 	deleteTransferUseCase := appFinance.NewDeleteTransferUseCase(transferService, goalService)

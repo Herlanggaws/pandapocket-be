@@ -2,18 +2,14 @@ package ai
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
-	"time"
 	"unicode/utf8"
 
 	domainAI "panda-pocket/internal/domain/ai"
 	"panda-pocket/internal/domain/entitlement"
 	"panda-pocket/internal/infrastructure/paas"
-
-	appFinance "panda-pocket/internal/application/finance"
 )
 
 type ChatStreamer interface {
@@ -77,7 +73,7 @@ type AdvisorChatUseCase struct {
 	threads      domainAI.ThreadRepository
 	entitlements entitlement.Checker
 	paas         ChatStreamer
-	analytics    *appFinance.GetAnalyticsUseCase
+	contextDeps  *AdvisorContextDeps
 	prefsLang    func(ctx context.Context, userID int) string
 
 	jobsMu sync.Mutex
@@ -89,7 +85,7 @@ func NewAdvisorChatUseCase(
 	threads domainAI.ThreadRepository,
 	entitlements entitlement.Checker,
 	paasClient ChatStreamer,
-	analytics *appFinance.GetAnalyticsUseCase,
+	contextDeps *AdvisorContextDeps,
 	prefsLang func(ctx context.Context, userID int) string,
 ) *AdvisorChatUseCase {
 	return &AdvisorChatUseCase{
@@ -97,7 +93,7 @@ func NewAdvisorChatUseCase(
 		threads:      threads,
 		entitlements: entitlements,
 		paas:         paasClient,
-		analytics:    analytics,
+		contextDeps:  contextDeps,
 		prefsLang:    prefsLang,
 		jobs:         map[int]*chatJob{},
 	}
@@ -187,7 +183,7 @@ func (uc *AdvisorChatUseCase) Start(
 			lang = l
 		}
 	}
-	contextJSON := uc.buildContextJSON(ctx, userID, creditsBefore)
+	contextJSON := buildAdvisorContextJSON(ctx, userID, creditsBefore, uc.contextDeps)
 
 	messages := []paas.Message{
 		{Role: "system", Content: systemPrompt(lang)},
@@ -261,9 +257,10 @@ func (uc *AdvisorChatUseCase) runGeneration(
 func systemPrompt(lang string) string {
 	base := `You are Tanya AI / Ask AI for Berbudget, a personal finance app. 
 Give practical, non-judgmental advice using ONLY the provided financial context JSON.
-If data is missing, say what is missing and suggest recording it in Berbudget.
+The context includes cashflow, budgets, goals, assets, liabilities/debts (including mortgage/home loans), net worth, and health score when available.
+If a section is empty or missing, say what is missing and suggest recording it in Berbudget (e.g. Debts page for hutang).
 You are NOT a licensed financial advisor — include that caveat briefly when giving material advice.
-Read-only: never claim you created or changed transactions, budgets, or transfers.
+Read-only: never claim you created or changed transactions, budgets, liabilities, or transfers.
 Prefer concise answers with clear next steps.
 When useful, include markdown links to in-app paths only, e.g. [Budgets](/budgets), [Goals](/goals), [Debts](/debts), [Insights](/insights), [Net worth](/net-worth), [Health](/health), [Transactions](/transactions), [Settings billing](/settings/billing).
 Do not use external http(s) links.`
@@ -271,22 +268,4 @@ Do not use external http(s) links.`
 		return base + "\nRespond in English."
 	}
 	return base + "\nRespond in Bahasa Indonesia."
-}
-
-func (uc *AdvisorChatUseCase) buildContextJSON(ctx context.Context, userID int, credits *CreditsView) string {
-	payload := map[string]interface{}{
-		"generated_at": time.Now().UTC().Format(time.RFC3339),
-		"credits":      credits,
-	}
-	if uc.analytics != nil {
-		monthly, err := uc.analytics.Execute(ctx, userID, appFinance.GetAnalyticsRequest{Period: "monthly"})
-		if err == nil && monthly != nil {
-			payload["cashflow_monthly"] = monthly
-		}
-	}
-	raw, err := json.Marshal(payload)
-	if err != nil {
-		return `{}`
-	}
-	return string(raw)
 }
