@@ -205,6 +205,7 @@ type ThreadRepository interface {
 	AppendMessage(ctx context.Context, threadID int, role, content string, promptTokens, completionTokens int) error
 	ClearMessages(ctx context.Context, threadID int) error
 	TrimOldest(ctx context.Context, threadID int, keep int) error
+	FirstUserMessageContent(ctx context.Context, threadID int) (string, error)
 }
 
 func TruncateTitle(message string) string {

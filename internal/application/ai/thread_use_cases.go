@@ -52,10 +52,7 @@ func (uc *ThreadUseCases) List(ctx context.Context, userID int) ([]ThreadSummary
 	}
 	out := make([]ThreadSummaryDTO, 0, len(rows))
 	for _, t := range rows {
-		title := t.Title
-		if strings.TrimSpace(title) == "" {
-			title = "New chat"
-		}
+		title := uc.resolveTitle(ctx, t)
 		status := t.GenerationStatus
 		if status == "" {
 			status = domainAI.GenerationIdle
@@ -69,6 +66,20 @@ func (uc *ThreadUseCases) List(ctx context.Context, userID int) ([]ThreadSummary
 		})
 	}
 	return out, nil
+}
+
+func (uc *ThreadUseCases) resolveTitle(ctx context.Context, t domainAI.Thread) string {
+	title := strings.TrimSpace(t.Title)
+	if title != "" {
+		return title
+	}
+	content, err := uc.threads.FirstUserMessageContent(ctx, t.ID)
+	if err == nil && strings.TrimSpace(content) != "" {
+		title = domainAI.TruncateTitle(content)
+		_ = uc.threads.SetTitleIfEmpty(ctx, t.ID, title)
+		return title
+	}
+	return "New chat"
 }
 
 func (uc *ThreadUseCases) Create(ctx context.Context, userID int) (*ThreadSummaryDTO, error) {
@@ -111,10 +122,7 @@ func (uc *ThreadUseCases) Get(ctx context.Context, userID, threadID int) (*GetTh
 		}
 		out = append(out, ThreadMessageDTO{Role: m.Role, Content: m.Content, CreatedAt: m.CreatedAt})
 	}
-	title := thread.Title
-	if strings.TrimSpace(title) == "" {
-		title = "New chat"
-	}
+	title := uc.resolveTitle(ctx, *thread)
 	status := thread.GenerationStatus
 	if status == "" {
 		status = domainAI.GenerationIdle

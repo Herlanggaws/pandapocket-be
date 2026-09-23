@@ -169,7 +169,11 @@ func (uc *AdvisorChatUseCase) Start(
 		_ = uc.threads.FinishGeneration(ctx, threadID, domainAI.GenerationFailed)
 		return nil, nil, err
 	}
-	_ = uc.threads.SetTitleIfEmpty(ctx, threadID, domainAI.TruncateTitle(message))
+	derivedTitle := domainAI.TruncateTitle(message)
+	if err := uc.threads.SetTitleIfEmpty(ctx, threadID, derivedTitle); err != nil {
+		// Non-fatal — list/get will backfill from first user message.
+		_ = err
+	}
 
 	history, err := uc.threads.ListMessages(ctx, threadID)
 	if err != nil {

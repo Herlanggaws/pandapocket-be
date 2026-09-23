@@ -219,6 +219,17 @@ func (m *memThreads) ClearMessages(_ context.Context, threadID int) error {
 
 func (m *memThreads) TrimOldest(_ context.Context, _, _ int) error { return nil }
 
+func (m *memThreads) FirstUserMessageContent(_ context.Context, threadID int) (string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, msg := range m.msgs[threadID] {
+		if msg.Role == domainAI.RoleUser && strings.TrimSpace(msg.Content) != "" {
+			return msg.Content, nil
+		}
+	}
+	return "", nil
+}
+
 type alwaysPro struct{}
 
 func (alwaysPro) IsPro(_ context.Context, _ int) (bool, error) { return true, nil }
@@ -322,6 +333,39 @@ func TestAdvisorChatRejectsSecondWhilePending(t *testing.T) {
 	t2, _ := threads.FindByIDForUser(context.Background(), threadID, 1)
 	if t2.GenerationStatus != domainAI.GenerationIdle {
 		t.Fatalf("status=%s", t2.GenerationStatus)
+	}
+}
+
+func TestThreadListDerivesTitleFromFirstMessage(t *testing.T) {
+	bal := domainAI.NewCreditBalance(1, false)
+	credits := NewCreditService(&memCredits{balance: bal}, emptySubs{})
+	threads := newMemThreads()
+	uc := NewThreadUseCases(credits, threads, alwaysPro{})
+
+	created, err := uc.Create(context.Background(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := threads.AppendMessage(context.Background(), created.ID, domainAI.RoleUser, "Kenapa budget saya jebol bulan ini?", 0, 0); err != nil {
+		t.Fatal(err)
+	}
+	list, err := uc.List(context.Background(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 {
+		t.Fatalf("len=%d", len(list))
+	}
+	want := "Kenapa budget saya jebol bulan ini?"
+	if list[0].Title != want {
+		t.Fatalf("title=%q want %q", list[0].Title, want)
+	}
+	stored, err := threads.FindByIDForUser(context.Background(), created.ID, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.Title != want {
+		t.Fatalf("persisted title=%q", stored.Title)
 	}
 }
 

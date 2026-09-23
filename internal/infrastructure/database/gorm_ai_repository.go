@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	domainAI "panda-pocket/internal/domain/ai"
@@ -249,9 +250,29 @@ func (r *GormAIThreadRepository) UpdateTitle(ctx context.Context, threadID, user
 }
 
 func (r *GormAIThreadRepository) SetTitleIfEmpty(ctx context.Context, threadID int, title string) error {
-	return r.db.WithContext(ctx).Model(&AIAdvisorThread{}).
+	title = strings.TrimSpace(title)
+	if title == "" {
+		return nil
+	}
+	res := r.db.WithContext(ctx).Model(&AIAdvisorThread{}).
 		Where("id = ? AND (title = '' OR title IS NULL)", threadID).
-		Updates(map[string]interface{}{"title": title, "updated_at": time.Now().UTC()}).Error
+		Updates(map[string]interface{}{"title": title, "updated_at": time.Now().UTC()})
+	return res.Error
+}
+
+func (r *GormAIThreadRepository) FirstUserMessageContent(ctx context.Context, threadID int) (string, error) {
+	var row AIAdvisorMessage
+	err := r.db.WithContext(ctx).
+		Where("thread_id = ? AND role = ?", threadID, domainAI.RoleUser).
+		Order("created_at asc, id asc").
+		First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return row.Content, nil
 }
 
 func (r *GormAIThreadRepository) TryBeginGeneration(ctx context.Context, threadID, userID int) error {
