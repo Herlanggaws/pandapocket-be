@@ -34,8 +34,12 @@ func main() {
 	// Setup routes
 	router := app.SetupRoutes()
 
-	log.Println("Server starting on :8080")
-	if err := router.Run(":8080"); err != nil {
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+	log.Printf("Server starting on :%s", port)
+	if err := router.Run(":" + port); err != nil {
 		log.Fatal("Server failed:", err)
 	}
 }
