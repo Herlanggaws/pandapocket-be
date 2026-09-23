@@ -67,9 +67,13 @@ func (uc *AdvisorChatUseCase) Execute(
 		return nil, domainAI.ErrNotConfigured
 	}
 
-	credits, err := uc.credits.SpendOne(ctx, userID)
+	// Reserve check only — debit happens after a successful non-empty AI reply.
+	creditsBefore, err := uc.credits.View(ctx, userID)
 	if err != nil {
 		return nil, err
+	}
+	if creditsBefore.Available < 1 {
+		return nil, domainAI.ErrCreditsRequired
 	}
 
 	threadID, err := uc.threads.GetOrCreateThreadID(ctx, userID)
@@ -91,7 +95,7 @@ func (uc *AdvisorChatUseCase) Execute(
 			lang = l
 		}
 	}
-	contextJSON := uc.buildContextJSON(ctx, userID, credits)
+	contextJSON := uc.buildContextJSON(ctx, userID, creditsBefore)
 
 	messages := []paas.Message{
 		{Role: "system", Content: systemPrompt(lang)},
@@ -107,16 +111,30 @@ func (uc *AdvisorChatUseCase) Execute(
 	full, promptTokens, completionTokens, err := uc.paas.StreamChat(ctx, messages, onDelta)
 	if err != nil {
 		_ = uc.threads.AppendMessage(ctx, threadID, domainAI.RoleAssistant, "(gagal menghasilkan jawaban — coba lagi)", 0, 0)
-		return credits, fmt.Errorf("%w: %v", domainAI.ErrUpstream, err)
+		return creditsBefore, fmt.Errorf("%w: %v", domainAI.ErrUpstream, err)
 	}
 	if strings.TrimSpace(full) == "" {
-		full = "Maaf, saya tidak bisa menjawab sekarang. Coba lagi sebentar."
+		_ = uc.threads.AppendMessage(ctx, threadID, domainAI.RoleAssistant, "(gagal menghasilkan jawaban — coba lagi)", 0, 0)
+		return creditsBefore, fmt.Errorf("%w: empty response", domainAI.ErrUpstream)
 	}
+
 	if err := uc.threads.AppendMessage(ctx, threadID, domainAI.RoleAssistant, full, promptTokens, completionTokens); err != nil {
-		return credits, err
+		// Reply already streamed to client — still debit so usage matches what the user received.
+		creditsAfter, spendErr := uc.credits.SpendOne(ctx, userID)
+		if spendErr != nil {
+			return creditsBefore, err
+		}
+		_ = uc.threads.TrimOldest(ctx, threadID, domainAI.MaxThreadMsgs)
+		return creditsAfter, err
+	}
+
+	creditsAfter, err := uc.credits.SpendOne(ctx, userID)
+	if err != nil {
+		// Stream succeeded but balance raced to zero — keep reply, surface credits error.
+		return creditsBefore, err
 	}
 	_ = uc.threads.TrimOldest(ctx, threadID, domainAI.MaxThreadMsgs)
-	return credits, nil
+	return creditsAfter, nil
 }
 
 func systemPrompt(lang string) string {
