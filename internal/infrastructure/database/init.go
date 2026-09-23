@@ -145,6 +145,13 @@ func autoMigrate(db *gorm.DB) error {
 		}
 	}
 
+	if db.Migrator().HasTable("ai_advisor_threads") {
+		// Multi-thread: drop legacy one-thread-per-user unique index/constraint if present.
+		_ = db.Exec(`ALTER TABLE ai_advisor_threads DROP CONSTRAINT IF EXISTS uni_ai_advisor_threads_user_id`).Error
+		_ = db.Exec(`DROP INDEX IF EXISTS idx_ai_advisor_threads_user_id`).Error
+		_ = db.Exec(`DROP INDEX IF EXISTS uni_ai_advisor_threads_user_id`).Error
+	}
+
 	return db.AutoMigrate(
 		&User{},
 		&Currency{},

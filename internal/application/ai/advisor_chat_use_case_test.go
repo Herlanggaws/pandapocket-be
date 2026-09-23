@@ -3,7 +3,10 @@ package ai
 import (
 	"context"
 	"errors"
+	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	domainAI "panda-pocket/internal/domain/ai"
 	domainBilling "panda-pocket/internal/domain/billing"
@@ -11,13 +14,25 @@ import (
 )
 
 type stubStreamer struct {
-	full string
-	err  error
+	full      string
+	err       error
+	delay     time.Duration
+	started   chan struct{}
+	release   chan struct{}
 }
 
 func (s *stubStreamer) Configured() bool { return true }
 
 func (s *stubStreamer) StreamChat(_ context.Context, _ []paas.Message, onDelta func(string) error) (string, int, int, error) {
+	if s.started != nil {
+		close(s.started)
+	}
+	if s.release != nil {
+		<-s.release
+	}
+	if s.delay > 0 {
+		time.Sleep(s.delay)
+	}
 	if s.err != nil {
 		return "", 0, 0, s.err
 	}
@@ -54,30 +69,151 @@ func (m *memCredits) RecordPurchase(_ context.Context, _ int, _, _ string, _ int
 }
 
 type memThreads struct {
-	id   int
-	msgs []domainAI.ThreadMessage
+	mu      sync.Mutex
+	nextID  int
+	threads map[int]*domainAI.Thread
+	msgs    map[int][]domainAI.ThreadMessage
 }
 
-func (m *memThreads) GetOrCreateThreadID(_ context.Context, _ int) (int, error) {
-	if m.id == 0 {
-		m.id = 1
+func newMemThreads() *memThreads {
+	return &memThreads{
+		nextID:  1,
+		threads: map[int]*domainAI.Thread{},
+		msgs:    map[int][]domainAI.ThreadMessage{},
 	}
-	return m.id, nil
 }
 
-func (m *memThreads) ListMessages(_ context.Context, _ int) ([]domainAI.ThreadMessage, error) {
-	out := make([]domainAI.ThreadMessage, len(m.msgs))
-	copy(out, m.msgs)
+func (m *memThreads) ListByUserID(_ context.Context, userID int) ([]domainAI.Thread, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]domainAI.Thread, 0)
+	for _, t := range m.threads {
+		if t.UserID == userID {
+			cp := *t
+			out = append(out, cp)
+		}
+	}
 	return out, nil
 }
 
-func (m *memThreads) AppendMessage(_ context.Context, _ int, role, content string, _, _ int) error {
-	m.msgs = append(m.msgs, domainAI.ThreadMessage{Role: role, Content: content})
+func (m *memThreads) Create(_ context.Context, userID int) (*domainAI.Thread, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	id := m.nextID
+	m.nextID++
+	now := time.Now().UTC()
+	t := &domainAI.Thread{
+		ID:               id,
+		UserID:           userID,
+		GenerationStatus: domainAI.GenerationIdle,
+		CreatedAt:        now,
+		UpdatedAt:        now,
+	}
+	m.threads[id] = t
+	m.msgs[id] = nil
+	cp := *t
+	return &cp, nil
+}
+
+func (m *memThreads) FindByIDForUser(_ context.Context, threadID, userID int) (*domainAI.Thread, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	t, ok := m.threads[threadID]
+	if !ok || t.UserID != userID {
+		return nil, domainAI.ErrThreadNotFound
+	}
+	cp := *t
+	return &cp, nil
+}
+
+func (m *memThreads) Delete(_ context.Context, threadID, userID int) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	t, ok := m.threads[threadID]
+	if !ok || t.UserID != userID {
+		return domainAI.ErrThreadNotFound
+	}
+	delete(m.threads, threadID)
+	delete(m.msgs, threadID)
 	return nil
 }
 
-func (m *memThreads) ClearMessages(_ context.Context, _ int) error {
-	m.msgs = nil
+func (m *memThreads) UpdateTitle(_ context.Context, threadID, userID int, title string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	t, ok := m.threads[threadID]
+	if !ok || t.UserID != userID {
+		return domainAI.ErrThreadNotFound
+	}
+	t.Title = title
+	t.UpdatedAt = time.Now().UTC()
+	return nil
+}
+
+func (m *memThreads) SetTitleIfEmpty(_ context.Context, threadID int, title string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	t, ok := m.threads[threadID]
+	if !ok {
+		return domainAI.ErrThreadNotFound
+	}
+	if strings.TrimSpace(t.Title) == "" {
+		t.Title = title
+	}
+	return nil
+}
+
+func (m *memThreads) TryBeginGeneration(_ context.Context, threadID, userID int) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	t, ok := m.threads[threadID]
+	if !ok || t.UserID != userID {
+		return domainAI.ErrThreadNotFound
+	}
+	if t.GenerationStatus == domainAI.GenerationPending {
+		return domainAI.ErrTurnInProgress
+	}
+	now := time.Now().UTC()
+	t.GenerationStatus = domainAI.GenerationPending
+	t.GenerationStartedAt = &now
+	return nil
+}
+
+func (m *memThreads) FinishGeneration(_ context.Context, threadID int, _ string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	t, ok := m.threads[threadID]
+	if !ok {
+		return domainAI.ErrThreadNotFound
+	}
+	t.GenerationStatus = domainAI.GenerationIdle
+	t.GenerationStartedAt = nil
+	return nil
+}
+
+func (m *memThreads) ListMessages(_ context.Context, threadID int) ([]domainAI.ThreadMessage, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	src := m.msgs[threadID]
+	out := make([]domainAI.ThreadMessage, len(src))
+	copy(out, src)
+	return out, nil
+}
+
+func (m *memThreads) AppendMessage(_ context.Context, threadID int, role, content string, _, _ int) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.msgs[threadID] = append(m.msgs[threadID], domainAI.ThreadMessage{Role: role, Content: content})
+	if t, ok := m.threads[threadID]; ok {
+		t.UpdatedAt = time.Now().UTC()
+	}
+	return nil
+}
+
+func (m *memThreads) ClearMessages(_ context.Context, threadID int) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.msgs[threadID] = nil
 	return nil
 }
 
@@ -97,22 +233,41 @@ func (emptySubs) ListAll(_ context.Context) ([]*domainBilling.Subscription, erro
 	return nil, nil
 }
 
-func newTestChat(streamer *stubStreamer) (*AdvisorChatUseCase, *memCredits) {
+func newTestChat(streamer *stubStreamer) (*AdvisorChatUseCase, *memCredits, *memThreads, int) {
 	bal := domainAI.NewCreditBalance(1, false)
 	creditsRepo := &memCredits{balance: bal}
 	svc := NewCreditService(creditsRepo, emptySubs{})
-	uc := NewAdvisorChatUseCase(svc, &memThreads{}, alwaysPro{}, streamer, nil, nil)
-	return uc, creditsRepo
+	threads := newMemThreads()
+	t, _ := threads.Create(context.Background(), 1)
+	uc := NewAdvisorChatUseCase(svc, threads, alwaysPro{}, streamer, nil, nil)
+	return uc, creditsRepo, threads, t.ID
+}
+
+func drain(ch <-chan StreamEvent) *StreamEvent {
+	var last *StreamEvent
+	for ev := range ch {
+		cp := ev
+		last = &cp
+		if ev.Kind == StreamDone || ev.Kind == StreamError {
+			break
+		}
+	}
+	return last
 }
 
 func TestAdvisorChatSpendsOnlyAfterSuccess(t *testing.T) {
-	uc, repo := newTestChat(&stubStreamer{full: "Halo, ini jawaban."})
-	view, err := uc.Execute(context.Background(), 1, "Apa kabar?", nil)
+	uc, repo, _, threadID := newTestChat(&stubStreamer{full: "Halo, ini jawaban."})
+	ch, unsub, err := uc.Start(context.Background(), 1, threadID, "Apa kabar?")
 	if err != nil {
-		t.Fatalf("execute: %v", err)
+		t.Fatalf("start: %v", err)
 	}
-	if view.Available != domainAI.IncludedGrant()-1 {
-		t.Fatalf("available=%d want %d", view.Available, domainAI.IncludedGrant()-1)
+	defer unsub()
+	last := drain(ch)
+	if last == nil || last.Kind != StreamDone {
+		t.Fatalf("want done, got %#v", last)
+	}
+	if last.Credits == nil || last.Credits.Available != domainAI.IncludedGrant()-1 {
+		t.Fatalf("available=%v", last.Credits)
 	}
 	if repo.balance.Available() != domainAI.IncludedGrant()-1 {
 		t.Fatalf("persisted available=%d", repo.balance.Available())
@@ -120,13 +275,15 @@ func TestAdvisorChatSpendsOnlyAfterSuccess(t *testing.T) {
 }
 
 func TestAdvisorChatNoSpendOnUpstreamFailure(t *testing.T) {
-	uc, repo := newTestChat(&stubStreamer{err: errors.New("provider down")})
-	view, err := uc.Execute(context.Background(), 1, "Apa kabar?", nil)
-	if err == nil || !errors.Is(err, domainAI.ErrUpstream) {
-		t.Fatalf("want upstream err, got %v", err)
+	uc, repo, _, threadID := newTestChat(&stubStreamer{err: errors.New("provider down")})
+	ch, unsub, err := uc.Start(context.Background(), 1, threadID, "Apa kabar?")
+	if err != nil {
+		t.Fatalf("start: %v", err)
 	}
-	if view.Available != domainAI.IncludedGrant() {
-		t.Fatalf("available=%d — must not spend on failure", view.Available)
+	defer unsub()
+	last := drain(ch)
+	if last == nil || last.Kind != StreamError {
+		t.Fatalf("want error, got %#v", last)
 	}
 	if repo.balance.Available() != domainAI.IncludedGrant() {
 		t.Fatalf("persisted available=%d", repo.balance.Available())
@@ -134,15 +291,67 @@ func TestAdvisorChatNoSpendOnUpstreamFailure(t *testing.T) {
 }
 
 func TestAdvisorChatNoSpendOnEmptyReply(t *testing.T) {
-	uc, repo := newTestChat(&stubStreamer{full: "   "})
-	view, err := uc.Execute(context.Background(), 1, "Apa kabar?", nil)
-	if err == nil || !errors.Is(err, domainAI.ErrUpstream) {
-		t.Fatalf("want upstream err, got %v", err)
+	uc, repo, _, threadID := newTestChat(&stubStreamer{full: "   "})
+	ch, unsub, err := uc.Start(context.Background(), 1, threadID, "Apa kabar?")
+	if err != nil {
+		t.Fatalf("start: %v", err)
 	}
-	if view.Available != domainAI.IncludedGrant() {
-		t.Fatalf("available=%d — must not spend on empty", view.Available)
-	}
+	defer unsub()
+	_ = drain(ch)
 	if repo.balance.Available() != domainAI.IncludedGrant() {
 		t.Fatalf("persisted available=%d", repo.balance.Available())
+	}
+}
+
+func TestAdvisorChatRejectsSecondWhilePending(t *testing.T) {
+	started := make(chan struct{})
+	cont := make(chan struct{})
+	uc, _, threads, threadID := newTestChat(&stubStreamer{full: "ok", started: started, release: cont})
+	ch, unsub, err := uc.Start(context.Background(), 1, threadID, "Pertama")
+	if err != nil {
+		t.Fatalf("start1: %v", err)
+	}
+	defer unsub()
+	<-started
+	_, _, err = uc.Start(context.Background(), 1, threadID, "Kedua")
+	if !errors.Is(err, domainAI.ErrTurnInProgress) {
+		t.Fatalf("want turn in progress, got %v", err)
+	}
+	close(cont)
+	_ = drain(ch)
+	t2, _ := threads.FindByIDForUser(context.Background(), threadID, 1)
+	if t2.GenerationStatus != domainAI.GenerationIdle {
+		t.Fatalf("status=%s", t2.GenerationStatus)
+	}
+}
+
+func TestThreadListCreateDelete(t *testing.T) {
+	bal := domainAI.NewCreditBalance(1, false)
+	credits := NewCreditService(&memCredits{balance: bal}, emptySubs{})
+	threads := newMemThreads()
+	uc := NewThreadUseCases(credits, threads, alwaysPro{})
+
+	a, err := uc.Create(context.Background(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := uc.Create(context.Background(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	list, err := uc.List(context.Background(), 1)
+	if err != nil || len(list) != 2 {
+		t.Fatalf("list=%v err=%v", list, err)
+	}
+	if err := uc.Delete(context.Background(), 1, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	got, err := uc.Get(context.Background(), 1, b.ID)
+	if err != nil || got.ID != b.ID {
+		t.Fatalf("get=%v err=%v", got, err)
+	}
+	_, err = uc.Get(context.Background(), 1, a.ID)
+	if !errors.Is(err, domainAI.ErrThreadNotFound) {
+		t.Fatalf("want not found, got %v", err)
 	}
 }

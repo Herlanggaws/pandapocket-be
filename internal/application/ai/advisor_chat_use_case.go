@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -20,6 +21,57 @@ type ChatStreamer interface {
 	StreamChat(ctx context.Context, messages []paas.Message, onDelta func(string) error) (string, int, int, error)
 }
 
+type StreamEventKind string
+
+const (
+	StreamDelta StreamEventKind = "delta"
+	StreamDone  StreamEventKind = "done"
+	StreamError StreamEventKind = "error"
+)
+
+type StreamEvent struct {
+	Kind     StreamEventKind
+	Delta    string
+	Credits  *CreditsView
+	ErrCode  string
+	ErrMsg   string
+}
+
+type chatJob struct {
+	mu   sync.Mutex
+	subs []chan StreamEvent
+}
+
+func (j *chatJob) subscribe() (<-chan StreamEvent, func()) {
+	ch := make(chan StreamEvent, 64)
+	j.mu.Lock()
+	j.subs = append(j.subs, ch)
+	j.mu.Unlock()
+	unsub := func() {
+		j.mu.Lock()
+		defer j.mu.Unlock()
+		for i, s := range j.subs {
+			if s == ch {
+				j.subs = append(j.subs[:i], j.subs[i+1:]...)
+				break
+			}
+		}
+		close(ch)
+	}
+	return ch, unsub
+}
+
+func (j *chatJob) publish(ev StreamEvent) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	for _, ch := range j.subs {
+		select {
+		case ch <- ev:
+		default:
+		}
+	}
+}
+
 type AdvisorChatUseCase struct {
 	credits      *CreditService
 	threads      domainAI.ThreadRepository
@@ -27,6 +79,9 @@ type AdvisorChatUseCase struct {
 	paas         ChatStreamer
 	analytics    *appFinance.GetAnalyticsUseCase
 	prefsLang    func(ctx context.Context, userID int) string
+
+	jobsMu sync.Mutex
+	jobs   map[int]*chatJob
 }
 
 func NewAdvisorChatUseCase(
@@ -44,49 +99,86 @@ func NewAdvisorChatUseCase(
 		paas:         paasClient,
 		analytics:    analytics,
 		prefsLang:    prefsLang,
+		jobs:         map[int]*chatJob{},
 	}
 }
 
-func (uc *AdvisorChatUseCase) Execute(
+func (uc *AdvisorChatUseCase) getOrCreateJob(threadID int) *chatJob {
+	uc.jobsMu.Lock()
+	defer uc.jobsMu.Unlock()
+	if j, ok := uc.jobs[threadID]; ok {
+		return j
+	}
+	j := &chatJob{}
+	uc.jobs[threadID] = j
+	return j
+}
+
+func (uc *AdvisorChatUseCase) removeJob(threadID int) {
+	uc.jobsMu.Lock()
+	defer uc.jobsMu.Unlock()
+	delete(uc.jobs, threadID)
+}
+
+// Subscribe attaches to an in-flight job (if any). Caller must unsubscribe.
+func (uc *AdvisorChatUseCase) Subscribe(threadID int) (<-chan StreamEvent, func(), bool) {
+	uc.jobsMu.Lock()
+	j, ok := uc.jobs[threadID]
+	uc.jobsMu.Unlock()
+	if !ok {
+		return nil, func() {}, false
+	}
+	ch, unsub := j.subscribe()
+	return ch, unsub, true
+}
+
+// Start validates, marks pending, appends the user message, and runs generation
+// on a detached timeout context so client disconnect does not cancel PAAS.
+func (uc *AdvisorChatUseCase) Start(
 	ctx context.Context,
-	userID int,
+	userID, threadID int,
 	message string,
-	onDelta func(string) error,
-) (*CreditsView, error) {
+) (<-chan StreamEvent, func(), error) {
 	if err := RequireProAI(ctx, uc.entitlements, userID); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	message = strings.TrimSpace(message)
 	if message == "" {
-		return nil, fmt.Errorf("message is required")
+		return nil, nil, fmt.Errorf("message is required")
 	}
 	if utf8.RuneCountInString(message) > domainAI.MaxMessageLen {
-		return nil, domainAI.ErrMessageTooLong
+		return nil, nil, domainAI.ErrMessageTooLong
 	}
 	if !uc.paas.Configured() {
-		return nil, domainAI.ErrNotConfigured
+		return nil, nil, domainAI.ErrNotConfigured
 	}
 
-	// Reserve check only — debit happens after a successful non-empty AI reply.
+	if _, err := uc.threads.FindByIDForUser(ctx, threadID, userID); err != nil {
+		return nil, nil, err
+	}
+
 	creditsBefore, err := uc.credits.View(ctx, userID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if creditsBefore.Available < 1 {
-		return nil, domainAI.ErrCreditsRequired
+		return nil, nil, domainAI.ErrCreditsRequired
 	}
 
-	threadID, err := uc.threads.GetOrCreateThreadID(ctx, userID)
-	if err != nil {
-		return nil, err
+	if err := uc.threads.TryBeginGeneration(ctx, threadID, userID); err != nil {
+		return nil, nil, err
 	}
+
 	if err := uc.threads.AppendMessage(ctx, threadID, domainAI.RoleUser, message, 0, 0); err != nil {
-		return nil, err
+		_ = uc.threads.FinishGeneration(ctx, threadID, domainAI.GenerationFailed)
+		return nil, nil, err
 	}
+	_ = uc.threads.SetTitleIfEmpty(ctx, threadID, domainAI.TruncateTitle(message))
 
 	history, err := uc.threads.ListMessages(ctx, threadID)
 	if err != nil {
-		return nil, err
+		_ = uc.threads.FinishGeneration(ctx, threadID, domainAI.GenerationFailed)
+		return nil, nil, err
 	}
 
 	lang := "id"
@@ -108,33 +200,62 @@ func (uc *AdvisorChatUseCase) Execute(
 		messages = append(messages, paas.Message{Role: msg.Role, Content: msg.Content})
 	}
 
-	full, promptTokens, completionTokens, err := uc.paas.StreamChat(ctx, messages, onDelta)
-	if err != nil {
-		_ = uc.threads.AppendMessage(ctx, threadID, domainAI.RoleAssistant, "(gagal menghasilkan jawaban — coba lagi)", 0, 0)
-		return creditsBefore, fmt.Errorf("%w: %v", domainAI.ErrUpstream, err)
-	}
-	if strings.TrimSpace(full) == "" {
-		_ = uc.threads.AppendMessage(ctx, threadID, domainAI.RoleAssistant, "(gagal menghasilkan jawaban — coba lagi)", 0, 0)
-		return creditsBefore, fmt.Errorf("%w: empty response", domainAI.ErrUpstream)
-	}
+	job := uc.getOrCreateJob(threadID)
+	ch, unsub := job.subscribe()
 
-	if err := uc.threads.AppendMessage(ctx, threadID, domainAI.RoleAssistant, full, promptTokens, completionTokens); err != nil {
-		// Reply already streamed to client — still debit so usage matches what the user received.
-		creditsAfter, spendErr := uc.credits.SpendOne(ctx, userID)
-		if spendErr != nil {
-			return creditsBefore, err
+	go uc.runGeneration(userID, threadID, messages, job, creditsBefore)
+
+	return ch, unsub, nil
+}
+
+func (uc *AdvisorChatUseCase) runGeneration(
+	userID, threadID int,
+	messages []paas.Message,
+	job *chatJob,
+	creditsBefore *CreditsView,
+) {
+	defer uc.removeJob(threadID)
+
+	bgCtx, cancel := context.WithTimeout(context.Background(), domainAI.GenerationTimeout)
+	defer cancel()
+
+	full, promptTokens, completionTokens, err := uc.paas.StreamChat(bgCtx, messages, func(delta string) error {
+		job.publish(StreamEvent{Kind: StreamDelta, Delta: delta})
+		return nil
+	})
+
+	finishCtx := context.Background()
+	if err != nil || strings.TrimSpace(full) == "" {
+		_ = uc.threads.AppendMessage(finishCtx, threadID, domainAI.RoleAssistant, "(gagal menghasilkan jawaban — coba lagi)", 0, 0)
+		_ = uc.threads.FinishGeneration(finishCtx, threadID, domainAI.GenerationFailed)
+		code := "AI_UPSTREAM_ERROR"
+		if err != nil && bgCtx.Err() != nil {
+			code = "AI_UPSTREAM_ERROR"
 		}
-		_ = uc.threads.TrimOldest(ctx, threadID, domainAI.MaxThreadMsgs)
-		return creditsAfter, err
+		job.publish(StreamEvent{Kind: StreamError, ErrCode: code, Credits: creditsBefore})
+		return
 	}
 
-	creditsAfter, err := uc.credits.SpendOne(ctx, userID)
-	if err != nil {
-		// Stream succeeded but balance raced to zero — keep reply, surface credits error.
-		return creditsBefore, err
+	if appendErr := uc.threads.AppendMessage(finishCtx, threadID, domainAI.RoleAssistant, full, promptTokens, completionTokens); appendErr != nil {
+		creditsAfter, spendErr := uc.credits.SpendOne(finishCtx, userID)
+		_ = uc.threads.FinishGeneration(finishCtx, threadID, domainAI.GenerationIdle)
+		if spendErr != nil {
+			job.publish(StreamEvent{Kind: StreamError, ErrCode: "AI_CHAT_ERROR", Credits: creditsBefore})
+			return
+		}
+		_ = uc.threads.TrimOldest(finishCtx, threadID, domainAI.MaxThreadMsgs)
+		job.publish(StreamEvent{Kind: StreamDone, Credits: creditsAfter})
+		return
 	}
-	_ = uc.threads.TrimOldest(ctx, threadID, domainAI.MaxThreadMsgs)
-	return creditsAfter, nil
+
+	creditsAfter, spendErr := uc.credits.SpendOne(finishCtx, userID)
+	_ = uc.threads.FinishGeneration(finishCtx, threadID, domainAI.GenerationIdle)
+	if spendErr != nil {
+		job.publish(StreamEvent{Kind: StreamError, ErrCode: "AI_CREDITS_REQUIRED", Credits: creditsBefore})
+		return
+	}
+	_ = uc.threads.TrimOldest(finishCtx, threadID, domainAI.MaxThreadMsgs)
+	job.publish(StreamEvent{Kind: StreamDone, Credits: creditsAfter})
 }
 
 func systemPrompt(lang string) string {

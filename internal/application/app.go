@@ -145,8 +145,7 @@ func NewApp(db *gorm.DB) *App {
 	getCategoriesUseCase := appFinance.NewGetCategoriesUseCase(categoryService)
 	getAnalyticsUseCase := appFinance.NewGetAnalyticsUseCase(transactionService, categoryService, currencyService, entitlementChecker)
 	getHealthScoreUseCase := appFinance.NewGetHealthScoreUseCase(budgetService, categoryService, transactionService, getAnalyticsUseCase, healthSnapshotRepo)
-	aiGetThreadUseCase := appAI.NewGetThreadUseCase(aiCreditService, aiThreadRepo, entitlementChecker)
-	aiClearThreadUseCase := appAI.NewClearThreadUseCase(aiThreadRepo, entitlementChecker)
+	aiThreadUseCases := appAI.NewThreadUseCases(aiCreditService, aiThreadRepo, entitlementChecker)
 	aiChatUseCase := appAI.NewAdvisorChatUseCase(
 		aiCreditService,
 		aiThreadRepo,
@@ -363,8 +362,7 @@ func NewApp(db *gorm.DB) *App {
 		cancelSubscriptionUseCase,
 	)
 	aiAdvisorHandlers := handlers.NewAIAdvisorHandlers(
-		aiGetThreadUseCase,
-		aiClearThreadUseCase,
+		aiThreadUseCases,
 		aiChatUseCase,
 		aiTopupUseCase,
 	)
@@ -497,9 +495,15 @@ func (app *App) SetupRoutes() *gin.Engine {
 			protected.POST("/billing/checkout", app.BillingHandlers.Checkout)
 			protected.POST("/billing/cancel", app.BillingHandlers.CancelSubscription)
 
-			protected.GET("/ai/advisor/thread", app.AIAdvisorHandlers.GetThread)
-			protected.DELETE("/ai/advisor/thread", app.AIAdvisorHandlers.ClearThread)
-			protected.POST("/ai/advisor/chat", app.AIAdvisorHandlers.Chat)
+			protected.GET("/ai/advisor/threads", app.AIAdvisorHandlers.ListThreads)
+			protected.POST("/ai/advisor/threads", app.AIAdvisorHandlers.CreateThread)
+			protected.GET("/ai/advisor/threads/:id", app.AIAdvisorHandlers.GetThreadByID)
+			protected.PATCH("/ai/advisor/threads/:id", app.AIAdvisorHandlers.RenameThread)
+			protected.DELETE("/ai/advisor/threads/:id", app.AIAdvisorHandlers.DeleteThread)
+			protected.POST("/ai/advisor/threads/:id/chat", app.AIAdvisorHandlers.ChatOnThread)
+			protected.GET("/ai/advisor/thread", app.AIAdvisorHandlers.LegacyGetThread)
+			protected.DELETE("/ai/advisor/thread", app.AIAdvisorHandlers.LegacyClearThread)
+			protected.POST("/ai/advisor/chat", app.AIAdvisorHandlers.LegacyChat)
 			protected.POST("/ai/advisor/topup", app.AIAdvisorHandlers.Topup)
 
 			protected.POST("/account/reset/challenge", app.IdentityHandlers.CreateAccountResetChallenge)

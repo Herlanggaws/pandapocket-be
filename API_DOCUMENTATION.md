@@ -105,9 +105,15 @@ CORS currently allows all origins (`*`). Allowed request headers: `Origin`, `Con
 | GET | `/api/me/subscription` | Yes | Current billing subscription + `is_pro` |
 | POST | `/api/billing/checkout` | Yes | Start Doit checkout; returns `hosted_url` (does not unlock Pro) |
 | POST | `/api/billing/cancel` | Yes | Schedule cancel at period end |
-| GET | `/api/ai/advisor/thread` | Yes (Pro) | Tanya AI thread + credit balance |
-| DELETE | `/api/ai/advisor/thread` | Yes (Pro) | Clear chat thread (credits unchanged) |
-| POST | `/api/ai/advisor/chat` | Yes (Pro) | Stream chat (SSE); 1 credit per user message |
+| GET | `/api/ai/advisor/threads` | Yes (Pro) | List AI chat threads |
+| POST | `/api/ai/advisor/threads` | Yes (Pro) | Create thread |
+| GET | `/api/ai/advisor/threads/:id` | Yes (Pro) | Thread messages + credits + `generation_status` |
+| PATCH | `/api/ai/advisor/threads/:id` | Yes (Pro) | Rename thread |
+| DELETE | `/api/ai/advisor/threads/:id` | Yes (Pro) | Delete thread |
+| POST | `/api/ai/advisor/threads/:id/chat` | Yes (Pro) | Stream chat (SSE); async pending survives refresh |
+| GET | `/api/ai/advisor/thread` | Yes (Pro) | Legacy: newest/create thread |
+| DELETE | `/api/ai/advisor/thread` | Yes (Pro) | Legacy: clear newest thread messages |
+| POST | `/api/ai/advisor/chat` | Yes (Pro) | Legacy: chat on newest/create thread |
 | POST | `/api/ai/advisor/topup` | Yes (Pro) | Doit one-shot for AI credit packs |
 | POST | `/api/account/reset/challenge` | Yes | Issue one-time confirmation string for data reset |
 | POST | `/api/account/reset` | Yes | Wipe user financial data after typing confirmation |
@@ -1789,14 +1795,23 @@ Pro-only (`IsPro()`). Free → `403 PREMIUM_REQUIRED` (`feature`: `ai_advisor`).
 | S | `ai_credits_s` | 50 | 9900 |
 | M | `ai_credits_m` | 150 | 24900 |
 
-#### GET /api/ai/advisor/thread
+#### GET /api/ai/advisor/threads
 
-Returns messages + credits.
+Returns `{ threads: [{ id, title, updated_at, created_at, generation_status }] }`.
+
+#### POST /api/ai/advisor/threads
+
+Creates an empty thread.
+
+#### GET /api/ai/advisor/threads/:id
 
 ```json
 {
   "status": "success",
   "data": {
+    "id": 1,
+    "title": "…",
+    "generation_status": "idle",
     "messages": [{ "role": "user", "content": "…", "created_at": "…" }],
     "credits": {
       "available": 12,
@@ -1809,22 +1824,42 @@ Returns messages + credits.
 }
 ```
 
-#### DELETE /api/ai/advisor/thread
+`generation_status`: `idle` | `pending` | `failed` (failed turns clear back to `idle` after stub).
 
-Clears messages. Credits unchanged.
+#### PATCH /api/ai/advisor/threads/:id
 
-#### POST /api/ai/advisor/chat
+Body: `{ "title": "…" }`.
+
+#### DELETE /api/ai/advisor/threads/:id
+
+Deletes thread and messages. Credits unchanged.
+
+#### POST /api/ai/advisor/threads/:id/chat
 
 Body: `{ "message": "…" }` (max 2000 chars).
 
 **Credit policy:** 1 credit is debited only after a successful non-empty AI reply. Upstream failure or empty response → no debit (`AI_UPSTREAM_ERROR`).
+
+**Async pending:** Generation runs detached from the HTTP client (≈90s timeout). Refresh does not cancel the job. While `generation_status=pending`, further chat → `409 AI_TURN_IN_PROGRESS`. Clients should poll GET until idle.
 
 Success: **SSE** `text/event-stream`:
 - `event: delta` — token chunk
 - `event: done` — JSON credits snapshot
 - `event: error` — JSON `{ error_code }`
 
-JSON errors before stream: `403 PREMIUM_REQUIRED`, `402 AI_CREDITS_REQUIRED`.
+JSON errors before stream: `403 PREMIUM_REQUIRED`, `402 AI_CREDITS_REQUIRED`, `409 AI_TURN_IN_PROGRESS`, `404 AI_THREAD_NOT_FOUND`.
+
+#### GET /api/ai/advisor/thread (legacy)
+
+Newest thread or create one — same payload shape as GET by id.
+
+#### DELETE /api/ai/advisor/thread (legacy)
+
+Clears messages on newest thread. Credits unchanged.
+
+#### POST /api/ai/advisor/chat (legacy)
+
+Same as chat on newest/create thread.
 
 #### POST /api/ai/advisor/topup
 
@@ -2421,8 +2456,11 @@ Keep this file in sync with the running API. When routes, request/response shape
   - Aligns pending + recurring `currency_id`; `Save` persists wallet `currency_id` (fixes primary→default sync)
   - Primary set-default / prefs sync uses the same empty-wallet guards (skip if not empty)
 
+- **v2.29.0**: **AI multi-thread + async pending**
+  - Multi conversation threads per user; `generation_status` on thread; chat job survives client disconnect
+  - `409 AI_TURN_IN_PROGRESS` while pending; debit still after successful non-empty reply
 - **v2.28.0**: **Tanya AI / Ask AI (C1)**
-  - `GET/DELETE /api/ai/advisor/thread`, `POST /api/ai/advisor/chat` (SSE), `POST /api/ai/advisor/topup`
+  - `GET/POST /api/ai/advisor/threads`, `GET/PATCH/DELETE /api/ai/advisor/threads/:id`, `POST .../chat` (SSE async pending); legacy `/thread` + `/chat`; `POST /api/ai/advisor/topup`
   - Credit ledger: included 75 (trial cap 15) + packs S/M via Doit webhook (`product=ai_credits`)
   - Provider PAAS AI Hub (`glm-5.3-flash`); Pro-only; Free has no AI surface
 - **v2.27.0**: **Goals catat tabungan (C8)**

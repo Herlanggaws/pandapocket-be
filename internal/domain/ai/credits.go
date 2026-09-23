@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -16,6 +17,8 @@ var (
 	ErrUpstream        = errors.New("ai upstream error")
 	ErrNotConfigured   = errors.New("ai provider is not configured")
 	ErrBalanceNotFound = errors.New("ai credit balance not found")
+	ErrThreadNotFound  = errors.New("ai advisor thread not found")
+	ErrTurnInProgress  = errors.New("ai turn already in progress")
 )
 
 const (
@@ -28,8 +31,15 @@ const (
 	PackMAmount      = 24900
 	MaxMessageLen    = 2000
 	MaxThreadMsgs    = 50
+	MaxThreadTitle   = 60
 	RoleUser         = "user"
 	RoleAssistant    = "assistant"
+
+	GenerationIdle    = "idle"
+	GenerationPending = "pending"
+	GenerationFailed  = "failed"
+
+	GenerationTimeout = 90 * time.Second
 )
 
 func IncludedGrant() int {
@@ -172,12 +182,40 @@ type ThreadMessage struct {
 	CreatedAt        time.Time
 }
 
+type Thread struct {
+	ID                  int
+	UserID              int
+	Title               string
+	GenerationStatus    string
+	GenerationStartedAt *time.Time
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
+}
+
 type ThreadRepository interface {
-	GetOrCreateThreadID(ctx context.Context, userID int) (int, error)
+	ListByUserID(ctx context.Context, userID int) ([]Thread, error)
+	Create(ctx context.Context, userID int) (*Thread, error)
+	FindByIDForUser(ctx context.Context, threadID, userID int) (*Thread, error)
+	Delete(ctx context.Context, threadID, userID int) error
+	UpdateTitle(ctx context.Context, threadID, userID int, title string) error
+	SetTitleIfEmpty(ctx context.Context, threadID int, title string) error
+	TryBeginGeneration(ctx context.Context, threadID, userID int) error
+	FinishGeneration(ctx context.Context, threadID int, status string) error
 	ListMessages(ctx context.Context, threadID int) ([]ThreadMessage, error)
 	AppendMessage(ctx context.Context, threadID int, role, content string, promptTokens, completionTokens int) error
 	ClearMessages(ctx context.Context, threadID int) error
 	TrimOldest(ctx context.Context, threadID int, keep int) error
+}
+
+func TruncateTitle(message string) string {
+	runes := []rune(strings.TrimSpace(message))
+	if len(runes) == 0 {
+		return "New chat"
+	}
+	if len(runes) <= MaxThreadTitle {
+		return string(runes)
+	}
+	return string(runes[:MaxThreadTitle-1]) + "…"
 }
 
 func FormatCreditsRequired() string {

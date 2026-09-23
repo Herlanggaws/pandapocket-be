@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
 	appAI "panda-pocket/internal/application/ai"
@@ -15,48 +16,104 @@ import (
 )
 
 type AIAdvisorHandlers struct {
-	getThread   *appAI.GetThreadUseCase
-	clearThread *appAI.ClearThreadUseCase
-	chat        *appAI.AdvisorChatUseCase
-	topup       *appAI.CreateTopupUseCase
+	threads *appAI.ThreadUseCases
+	chat    *appAI.AdvisorChatUseCase
+	topup   *appAI.CreateTopupUseCase
 }
 
 func NewAIAdvisorHandlers(
-	getThread *appAI.GetThreadUseCase,
-	clearThread *appAI.ClearThreadUseCase,
+	threads *appAI.ThreadUseCases,
 	chat *appAI.AdvisorChatUseCase,
 	topup *appAI.CreateTopupUseCase,
 ) *AIAdvisorHandlers {
 	return &AIAdvisorHandlers{
-		getThread:   getThread,
-		clearThread: clearThread,
-		chat:        chat,
-		topup:       topup,
+		threads: threads,
+		chat:    chat,
+		topup:   topup,
 	}
 }
 
-func (h *AIAdvisorHandlers) GetThread(c *gin.Context) {
+func (h *AIAdvisorHandlers) ListThreads(c *gin.Context) {
 	userID := c.GetInt("user_id")
-	resp, err := h.getThread.Execute(c.Request.Context(), userID)
+	list, err := h.threads.List(c.Request.Context(), userID)
 	if err != nil {
-		if errors.Is(err, entitlement.ErrPremiumRequired) {
-			PremiumRequiredResponse(c, err)
-			return
-		}
-		InternalServerErrorResponse(c, "AI_THREAD_ERROR", "Failed to load advisor thread")
+		h.mapThreadErr(c, err, "AI_THREAD_LIST_ERROR", "Failed to list advisor threads")
+		return
+	}
+	SuccessResponse(c, http.StatusOK, gin.H{"threads": list})
+}
+
+func (h *AIAdvisorHandlers) CreateThread(c *gin.Context) {
+	userID := c.GetInt("user_id")
+	thread, err := h.threads.Create(c.Request.Context(), userID)
+	if err != nil {
+		h.mapThreadErr(c, err, "AI_THREAD_CREATE_ERROR", "Failed to create advisor thread")
+		return
+	}
+	SuccessResponse(c, http.StatusCreated, thread)
+}
+
+func (h *AIAdvisorHandlers) GetThreadByID(c *gin.Context) {
+	userID := c.GetInt("user_id")
+	threadID, ok := parseThreadID(c)
+	if !ok {
+		return
+	}
+	resp, err := h.threads.Get(c.Request.Context(), userID, threadID)
+	if err != nil {
+		h.mapThreadErr(c, err, "AI_THREAD_ERROR", "Failed to load advisor thread")
 		return
 	}
 	SuccessResponse(c, http.StatusOK, resp)
 }
 
-func (h *AIAdvisorHandlers) ClearThread(c *gin.Context) {
+func (h *AIAdvisorHandlers) DeleteThread(c *gin.Context) {
 	userID := c.GetInt("user_id")
-	if err := h.clearThread.Execute(c.Request.Context(), userID); err != nil {
-		if errors.Is(err, entitlement.ErrPremiumRequired) {
-			PremiumRequiredResponse(c, err)
-			return
-		}
-		InternalServerErrorResponse(c, "AI_THREAD_CLEAR_ERROR", "Failed to clear advisor thread")
+	threadID, ok := parseThreadID(c)
+	if !ok {
+		return
+	}
+	if err := h.threads.Delete(c.Request.Context(), userID, threadID); err != nil {
+		h.mapThreadErr(c, err, "AI_THREAD_DELETE_ERROR", "Failed to delete advisor thread")
+		return
+	}
+	SuccessResponse(c, http.StatusOK, gin.H{"deleted": true})
+}
+
+func (h *AIAdvisorHandlers) RenameThread(c *gin.Context) {
+	userID := c.GetInt("user_id")
+	threadID, ok := parseThreadID(c)
+	if !ok {
+		return
+	}
+	var req appAI.RenameThreadRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		ValidationErrorResponse(c, "Invalid request body")
+		return
+	}
+	thread, err := h.threads.Rename(c.Request.Context(), userID, threadID, req.Title)
+	if err != nil {
+		h.mapThreadErr(c, err, "AI_THREAD_RENAME_ERROR", "Failed to rename advisor thread")
+		return
+	}
+	SuccessResponse(c, http.StatusOK, thread)
+}
+
+// LegacyGetThread keeps GET /ai/advisor/thread working (newest or create).
+func (h *AIAdvisorHandlers) LegacyGetThread(c *gin.Context) {
+	userID := c.GetInt("user_id")
+	resp, err := h.threads.LegacyGetOrCreate(c.Request.Context(), userID)
+	if err != nil {
+		h.mapThreadErr(c, err, "AI_THREAD_ERROR", "Failed to load advisor thread")
+		return
+	}
+	SuccessResponse(c, http.StatusOK, resp)
+}
+
+func (h *AIAdvisorHandlers) LegacyClearThread(c *gin.Context) {
+	userID := c.GetInt("user_id")
+	if err := h.threads.LegacyClear(c.Request.Context(), userID); err != nil {
+		h.mapThreadErr(c, err, "AI_THREAD_CLEAR_ERROR", "Failed to clear advisor thread")
 		return
 	}
 	SuccessResponse(c, http.StatusOK, gin.H{"cleared": true})
@@ -93,36 +150,51 @@ type chatRequestBody struct {
 	Message string `json:"message"`
 }
 
-func (h *AIAdvisorHandlers) Chat(c *gin.Context) {
+func (h *AIAdvisorHandlers) ChatOnThread(c *gin.Context) {
 	userID := c.GetInt("user_id")
+	threadID, ok := parseThreadID(c)
+	if !ok {
+		return
+	}
 	var req chatRequestBody
 	if err := c.ShouldBindJSON(&req); err != nil {
 		ValidationErrorResponse(c, "Invalid request body")
 		return
 	}
 
-	// Preflight without streaming headers so clients get normal JSON errors.
-	thread, err := h.getThread.Execute(c.Request.Context(), userID)
+	events, unsub, err := h.chat.Start(c.Request.Context(), userID, threadID, req.Message)
 	if err != nil {
-		if errors.Is(err, entitlement.ErrPremiumRequired) {
-			PremiumRequiredResponse(c, err)
-			return
-		}
-		InternalServerErrorResponse(c, "AI_THREAD_ERROR", "Failed to prepare chat")
+		h.mapChatStartErr(c, err)
 		return
 	}
-	if thread.Credits != nil && thread.Credits.Available < 1 {
-		c.JSON(http.StatusPaymentRequired, APIResponse{
-			Status: "error",
-			Error: &ErrorResponse{
-				ErrorCode:    "AI_CREDITS_REQUIRED",
-				ErrorMessage: domainAI.FormatCreditsRequired(),
-				Feature:      entitlement.FeatureAIAdvisor,
-			},
-		})
-		return
-	}
+	defer unsub()
 
+	h.streamEvents(c, events)
+}
+
+// LegacyChat starts chat on the newest (or newly created) thread.
+func (h *AIAdvisorHandlers) LegacyChat(c *gin.Context) {
+	userID := c.GetInt("user_id")
+	var req chatRequestBody
+	if err := c.ShouldBindJSON(&req); err != nil {
+		ValidationErrorResponse(c, "Invalid request body")
+		return
+	}
+	resp, err := h.threads.LegacyGetOrCreate(c.Request.Context(), userID)
+	if err != nil {
+		h.mapThreadErr(c, err, "AI_THREAD_ERROR", "Failed to prepare chat")
+		return
+	}
+	events, unsub, err := h.chat.Start(c.Request.Context(), userID, resp.ID, req.Message)
+	if err != nil {
+		h.mapChatStartErr(c, err)
+		return
+	}
+	defer unsub()
+	h.streamEvents(c, events)
+}
+
+func (h *AIAdvisorHandlers) streamEvents(c *gin.Context, events <-chan appAI.StreamEvent) {
 	c.Writer.Header().Set("Content-Type", "text/event-stream")
 	c.Writer.Header().Set("Cache-Control", "no-cache")
 	c.Writer.Header().Set("Connection", "keep-alive")
@@ -137,49 +209,119 @@ func (h *AIAdvisorHandlers) Chat(c *gin.Context) {
 		flusher.Flush()
 	}
 
-	credits, err := h.chat.Execute(c.Request.Context(), userID, req.Message, func(delta string) error {
-		payload, marshalErr := json.Marshal(delta)
-		if marshalErr != nil {
-			return marshalErr
-		}
-		writeEvent("delta", string(payload))
-		return nil
-	})
-	if err != nil {
-		if errors.Is(err, entitlement.ErrPremiumRequired) {
-			writeEvent("error", `{"error_code":"PREMIUM_REQUIRED","feature":"ai_advisor"}`)
+	notify := c.Request.Context().Done()
+	for {
+		select {
+		case <-notify:
+			// Client disconnected — generation continues server-side.
 			return
+		case ev, open := <-events:
+			if !open {
+				return
+			}
+			switch ev.Kind {
+			case appAI.StreamDelta:
+				payload, marshalErr := json.Marshal(ev.Delta)
+				if marshalErr != nil {
+					continue
+				}
+				writeEvent("delta", string(payload))
+			case appAI.StreamDone:
+				if ev.Credits != nil {
+					writeEvent("done", fmt.Sprintf(
+						`{"available":%d,"included_unlocked":%d,"included_used":%d,"purchased_remaining":%d,"is_trialing":%t}`,
+						ev.Credits.Available, ev.Credits.IncludedUnlocked, ev.Credits.IncludedUsed, ev.Credits.PurchasedRemaining, ev.Credits.IsTrialing,
+					))
+				} else {
+					writeEvent("done", `{}`)
+				}
+				return
+			case appAI.StreamError:
+				code := ev.ErrCode
+				if code == "" {
+					code = "AI_CHAT_ERROR"
+				}
+				writeEvent("error", fmt.Sprintf(`{"error_code":%q}`, code))
+				return
+			}
 		}
-		if errors.Is(err, domainAI.ErrCreditsRequired) {
-			writeEvent("error", `{"error_code":"AI_CREDITS_REQUIRED"}`)
-			return
-		}
-		if errors.Is(err, domainAI.ErrMessageTooLong) {
-			writeEvent("error", `{"error_code":"VALIDATION_ERROR","error_message":"message too long"}`)
-			return
-		}
-		if errors.Is(err, domainAI.ErrNotConfigured) {
-			writeEvent("error", `{"error_code":"AI_NOT_CONFIGURED"}`)
-			return
-		}
-		if errors.Is(err, domainAI.ErrUpstream) || strings.Contains(err.Error(), "ai upstream") {
-			writeEvent("error", `{"error_code":"AI_UPSTREAM_ERROR"}`)
-			return
-		}
-		if strings.Contains(err.Error(), "message is required") {
-			writeEvent("error", `{"error_code":"VALIDATION_ERROR","error_message":"message is required"}`)
-			return
-		}
-		writeEvent("error", `{"error_code":"AI_CHAT_ERROR"}`)
+	}
+}
+
+func parseThreadID(c *gin.Context) (int, bool) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil || id < 1 {
+		ValidationErrorResponse(c, "invalid thread id")
+		return 0, false
+	}
+	return id, true
+}
+
+func (h *AIAdvisorHandlers) mapThreadErr(c *gin.Context, err error, code, msg string) {
+	if errors.Is(err, entitlement.ErrPremiumRequired) {
+		PremiumRequiredResponse(c, err)
 		return
 	}
-
-	if credits != nil {
-		writeEvent("done", fmt.Sprintf(
-			`{"available":%d,"included_unlocked":%d,"included_used":%d,"purchased_remaining":%d,"is_trialing":%t}`,
-			credits.Available, credits.IncludedUnlocked, credits.IncludedUsed, credits.PurchasedRemaining, credits.IsTrialing,
-		))
-	} else {
-		writeEvent("done", `{}`)
+	if errors.Is(err, domainAI.ErrThreadNotFound) {
+		c.JSON(http.StatusNotFound, APIResponse{
+			Status: "error",
+			Error: &ErrorResponse{
+				ErrorCode:    "AI_THREAD_NOT_FOUND",
+				ErrorMessage: "Advisor thread not found",
+			},
+		})
+		return
 	}
+	InternalServerErrorResponse(c, code, msg)
+}
+
+func (h *AIAdvisorHandlers) mapChatStartErr(c *gin.Context, err error) {
+	if errors.Is(err, entitlement.ErrPremiumRequired) {
+		PremiumRequiredResponse(c, err)
+		return
+	}
+	if errors.Is(err, domainAI.ErrCreditsRequired) {
+		c.JSON(http.StatusPaymentRequired, APIResponse{
+			Status: "error",
+			Error: &ErrorResponse{
+				ErrorCode:    "AI_CREDITS_REQUIRED",
+				ErrorMessage: domainAI.FormatCreditsRequired(),
+				Feature:      entitlement.FeatureAIAdvisor,
+			},
+		})
+		return
+	}
+	if errors.Is(err, domainAI.ErrTurnInProgress) {
+		c.JSON(http.StatusConflict, APIResponse{
+			Status: "error",
+			Error: &ErrorResponse{
+				ErrorCode:    "AI_TURN_IN_PROGRESS",
+				ErrorMessage: "AI is still generating a reply for this thread",
+			},
+		})
+		return
+	}
+	if errors.Is(err, domainAI.ErrThreadNotFound) {
+		c.JSON(http.StatusNotFound, APIResponse{
+			Status: "error",
+			Error: &ErrorResponse{
+				ErrorCode:    "AI_THREAD_NOT_FOUND",
+				ErrorMessage: "Advisor thread not found",
+			},
+		})
+		return
+	}
+	if errors.Is(err, domainAI.ErrMessageTooLong) {
+		ValidationErrorResponse(c, "message too long")
+		return
+	}
+	if errors.Is(err, domainAI.ErrNotConfigured) {
+		InternalServerErrorResponse(c, "AI_NOT_CONFIGURED", "AI provider is not configured")
+		return
+	}
+	if strings.Contains(err.Error(), "message is required") {
+		ValidationErrorResponse(c, "message is required")
+		return
+	}
+	InternalServerErrorResponse(c, "AI_CHAT_ERROR", "Failed to start chat")
 }
