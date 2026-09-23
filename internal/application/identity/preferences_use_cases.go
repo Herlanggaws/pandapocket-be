@@ -86,7 +86,13 @@ type UpdatePreferencesRequest struct {
 	Topics              interface{} `json:"topics"`
 	Cadence             interface{} `json:"cadence"`
 	StartPath           interface{} `json:"start_path"`
-	Onboarding          json.RawMessage `json:"onboarding"`
+	// Draft onboarding fields (D7) — merge into onboarding JSON without completing
+	MonthlyIncome  *float64 `json:"monthly_income"`
+	MonthlyExpense *float64 `json:"monthly_expense"`
+	DebtBalance    *float64 `json:"debt_balance"`
+	CurrencyID     *int     `json:"currency_id"`
+	CurrencyCode   *string  `json:"currency_code"`
+	Onboarding     json.RawMessage `json:"onboarding"`
 }
 
 // UpdatePreferencesUseCase updates preferences
@@ -164,6 +170,21 @@ func (uc *UpdatePreferencesUseCase) Execute(ctx context.Context, userID int, req
 	}
 	if req.StartPath != nil {
 		onboardingMap["start_path"] = req.StartPath
+	}
+	if req.MonthlyIncome != nil {
+		onboardingMap["monthly_income"] = *req.MonthlyIncome
+	}
+	if req.MonthlyExpense != nil {
+		onboardingMap["monthly_expense"] = *req.MonthlyExpense
+	}
+	if req.DebtBalance != nil {
+		onboardingMap["debt_balance"] = *req.DebtBalance
+	}
+	if req.CurrencyID != nil {
+		onboardingMap["currency_id"] = *req.CurrencyID
+	}
+	if req.CurrencyCode != nil {
+		onboardingMap["currency_code"] = *req.CurrencyCode
 	}
 	merged, err := json.Marshal(onboardingMap)
 	if err != nil {

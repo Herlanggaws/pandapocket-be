@@ -8,6 +8,30 @@ Applied on prod `pandapocket` 2026-09-18 after orphan pre-flight (all 0). Re-run
 psql -d pandapocket -U nark -v ON_ERROR_STOP=1 -f scripts/add_foreign_keys.sql
 ```
 
+## Normalize table owners (D4)
+
+Idempotent script: [`normalize_table_owners.sql`](normalize_table_owners.sql).
+
+Transfers `public` tables + sequences to role `nark` (deploy/migrate user). Tables first so owned serial sequences cascade. Applied on prod 2026-09-23 (verify: 0 non-`nark` leftovers).
+
+```bash
+# Requires superuser (peer via sudo on host):
+sudo -u postgres psql -d pandapocket -v ON_ERROR_STOP=1 -f scripts/normalize_table_owners.sql
+```
+
+**Convention:** prod/staging AutoMigrate and one-off SQL scripts use `DB_USER=nark`. Do not create new tables as `postgres`.
+
+## Rename currency `is_system` (D5)
+
+Idempotent script: [`rename_currency_is_system.sql`](rename_currency_is_system.sql).
+
+Renames `currencies.is_default` → `is_system` (system catalog flag; user primary stays on `user_preferences.primary_currency_id`). Wallet/category `is_default` unchanged.
+
+```bash
+psql -d pandapocket -U nark -v ON_ERROR_STOP=1 -f scripts/rename_currency_is_system.sql
+```
+
+Apply **in the same window as deploying** the API that reads `is_system` (rename breaks old binaries).
 
 ## Available Scripts
 

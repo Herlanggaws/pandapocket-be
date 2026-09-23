@@ -72,7 +72,7 @@ type Currency struct {
 	Code      string    `gorm:"not null" json:"code"`
 	Name      string    `gorm:"not null" json:"name"`
 	Symbol    string    `gorm:"not null" json:"symbol"`
-	IsDefault bool      `gorm:"default:false" json:"is_default"`
+	IsSystem  bool      `gorm:"column:is_system;default:false" json:"is_system"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 

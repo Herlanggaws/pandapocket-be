@@ -63,7 +63,7 @@ func main() {
 	}
 
 	insertQuery := `
-		INSERT INTO currencies (code, name, symbol, is_default, created_at, updated_at)
+		INSERT INTO currencies (code, name, symbol, is_system, created_at, updated_at)
 		SELECT $1, $2, $3, true, $4, $5
 		WHERE NOT EXISTS (
 			SELECT 1 FROM currencies WHERE code = $1 AND user_id IS NULL
@@ -98,7 +98,7 @@ func main() {
 	fmt.Printf("\nCreated %d missing currencies, %d already present\n", created, skipped)
 
 	var finalCount int
-	err = db.QueryRow("SELECT COUNT(*) FROM currencies WHERE is_default = true AND user_id IS NULL").Scan(&finalCount)
+	err = db.QueryRow("SELECT COUNT(*) FROM currencies WHERE is_system = true AND user_id IS NULL").Scan(&finalCount)
 	if err != nil {
 		log.Printf("Warning: Failed to verify currency count: %v", err)
 	} else {

@@ -272,27 +272,27 @@ func createDefaultCategoriesGorm(db *gorm.DB) error {
 // createDefaultCurrenciesGorm ensures system default currencies exist (insert missing by code).
 func createDefaultCurrenciesGorm(db *gorm.DB) error {
 	defaultCurrencies := []Currency{
-		{Code: "IDR", Name: "Indonesian Rupiah", Symbol: "Rp", IsDefault: true},
-		{Code: "USD", Name: "US Dollar", Symbol: "$", IsDefault: true},
-		{Code: "EUR", Name: "Euro", Symbol: "€", IsDefault: true},
-		{Code: "GBP", Name: "British Pound", Symbol: "£", IsDefault: true},
-		{Code: "JPY", Name: "Japanese Yen", Symbol: "¥", IsDefault: true},
-		{Code: "CAD", Name: "Canadian Dollar", Symbol: "C$", IsDefault: true},
-		{Code: "AUD", Name: "Australian Dollar", Symbol: "A$", IsDefault: true},
-		{Code: "CHF", Name: "Swiss Franc", Symbol: "CHF", IsDefault: true},
-		{Code: "CNY", Name: "Chinese Yuan", Symbol: "¥", IsDefault: true},
-		{Code: "INR", Name: "Indian Rupee", Symbol: "₹", IsDefault: true},
-		{Code: "BRL", Name: "Brazilian Real", Symbol: "R$", IsDefault: true},
-		{Code: "KRW", Name: "South Korean Won", Symbol: "₩", IsDefault: true},
-		{Code: "MXN", Name: "Mexican Peso", Symbol: "$", IsDefault: true},
-		{Code: "SGD", Name: "Singapore Dollar", Symbol: "S$", IsDefault: true},
-		{Code: "HKD", Name: "Hong Kong Dollar", Symbol: "HK$", IsDefault: true},
-		{Code: "NZD", Name: "New Zealand Dollar", Symbol: "NZ$", IsDefault: true},
-		{Code: "SEK", Name: "Swedish Krona", Symbol: "kr", IsDefault: true},
-		{Code: "NOK", Name: "Norwegian Krone", Symbol: "kr", IsDefault: true},
-		{Code: "DKK", Name: "Danish Krone", Symbol: "kr", IsDefault: true},
-		{Code: "PLN", Name: "Polish Złoty", Symbol: "zł", IsDefault: true},
-		{Code: "THB", Name: "Thai Baht", Symbol: "฿", IsDefault: true},
+		{Code: "IDR", Name: "Indonesian Rupiah", Symbol: "Rp", IsSystem: true},
+		{Code: "USD", Name: "US Dollar", Symbol: "$", IsSystem: true},
+		{Code: "EUR", Name: "Euro", Symbol: "€", IsSystem: true},
+		{Code: "GBP", Name: "British Pound", Symbol: "£", IsSystem: true},
+		{Code: "JPY", Name: "Japanese Yen", Symbol: "¥", IsSystem: true},
+		{Code: "CAD", Name: "Canadian Dollar", Symbol: "C$", IsSystem: true},
+		{Code: "AUD", Name: "Australian Dollar", Symbol: "A$", IsSystem: true},
+		{Code: "CHF", Name: "Swiss Franc", Symbol: "CHF", IsSystem: true},
+		{Code: "CNY", Name: "Chinese Yuan", Symbol: "¥", IsSystem: true},
+		{Code: "INR", Name: "Indian Rupee", Symbol: "₹", IsSystem: true},
+		{Code: "BRL", Name: "Brazilian Real", Symbol: "R$", IsSystem: true},
+		{Code: "KRW", Name: "South Korean Won", Symbol: "₩", IsSystem: true},
+		{Code: "MXN", Name: "Mexican Peso", Symbol: "$", IsSystem: true},
+		{Code: "SGD", Name: "Singapore Dollar", Symbol: "S$", IsSystem: true},
+		{Code: "HKD", Name: "Hong Kong Dollar", Symbol: "HK$", IsSystem: true},
+		{Code: "NZD", Name: "New Zealand Dollar", Symbol: "NZ$", IsSystem: true},
+		{Code: "SEK", Name: "Swedish Krona", Symbol: "kr", IsSystem: true},
+		{Code: "NOK", Name: "Norwegian Krone", Symbol: "kr", IsSystem: true},
+		{Code: "DKK", Name: "Danish Krone", Symbol: "kr", IsSystem: true},
+		{Code: "PLN", Name: "Polish Złoty", Symbol: "zł", IsSystem: true},
+		{Code: "THB", Name: "Thai Baht", Symbol: "฿", IsSystem: true},
 	}
 
 	created := 0
@@ -340,11 +340,11 @@ func backfillDefaultWallets(db *gorm.DB) error {
 				currencyID = prefs.PrimaryCurrencyID
 			} else {
 				var systemCurrency Currency
-				if err := db.Where("is_default = ? AND code = ?", true, "IDR").First(&systemCurrency).Error; err == nil {
+				if err := db.Where("is_system = ? AND code = ?", true, "IDR").First(&systemCurrency).Error; err == nil {
 					currencyID = systemCurrency.ID
-				} else if err := db.Where("is_default = ? AND code = ?", true, "USD").First(&systemCurrency).Error; err == nil {
+				} else if err := db.Where("is_system = ? AND code = ?", true, "USD").First(&systemCurrency).Error; err == nil {
 					currencyID = systemCurrency.ID
-				} else if err := db.Where("is_default = ?", true).First(&systemCurrency).Error; err == nil {
+				} else if err := db.Where("is_system = ?", true).First(&systemCurrency).Error; err == nil {
 					currencyID = systemCurrency.ID
 				}
 			}

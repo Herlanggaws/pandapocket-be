@@ -42,7 +42,7 @@ func (s *WalletService) CreateWallet(
 	if err != nil {
 		return nil, errors.New("currency not found")
 	}
-	if !currency.IsDefault() && (currency.UserID() == nil || currency.UserID().Value() != userID.Value()) {
+	if !currency.IsSystem() && (currency.UserID() == nil || currency.UserID().Value() != userID.Value()) {
 		return nil, errors.New("access denied to currency")
 	}
 
@@ -225,7 +225,7 @@ func (s *WalletService) applyCurrencyChange(
 	if err != nil {
 		return errors.New("currency not found")
 	}
-	if !currency.IsDefault() && (currency.UserID() == nil || currency.UserID().Value() != userID.Value()) {
+	if !currency.IsSystem() && (currency.UserID() == nil || currency.UserID().Value() != userID.Value()) {
 		return errors.New("access denied to currency")
 	}
 

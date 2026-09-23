@@ -21,7 +21,7 @@ func (r *catalogCurrencyRepo) FindByID(ctx context.Context, id domainFinance.Cur
 func (r *catalogCurrencyRepo) FindByUserID(ctx context.Context, userID domainFinance.UserID) ([]*domainFinance.Currency, error) {
 	return r.byUser[userID.Value()], nil
 }
-func (r *catalogCurrencyRepo) FindDefaultCurrencies(ctx context.Context) ([]*domainFinance.Currency, error) {
+func (r *catalogCurrencyRepo) FindSystemCurrencies(ctx context.Context) ([]*domainFinance.Currency, error) {
 	return r.system, nil
 }
 func (r *catalogCurrencyRepo) Delete(ctx context.Context, id domainFinance.CurrencyID) error {

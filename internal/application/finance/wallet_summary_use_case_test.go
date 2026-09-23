@@ -27,7 +27,7 @@ func (r *walletSummaryCurrencyRepo) FindByID(ctx context.Context, id domainFinan
 func (r *walletSummaryCurrencyRepo) FindByUserID(ctx context.Context, userID domainFinance.UserID) ([]*domainFinance.Currency, error) {
 	return nil, nil
 }
-func (r *walletSummaryCurrencyRepo) FindDefaultCurrencies(ctx context.Context) ([]*domainFinance.Currency, error) {
+func (r *walletSummaryCurrencyRepo) FindSystemCurrencies(ctx context.Context) ([]*domainFinance.Currency, error) {
 	c, _ := r.FindByID(ctx, domainFinance.NewCurrencyID(r.primaryID))
 	return []*domainFinance.Currency{c}, nil
 }

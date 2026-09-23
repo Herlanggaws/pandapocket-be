@@ -23,7 +23,7 @@ func (r *memCurrencyRepo) FindByID(ctx context.Context, id CurrencyID) (*Currenc
 func (r *memCurrencyRepo) FindByUserID(ctx context.Context, userID UserID) ([]*Currency, error) {
 	return nil, nil
 }
-func (r *memCurrencyRepo) FindDefaultCurrencies(ctx context.Context) ([]*Currency, error) {
+func (r *memCurrencyRepo) FindSystemCurrencies(ctx context.Context) ([]*Currency, error) {
 	return nil, nil
 }
 func (r *memCurrencyRepo) Delete(ctx context.Context, id CurrencyID) error { return nil }

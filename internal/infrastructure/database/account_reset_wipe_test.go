@@ -77,7 +77,7 @@ func TestWipeUserDataScopedByUserID(t *testing.T) {
 		t.Fatalf("userB category: %v", err)
 	}
 
-	systemCurrency := Currency{Code: "IDR", Name: "Rupiah", Symbol: "Rp", IsDefault: true}
+	systemCurrency := Currency{Code: "IDR", Name: "Rupiah", Symbol: "Rp", IsSystem: true}
 	userACurrencyID := userA.ID
 	userACurrency := Currency{UserID: &userACurrencyID, Code: "AAA", Name: "Aaa", Symbol: "A"}
 	userBCurrencyID := userB.ID

@@ -1,7 +1,7 @@
 -- Ensure default currencies exist (insert missing by code), including IDR.
 -- Safe to re-run on databases that already have a partial default set.
 
-INSERT INTO currencies (code, name, symbol, is_default, created_at, updated_at)
+INSERT INTO currencies (code, name, symbol, is_system, created_at, updated_at)
 SELECT v.code, v.name, v.symbol, true, NOW(), NOW()
 FROM (VALUES
     ('IDR', 'Indonesian Rupiah', 'Rp'),
@@ -35,4 +35,4 @@ SELECT
     COUNT(*) AS total_currencies,
     STRING_AGG(code, ', ' ORDER BY code) AS currency_codes
 FROM currencies
-WHERE is_default = true AND user_id IS NULL;
+WHERE is_system = true AND user_id IS NULL;

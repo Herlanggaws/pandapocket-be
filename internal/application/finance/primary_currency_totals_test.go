@@ -73,7 +73,7 @@ func (s *analyticsCurrencyRepo) FindByID(ctx context.Context, id domainFinance.C
 func (s *analyticsCurrencyRepo) FindByUserID(ctx context.Context, userID domainFinance.UserID) ([]*domainFinance.Currency, error) {
 	return nil, nil
 }
-func (s *analyticsCurrencyRepo) FindDefaultCurrencies(ctx context.Context) ([]*domainFinance.Currency, error) {
+func (s *analyticsCurrencyRepo) FindSystemCurrencies(ctx context.Context) ([]*domainFinance.Currency, error) {
 	c, _ := s.FindByID(ctx, domainFinance.NewCurrencyID(s.primaryID))
 	return []*domainFinance.Currency{c}, nil
 }

@@ -1272,7 +1272,7 @@ Get currencies available for selection.
 
 | Caller | Behavior |
 | --- | --- |
-| No `Authorization` header | System catalog only (`is_default` + `user_id IS NULL`). Safe for pre-auth onboarding. |
+| No `Authorization` header | System catalog only (`is_system` + `user_id IS NULL`). Safe for pre-auth onboarding. |
 | Valid Bearer token | System catalog **plus** that user's custom currencies (`user_id = caller`). Never other users' rows. |
 | Invalid / expired / deleted-account token | `401` (session should clear). Does **not** silently fall back to the public catalog. |
 
@@ -1288,14 +1288,14 @@ Mutations remain auth-required: `POST/PUT/DELETE /api/currencies*`, `GET /api/cu
       "code": "IDR",
       "name": "Indonesian Rupiah",
       "symbol": "Rp",
-      "is_default": true
+      "is_system": true
     },
     {
       "id": 1,
       "code": "USD",
       "name": "US Dollar",
       "symbol": "$",
-      "is_default": true
+      "is_system": true
     }
   ],
   "error": null
@@ -1313,10 +1313,11 @@ Create a new currency.
 {
   "code": "GBP",
   "name": "British Pound",
-  "symbol": "£",
-  "is_default": false
+  "symbol": "£"
 }
 ```
+
+Custom currencies are always `is_system: false`. System catalog rows cannot be created via this endpoint.
 
 **Response:**
 ```json
@@ -1328,7 +1329,7 @@ Create a new currency.
       "code": "GBP",
       "name": "British Pound",
       "symbol": "£",
-      "is_default": false
+      "is_system": false
     }
   },
   "error": null
@@ -1344,10 +1345,11 @@ Update an existing currency.
 {
   "code": "GBP",
   "name": "British Pound Sterling",
-  "symbol": "£",
-  "is_default": false
+  "symbol": "£"
 }
 ```
+
+System currencies (`is_system: true`) cannot be updated.
 
 **Response:**
 ```json
@@ -1359,7 +1361,7 @@ Update an existing currency.
       "code": "GBP",
       "name": "British Pound Sterling",
       "symbol": "£",
-      "is_default": false
+      "is_system": false
     }
   },
   "error": null
@@ -1409,7 +1411,7 @@ Get the user's default currency.
     "code": "GBP",
     "name": "British Pound",
     "symbol": "£",
-    "is_default": true,
+    "is_system": true,
     "created_at": "2025-09-23T16:20:51.976667+07:00"
   },
   "error": null
@@ -1732,6 +1734,8 @@ Partial update. Accepts any of:
 - `email_notifications`, `budget_alerts`, `recurring_reminders`, `goal_deadline_alerts`
 - `language` (`id` | `en`, default `id`)
 - Onboarding fields: `onboarding_completed`, `goal`, `topics`, `cadence`, `start_path`
+- Draft onboarding (D7, no complete): `monthly_income`, `monthly_expense`, `debt_balance`, `currency_id`, `currency_code` — merged into `onboarding` JSON; do **not** set `onboarding_completed` until `POST /onboarding/complete` or plan step
+- Nested `onboarding` object is deep-merged into the stored JSON
 
 **Response:**
 ```json
@@ -2451,7 +2455,11 @@ Keep this file in sync with the running API. When routes, request/response shape
 
 ## Version History
 
-- **v2.29.0**: **Wallet currency change when empty (F2)**
+- **v2.31.0**: **Currency `is_system` (D5) + onboarding draft prefs (D7)**
+  - `currencies.is_default` → `is_system` (run `rename_currency_is_system.sql` with BE deploy)
+  - `PUT /api/preferences` accepts draft keys `monthly_income`, `monthly_expense`, `debt_balance`, `currency_id`, `currency_code` without completing onboarding
+
+- **v2.30.0**: **Wallet currency change when empty (F2)**
   - `PUT /api/wallets/:id` accepts optional `currency_id` when ledger empty (no expense/income/transfer), opening 0, no linked goals
   - Aligns pending + recurring `currency_id`; `Save` persists wallet `currency_id` (fixes primary→default sync)
   - Primary set-default / prefs sync uses the same empty-wallet guards (skip if not empty)

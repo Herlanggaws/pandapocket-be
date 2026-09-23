@@ -81,7 +81,7 @@ func (s *TransactionService) CreateTransaction(
 	}
 
 	// Check if user has access to currency (default or user's own)
-	if !currency.IsDefault() && (currency.UserID() == nil || currency.UserID().Value() != userID.Value()) {
+	if !currency.IsSystem() && (currency.UserID() == nil || currency.UserID().Value() != userID.Value()) {
 		return nil, errors.New("access denied to currency")
 	}
 
@@ -179,7 +179,7 @@ func (s *TransactionService) UpdateTransaction(
 	}
 
 	// Check if user has access to currency (default or user's own)
-	if !currency.IsDefault() && (currency.UserID() == nil || currency.UserID().Value() != userID.Value()) {
+	if !currency.IsSystem() && (currency.UserID() == nil || currency.UserID().Value() != userID.Value()) {
 		return nil, errors.New("access denied to currency")
 	}
 

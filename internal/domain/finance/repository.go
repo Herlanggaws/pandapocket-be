@@ -60,7 +60,7 @@ type CurrencyRepository interface {
 	Save(ctx context.Context, currency *Currency) error
 	FindByID(ctx context.Context, id CurrencyID) (*Currency, error)
 	FindByUserID(ctx context.Context, userID UserID) ([]*Currency, error)
-	FindDefaultCurrencies(ctx context.Context) ([]*Currency, error)
+	FindSystemCurrencies(ctx context.Context) ([]*Currency, error)
 	Delete(ctx context.Context, id CurrencyID) error
 	ExistsByID(ctx context.Context, id CurrencyID) (bool, error)
 	ExistsByCodeAndUserID(ctx context.Context, code string, userID UserID) (bool, error)

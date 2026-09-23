@@ -20,29 +20,45 @@ func NewGormCurrencyRepository(db *gorm.DB) *GormCurrencyRepository {
 
 // Save saves a currency to the database
 func (r *GormCurrencyRepository) Save(ctx context.Context, currency *finance.Currency) error {
-	// Convert domain currency to GORM model
 	currencyModel := &Currency{
-		Code:      currency.Code(),
-		Name:      currency.Name(),
-		Symbol:    currency.Symbol(),
-		IsDefault: currency.IsDefault(),
+		Code:     currency.Code(),
+		Name:     currency.Name(),
+		Symbol:   currency.Symbol(),
+		IsSystem: currency.IsSystem(),
 	}
 
 	if currency.ID().Value() != 0 {
 		currencyModel.ID = uint(currency.ID().Value())
 	}
 
-	if currency.UserID().Value() != 0 {
+	if currency.UserID() != nil && currency.UserID().Value() != 0 {
 		userID := uint(currency.UserID().Value())
 		currencyModel.UserID = &userID
 	}
 
-	// Save using GORM
 	if err := r.db.WithContext(ctx).Save(currencyModel).Error; err != nil {
 		return err
 	}
 
 	return nil
+}
+
+func toDomainCurrency(currencyModel Currency) (*finance.Currency, error) {
+	currencyID := finance.NewCurrencyID(int(currencyModel.ID))
+	var userID *finance.UserID
+	if currencyModel.UserID != nil {
+		userIDVal := finance.NewUserID(int(*currencyModel.UserID))
+		userID = &userIDVal
+	}
+
+	return finance.NewCurrency(
+		currencyID,
+		userID,
+		currencyModel.Code,
+		currencyModel.Name,
+		currencyModel.Symbol,
+		currencyModel.IsSystem,
+	)
 }
 
 // FindByID finds a currency by ID
@@ -57,27 +73,7 @@ func (r *GormCurrencyRepository) FindByID(ctx context.Context, id finance.Curren
 		return nil, err
 	}
 
-	// Convert GORM model to domain currency
-	currencyID := finance.NewCurrencyID(int(currencyModel.ID))
-	var userID *finance.UserID
-	if currencyModel.UserID != nil {
-		userIDVal := finance.NewUserID(int(*currencyModel.UserID))
-		userID = &userIDVal
-	}
-
-	currency, err := finance.NewCurrency(
-		currencyID,
-		userID,
-		currencyModel.Code,
-		currencyModel.Name,
-		currencyModel.Symbol,
-		currencyModel.IsDefault,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	return currency, nil
+	return toDomainCurrency(currencyModel)
 }
 
 // FindByUserID finds all currencies for a user
@@ -89,24 +85,9 @@ func (r *GormCurrencyRepository) FindByUserID(ctx context.Context, userID financ
 		return nil, err
 	}
 
-	// Convert GORM models to domain currencies
 	var currencies []*finance.Currency
 	for _, model := range currencyModels {
-		currencyID := finance.NewCurrencyID(int(model.ID))
-		var userID *finance.UserID
-		if model.UserID != nil {
-			userIDVal := finance.NewUserID(int(*model.UserID))
-			userID = &userIDVal
-		}
-
-		currency, err := finance.NewCurrency(
-			currencyID,
-			userID,
-			model.Code,
-			model.Name,
-			model.Symbol,
-			model.IsDefault,
-		)
+		currency, err := toDomainCurrency(model)
 		if err != nil {
 			return nil, err
 		}
@@ -128,58 +109,23 @@ func (r *GormCurrencyRepository) FindByCode(ctx context.Context, code string) (*
 		return nil, err
 	}
 
-	// Convert GORM model to domain currency
-	currencyID := finance.NewCurrencyID(int(currencyModel.ID))
-	var userID *finance.UserID
-	if currencyModel.UserID != nil {
-		userIDVal := finance.NewUserID(int(*currencyModel.UserID))
-		userID = &userIDVal
-	}
-
-	currency, err := finance.NewCurrency(
-		currencyID,
-		userID,
-		currencyModel.Code,
-		currencyModel.Name,
-		currencyModel.Symbol,
-		currencyModel.IsDefault,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	return currency, nil
+	return toDomainCurrency(currencyModel)
 }
 
-// FindDefaultCurrencies finds system-seeded currencies only (never user-owned rows).
-func (r *GormCurrencyRepository) FindDefaultCurrencies(ctx context.Context) ([]*finance.Currency, error) {
+// FindSystemCurrencies finds system-seeded currencies only (never user-owned rows).
+func (r *GormCurrencyRepository) FindSystemCurrencies(ctx context.Context) ([]*finance.Currency, error) {
 	var currencyModels []Currency
 
 	err := r.db.WithContext(ctx).
-		Where("is_default = ? AND user_id IS NULL", true).
+		Where("is_system = ? AND user_id IS NULL", true).
 		Find(&currencyModels).Error
 	if err != nil {
 		return nil, err
 	}
 
-	// Convert GORM models to domain currencies
 	var currencies []*finance.Currency
 	for _, model := range currencyModels {
-		currencyID := finance.NewCurrencyID(int(model.ID))
-		var userID *finance.UserID
-		if model.UserID != nil {
-			userIDVal := finance.NewUserID(int(*model.UserID))
-			userID = &userIDVal
-		}
-
-		currency, err := finance.NewCurrency(
-			currencyID,
-			userID,
-			model.Code,
-			model.Name,
-			model.Symbol,
-			model.IsDefault,
-		)
+		currency, err := toDomainCurrency(model)
 		if err != nil {
 			return nil, err
 		}
@@ -218,13 +164,10 @@ func (r *GormCurrencyRepository) ExistsByCodeAndUserID(ctx context.Context, code
 
 // SetUserDefaultCurrency sets the default currency for a user
 func (r *GormCurrencyRepository) SetUserDefaultCurrency(ctx context.Context, userID finance.UserID, currencyID finance.CurrencyID) error {
-	// Use the existing UserPreferences model
 	var preferences UserPreferences
 
-	// Check if user preferences already exist
 	err := r.db.WithContext(ctx).Where("user_id = ?", userID.Value()).First(&preferences).Error
 	if err != nil {
-		// If not found, create new preferences
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			preferences = UserPreferences{
 				UserID:             uint(userID.Value()),
@@ -239,7 +182,6 @@ func (r *GormCurrencyRepository) SetUserDefaultCurrency(ctx context.Context, use
 		return err
 	}
 
-	// Update existing preferences
 	preferences.PrimaryCurrencyID = uint(currencyID.Value())
 	return r.db.WithContext(ctx).Save(&preferences).Error
 }
@@ -248,7 +190,6 @@ func (r *GormCurrencyRepository) SetUserDefaultCurrency(ctx context.Context, use
 func (r *GormCurrencyRepository) GetUserDefaultCurrency(ctx context.Context, userID finance.UserID) (*finance.Currency, error) {
 	var preferences UserPreferences
 
-	// Get user preferences
 	err := r.db.WithContext(ctx).Where("user_id = ?", userID.Value()).First(&preferences).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -257,6 +198,5 @@ func (r *GormCurrencyRepository) GetUserDefaultCurrency(ctx context.Context, use
 		return nil, err
 	}
 
-	// Get the currency by ID
 	return r.FindByID(ctx, finance.NewCurrencyID(int(preferences.PrimaryCurrencyID)))
 }

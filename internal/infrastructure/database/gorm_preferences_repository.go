@@ -97,7 +97,7 @@ func (r *GormPreferencesRepository) FindDefaultCurrencyID(ctx context.Context) (
 		return int(currency.ID), nil
 	}
 
-	err = r.db.WithContext(ctx).Where("is_default = ? AND user_id IS NULL", true).First(&currency).Error
+	err = r.db.WithContext(ctx).Where("is_system = ? AND user_id IS NULL", true).First(&currency).Error
 	if err != nil {
 		err = r.db.WithContext(ctx).First(&currency).Error
 		if err != nil {

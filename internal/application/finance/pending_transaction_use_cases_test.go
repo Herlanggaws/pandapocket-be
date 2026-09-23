@@ -241,7 +241,7 @@ func (s *stubCurrencyRepo) FindByID(ctx context.Context, id domainFinance.Curren
 func (s *stubCurrencyRepo) FindByUserID(ctx context.Context, userID domainFinance.UserID) ([]*domainFinance.Currency, error) {
 	return nil, nil
 }
-func (s *stubCurrencyRepo) FindDefaultCurrencies(ctx context.Context) ([]*domainFinance.Currency, error) {
+func (s *stubCurrencyRepo) FindSystemCurrencies(ctx context.Context) ([]*domainFinance.Currency, error) {
 	return nil, nil
 }
 func (s *stubCurrencyRepo) Delete(ctx context.Context, id domainFinance.CurrencyID) error {

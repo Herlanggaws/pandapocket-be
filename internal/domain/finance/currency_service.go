@@ -23,15 +23,15 @@ func (s *CurrencyService) GetPrimaryCurrency(ctx context.Context, userID UserID)
 }
 
 // GetCurrenciesByUser retrieves all currencies accessible to a user
-// (system defaults with user_id IS NULL plus the user's custom currencies).
+// (system catalog with user_id IS NULL plus the user's custom currencies).
 func (s *CurrencyService) GetCurrenciesByUser(ctx context.Context, userID UserID) ([]*Currency, error) {
 	return s.currencyRepo.FindByUserID(ctx, userID)
 }
 
-// GetSystemCurrencies retrieves the shared catalog (is_default / user_id IS NULL).
+// GetSystemCurrencies retrieves the shared catalog (is_system / user_id IS NULL).
 // Used by onboarding before the user has an account.
 func (s *CurrencyService) GetSystemCurrencies(ctx context.Context) ([]*Currency, error) {
-	return s.currencyRepo.FindDefaultCurrencies(ctx)
+	return s.currencyRepo.FindSystemCurrencies(ctx)
 }
 
 // CreateCurrency creates a new currency
@@ -42,7 +42,6 @@ func (s *CurrencyService) CreateCurrency(
 	name string,
 	symbol string,
 ) (*Currency, error) {
-	// Check if currency code already exists for this user
 	exists, err := s.currencyRepo.ExistsByCodeAndUserID(ctx, code, userID)
 	if err != nil {
 		return nil, err
@@ -52,20 +51,18 @@ func (s *CurrencyService) CreateCurrency(
 		return nil, errors.New("currency code already exists")
 	}
 
-	// Create currency
 	currency, err := NewCurrency(
-		CurrencyID{}, // Will be set by repository
+		CurrencyID{},
 		&userID,
 		code,
 		name,
 		symbol,
-		false, // User currencies are not default
+		false,
 	)
 	if err != nil {
 		return nil, err
 	}
 
-	// Save currency
 	if err := s.currencyRepo.Save(ctx, currency); err != nil {
 		return nil, err
 	}
@@ -82,22 +79,19 @@ func (s *CurrencyService) UpdateCurrency(
 	name string,
 	symbol string,
 ) error {
-	// Get currency
 	currency, err := s.currencyRepo.FindByID(ctx, currencyID)
 	if err != nil {
 		return errors.New("currency not found")
 	}
 
-	// Check if user can update this currency
-	if currency.IsDefault() {
-		return errors.New("cannot update default currency")
+	if currency.IsSystem() {
+		return errors.New("cannot update system currency")
 	}
 
 	if currency.UserID() == nil || currency.UserID().Value() != userID.Value() {
 		return errors.New("access denied")
 	}
 
-	// Update currency
 	if err := currency.UpdateCode(code); err != nil {
 		return err
 	}
@@ -110,21 +104,18 @@ func (s *CurrencyService) UpdateCurrency(
 		return err
 	}
 
-	// Save updated currency
 	return s.currencyRepo.Save(ctx, currency)
 }
 
 // DeleteCurrency deletes a currency
 func (s *CurrencyService) DeleteCurrency(ctx context.Context, currencyID CurrencyID, userID UserID) error {
-	// Get currency
 	currency, err := s.currencyRepo.FindByID(ctx, currencyID)
 	if err != nil {
 		return errors.New("currency not found")
 	}
 
-	// Check if user can delete this currency
 	if !currency.CanBeDeleted() {
-		return errors.New("cannot delete default currency")
+		return errors.New("cannot delete system currency")
 	}
 
 	if currency.UserID() == nil || currency.UserID().Value() != userID.Value() {
@@ -134,46 +125,41 @@ func (s *CurrencyService) DeleteCurrency(ctx context.Context, currencyID Currenc
 	return s.currencyRepo.Delete(ctx, currencyID)
 }
 
-// SetDefaultCurrency sets the default currency for a user
+// SetDefaultCurrency sets the primary currency for a user
 func (s *CurrencyService) SetDefaultCurrency(ctx context.Context, userID UserID, currencyID CurrencyID) error {
-	// Get currency to verify it exists and user has access
 	currency, err := s.currencyRepo.FindByID(ctx, currencyID)
 	if err != nil {
 		return errors.New("currency not found")
 	}
 
-	// Check if user has access to this currency (default or user's own)
-	if !currency.IsDefault() && (currency.UserID() == nil || currency.UserID().Value() != userID.Value()) {
+	if !currency.IsSystem() && (currency.UserID() == nil || currency.UserID().Value() != userID.Value()) {
 		return errors.New("access denied to currency")
 	}
 
-	// Set as user's default currency
 	return s.currencyRepo.SetUserDefaultCurrency(ctx, userID, currencyID)
 }
 
-// GetDefaultCurrency gets the default currency for a user
+// GetDefaultCurrency gets the primary currency for a user
 func (s *CurrencyService) GetDefaultCurrency(ctx context.Context, userID UserID) (*Currency, error) {
-	// Try to get user's default currency
 	defaultCurrency, err := s.currencyRepo.GetUserDefaultCurrency(ctx, userID)
 	if err == nil && defaultCurrency != nil {
 		return defaultCurrency, nil
 	}
 
-	// If no user default currency is set, prefer IDR among system-seeded currencies
-	defaultCurrencies, err := s.currencyRepo.FindDefaultCurrencies(ctx)
+	systemCurrencies, err := s.currencyRepo.FindSystemCurrencies(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	if len(defaultCurrencies) == 0 {
-		return nil, errors.New("no default currency found")
+	if len(systemCurrencies) == 0 {
+		return nil, errors.New("no system currency found")
 	}
 
-	for _, currency := range defaultCurrencies {
+	for _, currency := range systemCurrencies {
 		if currency.Code() == "IDR" {
 			return currency, nil
 		}
 	}
 
-	return defaultCurrencies[0], nil
+	return systemCurrencies[0], nil
 }
