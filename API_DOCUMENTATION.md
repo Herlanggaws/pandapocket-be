@@ -1817,6 +1817,8 @@ Clears messages. Credits unchanged.
 
 Body: `{ "message": "…" }` (max 2000 chars).
 
+**Credit policy:** 1 credit is debited only after a successful non-empty AI reply. Upstream failure or empty response → no debit (`AI_UPSTREAM_ERROR`).
+
 Success: **SSE** `text/event-stream`:
 - `event: delta` — token chunk
 - `event: done` — JSON credits snapshot
