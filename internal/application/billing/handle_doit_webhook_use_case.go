@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	domainAI "panda-pocket/internal/domain/ai"
 	domainBilling "panda-pocket/internal/domain/billing"
 	"panda-pocket/internal/infrastructure/doit"
 )
@@ -19,20 +20,29 @@ var (
 	ErrWebhookSecretMissing    = errors.New("DOIT_WEBHOOK_SECRET is not configured")
 )
 
+// AICreditApplier credits purchased AI packs after doit payment.paid.
+type AICreditApplier interface {
+	ApplyPurchase(ctx context.Context, userID int, pack, doitPaymentID string) error
+	UnlockFullIncluded(ctx context.Context, userID int) error
+}
+
 type HandleDoitWebhookUseCase struct {
-	secret string
-	events domainBilling.WebhookEventRepository
-	subs   domainBilling.SubscriptionRepository
+	secret   string
+	events   domainBilling.WebhookEventRepository
+	subs     domainBilling.SubscriptionRepository
+	aiCredits AICreditApplier
 }
 
 func NewHandleDoitWebhookUseCase(
 	events domainBilling.WebhookEventRepository,
 	subs domainBilling.SubscriptionRepository,
+	aiCredits AICreditApplier,
 ) *HandleDoitWebhookUseCase {
 	return &HandleDoitWebhookUseCase{
-		secret: os.Getenv("DOIT_WEBHOOK_SECRET"),
-		events: events,
-		subs:   subs,
+		secret:    os.Getenv("DOIT_WEBHOOK_SECRET"),
+		events:    events,
+		subs:      subs,
+		aiCredits: aiCredits,
 	}
 }
 
@@ -50,8 +60,6 @@ type paymentData struct {
 	Metadata  map[string]interface{} `json:"metadata"`
 }
 
-// Execute verifies signature, dedups by event id, and applies entitlement when needed.
-// Returns ErrWebhookSignatureInvalid for bad signatures (caller must respond non-2xx).
 func (uc *HandleDoitWebhookUseCase) Execute(ctx context.Context, signatureHeader string, rawBody []byte) error {
 	if uc.secret == "" {
 		return ErrWebhookSecretMissing
@@ -79,7 +87,6 @@ func (uc *HandleDoitWebhookUseCase) Execute(ctx context.Context, signatureHeader
 		// ignore unknown types
 	}
 
-	// Record after handling so a failed activate can be retried by Doit.
 	if _, err := uc.events.TryInsert(ctx, envelope.ID, string(rawBody)); err != nil {
 		return err
 	}
@@ -90,6 +97,10 @@ func (uc *HandleDoitWebhookUseCase) handlePaymentPaid(ctx context.Context, data 
 	var payment paymentData
 	if err := json.Unmarshal(data, &payment); err != nil {
 		return fmt.Errorf("invalid payment.paid data: %w", err)
+	}
+
+	if isAICreditPayment(payment) {
+		return uc.handleAICreditPurchase(ctx, payment)
 	}
 
 	userID, interval, err := resolvePaidUser(payment)
@@ -118,7 +129,86 @@ func (uc *HandleDoitWebhookUseCase) handlePaymentPaid(ctx context.Context, data 
 	if err := sub.ActivatePro(interval, paidAt); err != nil {
 		return err
 	}
-	return uc.subs.Save(ctx, sub)
+	if err := uc.subs.Save(ctx, sub); err != nil {
+		return err
+	}
+	if uc.aiCredits != nil {
+		_ = uc.aiCredits.UnlockFullIncluded(ctx, userID)
+	}
+	return nil
+}
+
+func (uc *HandleDoitWebhookUseCase) handleAICreditPurchase(ctx context.Context, payment paymentData) error {
+	if uc.aiCredits == nil {
+		return nil
+	}
+	userID, pack, err := resolveAICreditPurchase(payment)
+	if err != nil {
+		return nil
+	}
+	paymentID := payment.ID
+	if paymentID == "" {
+		return nil
+	}
+	return uc.aiCredits.ApplyPurchase(ctx, userID, pack, paymentID)
+}
+
+func isAICreditPayment(payment paymentData) bool {
+	if payment.Metadata != nil {
+		if raw, ok := payment.Metadata["product"]; ok {
+			if s, ok := raw.(string); ok && s == domainAI.ProductAICredits {
+				return true
+			}
+		}
+		if raw, ok := payment.Metadata["pack"]; ok {
+			if s, ok := raw.(string); ok && (s == domainAI.PackS || s == domainAI.PackM) {
+				return true
+			}
+		}
+	}
+	if strings.Contains(payment.Reference, ":ai:") {
+		return true
+	}
+	return false
+}
+
+func resolveAICreditPurchase(payment paymentData) (int, string, error) {
+	var userID int
+	pack := ""
+
+	if payment.Metadata != nil {
+		if raw, ok := payment.Metadata["user_id"]; ok {
+			if parsed, err := coerceInt(raw); err == nil {
+				userID = parsed
+			}
+		}
+		if raw, ok := payment.Metadata["pack"]; ok {
+			if s, ok := raw.(string); ok {
+				pack = s
+			}
+		}
+	}
+
+	if userID == 0 || pack == "" {
+		parts := strings.Split(payment.Reference, ":")
+		// user:{id}:ai:{pack}:...
+		if len(parts) >= 4 && parts[0] == "user" && parts[2] == "ai" {
+			if parsed, err := strconv.Atoi(parts[1]); err == nil {
+				userID = parsed
+			}
+			if pack == "" {
+				pack = parts[3]
+			}
+		}
+	}
+
+	if userID <= 0 {
+		return 0, "", fmt.Errorf("user_id not found")
+	}
+	if _, _, err := domainAI.PackCredits(pack); err != nil {
+		return 0, "", err
+	}
+	return userID, pack, nil
 }
 
 func resolvePaidUser(payment paymentData) (int, domainBilling.BillingInterval, error) {

@@ -105,6 +105,10 @@ CORS currently allows all origins (`*`). Allowed request headers: `Origin`, `Con
 | GET | `/api/me/subscription` | Yes | Current billing subscription + `is_pro` |
 | POST | `/api/billing/checkout` | Yes | Start Doit checkout; returns `hosted_url` (does not unlock Pro) |
 | POST | `/api/billing/cancel` | Yes | Schedule cancel at period end |
+| GET | `/api/ai/advisor/thread` | Yes (Pro) | Tanya AI thread + credit balance |
+| DELETE | `/api/ai/advisor/thread` | Yes (Pro) | Clear chat thread (credits unchanged) |
+| POST | `/api/ai/advisor/chat` | Yes (Pro) | Stream chat (SSE); 1 credit per user message |
+| POST | `/api/ai/advisor/topup` | Yes (Pro) | Doit one-shot for AI credit packs |
 | POST | `/api/account/reset/challenge` | Yes | Issue one-time confirmation string for data reset |
 | POST | `/api/account/reset` | Yes | Wipe user financial data after typing confirmation |
 | POST | `/api/onboarding/complete` | Yes | Finish onboarding; seed pending income/expense + budget/(debt) |
@@ -1774,6 +1778,64 @@ Returns the authenticated user's current subscription. Creates a Free row (`plan
 
 ---
 
+### Tanya AI / Ask AI (C1)
+
+Pro-only (`IsPro()`). Free → `403 PREMIUM_REQUIRED` (`feature`: `ai_advisor`). Spec: `doc/ai-advisor.md`, `doc/prd-ai-advisor.md`.
+
+**Credits:** 1 user message = 1 credit. Included grant **75 once** per account; while `trialing`, max **15** of included unlocked; paid Pro unlocks the rest. Top-up packs stack and persist (usable again when Pro after Free).
+
+| Pack | `pack` | Credits | Amount (Rp) |
+| --- | --- | --- | --- |
+| S | `ai_credits_s` | 50 | 9900 |
+| M | `ai_credits_m` | 150 | 24900 |
+
+#### GET /api/ai/advisor/thread
+
+Returns messages + credits.
+
+```json
+{
+  "status": "success",
+  "data": {
+    "messages": [{ "role": "user", "content": "…", "created_at": "…" }],
+    "credits": {
+      "available": 12,
+      "included_unlocked": 15,
+      "included_used": 3,
+      "purchased_remaining": 0,
+      "is_trialing": true
+    }
+  }
+}
+```
+
+#### DELETE /api/ai/advisor/thread
+
+Clears messages. Credits unchanged.
+
+#### POST /api/ai/advisor/chat
+
+Body: `{ "message": "…" }` (max 2000 chars).
+
+Success: **SSE** `text/event-stream`:
+- `event: delta` — token chunk
+- `event: done` — JSON credits snapshot
+- `event: error` — JSON `{ error_code }`
+
+JSON errors before stream: `403 PREMIUM_REQUIRED`, `402 AI_CREDITS_REQUIRED`.
+
+#### POST /api/ai/advisor/topup
+
+Body: `{ "pack": "ai_credits_s" | "ai_credits_m" }`.
+
+Returns `{ hosted_url, payment_id, reference, pack, credits, amount }`. **Does not** add credits — webhook `payment.paid` with `metadata.product=ai_credits` credits the ledger (skips `ActivatePro`).
+
+Return URL: `DOIT_AI_RETURN_URL` (default `/advisor`).
+
+Env: `PAAS_AI_BASE_URL`, `PAAS_AI_API_KEY`, `PAAS_AI_MODEL` (default `glm-5.3-flash`).
+
+---
+
 ### POST /api/billing/checkout
 
 Authenticated. Creates a Doit one-shot payment and returns the hosted checkout URL. **Does not** set Pro — unlock happens only via `POST /webhooks/doit` on `payment.paid`.
@@ -2343,6 +2405,10 @@ Keep this file in sync with the running API. When routes, request/response shape
 
 ## Version History
 
+- **v2.28.0**: **Tanya AI / Ask AI (C1)**
+  - `GET/DELETE /api/ai/advisor/thread`, `POST /api/ai/advisor/chat` (SSE), `POST /api/ai/advisor/topup`
+  - Credit ledger: included 75 (trial cap 15) + packs S/M via Doit webhook (`product=ai_credits`)
+  - Provider PAAS AI Hub (`glm-5.3-flash`); Pro-only; Free has no AI surface
 - **v2.27.0**: **Goals catat tabungan (C8)**
   - `POST/GET /api/goals/:id/contributions` — manual expense / linked transfer / income fallback
   - `DELETE /api/transfers/:id` — reverse transfer (+ goal contribution if any)

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	appAI "panda-pocket/internal/application/ai"
 	appBilling "panda-pocket/internal/application/billing"
 	appFeedback "panda-pocket/internal/application/feedback"
 	appFinance "panda-pocket/internal/application/finance"
@@ -18,6 +19,7 @@ import (
 	"panda-pocket/internal/infrastructure/database"
 	"panda-pocket/internal/infrastructure/doit"
 	"panda-pocket/internal/infrastructure/notification"
+	"panda-pocket/internal/infrastructure/paas"
 	"panda-pocket/internal/interfaces/http/handlers"
 	"panda-pocket/internal/interfaces/http/middleware"
 
@@ -37,6 +39,7 @@ type App struct {
 	FeedbackHandlers                   *handlers.FeedbackHandlers
 	TicketHandlers                     *handlers.TicketHandlers
 	BillingHandlers                    *handlers.BillingHandlers
+	AIAdvisorHandlers                  *handlers.AIAdvisorHandlers
 	AuthMiddleware                     *middleware.AuthMiddleware
 	purgeDeletedAccountsUseCase        *appIdentity.PurgeDeletedAccountsUseCase
 	cleanupExpiredTokensUseCase        *appIdentity.CleanupExpiredTokensUseCase
@@ -80,6 +83,7 @@ func NewApp(db *gorm.DB) *App {
 	walletService := domainFinance.NewWalletService(walletRepo, currencyRepo)
 	transferService := domainFinance.NewTransferService(transferRepo, walletRepo)
 	goalService := domainFinance.NewGoalService(goalRepo, goalContributionRepo)
+	walletService.SetLinkedGoalsChecker(&walletLinkedGoalsAdapter{goalService: goalService})
 	assetService := domainFinance.NewAssetService(assetRepo)
 	liabilityService := domainFinance.NewLiabilityService(liabilityRepo, liabilityPaymentRepo)
 
@@ -112,9 +116,13 @@ func NewApp(db *gorm.DB) *App {
 	submitFeedbackUseCase := appFeedback.NewSubmitFeedbackUseCase(feedbackRepo)
 	entitlementChecker := entitlement.NewSubscriptionChecker(subscriptionRepo)
 	doitClient := doit.NewClient()
+	aiCreditRepo := database.NewGormAICreditRepository(db)
+	aiThreadRepo := database.NewGormAIThreadRepository(db)
+	aiCreditService := appAI.NewCreditService(aiCreditRepo, subscriptionRepo)
+	paasClient := paas.NewClient()
 	getSubscriptionUseCase := appBilling.NewGetSubscriptionUseCase(subscriptionRepo)
 	createCheckoutUseCase := appBilling.NewCreateCheckoutUseCase(doitClient)
-	handleDoitWebhookUseCase := appBilling.NewHandleDoitWebhookUseCase(billingWebhookEventRepo, subscriptionRepo)
+	handleDoitWebhookUseCase := appBilling.NewHandleDoitWebhookUseCase(billingWebhookEventRepo, subscriptionRepo, aiCreditService)
 	cancelSubscriptionUseCase := appBilling.NewCancelSubscriptionUseCase(subscriptionRepo)
 	processBillingSubscriptionsUseCase := appBilling.NewProcessBillingSubscriptionsUseCase(subscriptionRepo)
 	createTicketUseCase := appTicket.NewCreateTicketUseCase(ticketRepo, entitlementChecker)
@@ -137,6 +145,26 @@ func NewApp(db *gorm.DB) *App {
 	getCategoriesUseCase := appFinance.NewGetCategoriesUseCase(categoryService)
 	getAnalyticsUseCase := appFinance.NewGetAnalyticsUseCase(transactionService, categoryService, currencyService, entitlementChecker)
 	getHealthScoreUseCase := appFinance.NewGetHealthScoreUseCase(budgetService, categoryService, transactionService, getAnalyticsUseCase, healthSnapshotRepo)
+	aiGetThreadUseCase := appAI.NewGetThreadUseCase(aiCreditService, aiThreadRepo, entitlementChecker)
+	aiClearThreadUseCase := appAI.NewClearThreadUseCase(aiThreadRepo, entitlementChecker)
+	aiChatUseCase := appAI.NewAdvisorChatUseCase(
+		aiCreditService,
+		aiThreadRepo,
+		entitlementChecker,
+		paasClient,
+		getAnalyticsUseCase,
+		func(ctx context.Context, userID int) string {
+			prefs, err := prefsRepo.FindByUserID(ctx, domainIdentity.NewUserID(userID))
+			if err != nil || prefs == nil {
+				return "id"
+			}
+			if prefs.Language() == "" {
+				return "id"
+			}
+			return prefs.Language()
+		},
+	)
+	aiTopupUseCase := appAI.NewCreateTopupUseCase(doitClient, entitlementChecker)
 	getHealthScoreHistoryUseCase := appFinance.NewGetHealthScoreHistoryUseCase(healthSnapshotRepo)
 	createBudgetUseCase := appFinance.NewCreateBudgetUseCase(budgetService, currencyService, categoryService, transactionService, entitlementChecker)
 	getBudgetsUseCase := appFinance.NewGetBudgetsUseCase(budgetService, categoryService, transactionService)
@@ -334,6 +362,12 @@ func NewApp(db *gorm.DB) *App {
 		handleDoitWebhookUseCase,
 		cancelSubscriptionUseCase,
 	)
+	aiAdvisorHandlers := handlers.NewAIAdvisorHandlers(
+		aiGetThreadUseCase,
+		aiClearThreadUseCase,
+		aiChatUseCase,
+		aiTopupUseCase,
+	)
 	authMiddleware := middleware.NewAuthMiddleware(tokenService, userRepo)
 
 	return &App{
@@ -346,6 +380,7 @@ func NewApp(db *gorm.DB) *App {
 		FeedbackHandlers:                   feedbackHandlers,
 		TicketHandlers:                     ticketHandlers,
 		BillingHandlers:                    billingHandlers,
+		AIAdvisorHandlers:                  aiAdvisorHandlers,
 		AuthMiddleware:                     authMiddleware,
 		purgeDeletedAccountsUseCase:        purgeDeletedAccountsUseCase,
 		cleanupExpiredTokensUseCase:        cleanupExpiredTokensUseCase,
@@ -461,6 +496,12 @@ func (app *App) SetupRoutes() *gin.Engine {
 			protected.GET("/me/subscription", app.BillingHandlers.GetSubscription)
 			protected.POST("/billing/checkout", app.BillingHandlers.Checkout)
 			protected.POST("/billing/cancel", app.BillingHandlers.CancelSubscription)
+
+			protected.GET("/ai/advisor/thread", app.AIAdvisorHandlers.GetThread)
+			protected.DELETE("/ai/advisor/thread", app.AIAdvisorHandlers.ClearThread)
+			protected.POST("/ai/advisor/chat", app.AIAdvisorHandlers.Chat)
+			protected.POST("/ai/advisor/topup", app.AIAdvisorHandlers.Topup)
+
 			protected.POST("/account/reset/challenge", app.IdentityHandlers.CreateAccountResetChallenge)
 			protected.POST("/account/reset", app.IdentityHandlers.ResetAccountData)
 			protected.POST("/onboarding/complete", app.FinanceHandlers.CompleteOnboarding)
@@ -596,4 +637,16 @@ func (a *primaryWalletCurrencySyncAdapter) SyncOnPrimaryCurrencyChange(ctx conte
 		domainFinance.NewUserID(userID),
 		domainFinance.NewCurrencyID(currencyID),
 	)
+}
+
+type walletLinkedGoalsAdapter struct {
+	goalService *domainFinance.GoalService
+}
+
+func (a *walletLinkedGoalsAdapter) HasLinkedGoals(ctx context.Context, walletID domainFinance.WalletID) (bool, error) {
+	goals, err := a.goalService.FindByWalletID(ctx, walletID)
+	if err != nil {
+		return false, err
+	}
+	return len(goals) > 0, nil
 }

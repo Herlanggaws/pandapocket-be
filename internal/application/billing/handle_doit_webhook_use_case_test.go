@@ -68,7 +68,7 @@ func TestHandleDoitWebhookPaymentPaid(t *testing.T) {
 
 	events := &memoryWebhookEvents{}
 	subs := &memorySubs{}
-	uc := NewHandleDoitWebhookUseCase(events, subs)
+	uc := NewHandleDoitWebhookUseCase(events, subs, nil)
 
 	payload := map[string]interface{}{
 		"id":   "evt_paid_1",
@@ -111,7 +111,7 @@ func TestHandleDoitWebhookPaymentPaid(t *testing.T) {
 
 func TestHandleDoitWebhookRejectsBadSignature(t *testing.T) {
 	t.Setenv("DOIT_WEBHOOK_SECRET", "whsec_test")
-	uc := NewHandleDoitWebhookUseCase(&memoryWebhookEvents{}, &memorySubs{})
+	uc := NewHandleDoitWebhookUseCase(&memoryWebhookEvents{}, &memorySubs{}, nil)
 	body := []byte(`{"id":"evt_x","type":"webhook.test"}`)
 	err := uc.Execute(context.Background(), "t=1,v1=deadbeef", body)
 	if err != ErrWebhookSignatureInvalid {

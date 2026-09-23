@@ -31,6 +31,7 @@ const (
 	FeatureInsights     = "insights"
 	FeatureAssets       = "assets"
 	FeatureDebts        = "debts"
+	FeatureAIAdvisor    = "ai_advisor"
 )
 
 // Checker decides whether a user may use Pro-only features.
