@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -137,8 +138,11 @@ func (h *AIAdvisorHandlers) Chat(c *gin.Context) {
 	}
 
 	credits, err := h.chat.Execute(c.Request.Context(), userID, req.Message, func(delta string) error {
-		escaped := strings.ReplaceAll(delta, "\n", "\\n")
-		writeEvent("delta", escaped)
+		payload, marshalErr := json.Marshal(delta)
+		if marshalErr != nil {
+			return marshalErr
+		}
+		writeEvent("delta", string(payload))
 		return nil
 	})
 	if err != nil {
