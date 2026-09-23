@@ -238,19 +238,28 @@ func NewApp(db *gorm.DB) *App {
 		getHealthScoreUseCase,
 	)
 	getNetWorthSummaryUseCase := appFinance.NewGetNetWorthSummaryUseCase(getWalletSummaryUseCase, assetService, liabilityService, currencyService)
+	createTransferUseCase := appFinance.NewCreateTransferUseCase(transferService)
+	getTransfersUseCase := appFinance.NewGetTransfersUseCase(transferService)
+	deleteTransferUseCase := appFinance.NewDeleteTransferUseCase(transferService, goalService)
 	aiChatUseCase := appAI.NewAdvisorChatUseCase(
 		aiCreditService,
 		aiThreadRepo,
 		entitlementChecker,
 		paasClient,
 		&appAI.AdvisorContextDeps{
-			Analytics:   getAnalyticsUseCase,
-			Liabilities: getLiabilitiesUseCase,
-			Assets:      getAssetsUseCase,
-			Goals:       getGoalsUseCase,
-			Budgets:     getBudgetsUseCase,
-			NetWorth:    getNetWorthSummaryUseCase,
-			Health:      getHealthScoreUseCase,
+			Analytics:       getAnalyticsUseCase,
+			Liabilities:     getLiabilitiesUseCase,
+			Assets:          getAssetsUseCase,
+			Goals:           getGoalsUseCase,
+			Budgets:         getBudgetsUseCase,
+			NetWorth:        getNetWorthSummaryUseCase,
+			Health:          getHealthScoreUseCase,
+			Wallets:         getWalletsUseCase,
+			WalletSummary:   getWalletSummaryUseCase,
+			Recurring:       getRecurringUseCase,
+			Transactions:    getAllTransactionsUseCase,
+			Transfers:       getTransfersUseCase,
+			PrimaryCurrency: getDefaultCurrencyUseCase,
 		},
 		func(ctx context.Context, userID int) string {
 			prefs, err := prefsRepo.FindByUserID(ctx, domainIdentity.NewUserID(userID))
@@ -263,10 +272,6 @@ func NewApp(db *gorm.DB) *App {
 			return prefs.Language()
 		},
 	)
-	createTransferUseCase := appFinance.NewCreateTransferUseCase(transferService)
-	getTransfersUseCase := appFinance.NewGetTransfersUseCase(transferService)
-	deleteTransferUseCase := appFinance.NewDeleteTransferUseCase(transferService, goalService)
-
 	// Interface layer - handlers and middleware
 	identityHandlers := handlers.NewIdentityHandlers(
 		registerUserUseCase,
