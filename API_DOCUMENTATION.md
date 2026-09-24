@@ -1873,6 +1873,8 @@ Body: `{ "pack": "ai_credits_s" | "ai_credits_m" }`.
 
 Returns `{ hosted_url, payment_id, reference, pack, credits, amount }`. **Does not** add credits — webhook `payment.paid` with `metadata.product=ai_credits` credits the ledger (skips `ActivatePro`).
 
+Each call creates a **new** Doit payment (Idempotency-Key + reference include unix nano). Re-clicking top-up after a paid attempt must not reuse the paid hosted page. If Doit returns `status=paid` for a new key, the API retries once with a fresh key.
+
 Return URL: `DOIT_AI_RETURN_URL` (default `/advisor`).
 
 Env: `PAAS_AI_BASE_URL`, `PAAS_AI_API_KEY`, `PAAS_AI_MODEL` (default `glm-5.3-flash`).
@@ -2457,6 +2459,8 @@ Keep this file in sync with the running API. When routes, request/response shape
 
 ## Version History
 
+- **v2.33.0**: **AI top-up idempotency**
+  - `POST /api/ai/advisor/topup`: per-attempt Idempotency-Key + reference (unix nano); retry once if Doit returns `status=paid`
 - **v2.32.0**: **AI topic guard (finance-only)**
   - Pre-flight classify before advice stream; `OUT_OF_SCOPE` → canned refusal, no credit debit
   - Hardened advisor system prompt scope

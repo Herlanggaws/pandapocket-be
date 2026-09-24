@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	domainAI "panda-pocket/internal/domain/ai"
@@ -32,10 +33,15 @@ type CreateTopupResponse struct {
 type CreateTopupUseCase struct {
 	payments     AIPaymentCreator
 	entitlements entitlement.Checker
+	now          func() time.Time
 }
 
 func NewCreateTopupUseCase(payments AIPaymentCreator, entitlements entitlement.Checker) *CreateTopupUseCase {
-	return &CreateTopupUseCase{payments: payments, entitlements: entitlements}
+	return &CreateTopupUseCase{
+		payments:     payments,
+		entitlements: entitlements,
+		now:          time.Now,
+	}
 }
 
 func (uc *CreateTopupUseCase) Execute(ctx context.Context, userID int, req CreateTopupRequest) (*CreateTopupResponse, error) {
@@ -50,13 +56,9 @@ func (uc *CreateTopupUseCase) Execute(ctx context.Context, userID int, req Creat
 		return nil, err
 	}
 
-	reference := fmt.Sprintf("user:%d:ai:%s:%s", userID, req.Pack, time.Now().UTC().Format("2006-01-02"))
-	idempotencyKey := fmt.Sprintf("ai-topup:%d:%s:%s", userID, req.Pack, time.Now().UTC().Format("2006-01-02T15"))
-
 	paymentReq := doit.CreatePaymentRequest{
-		Amount:    amount,
-		Rail:      "any",
-		Reference: reference,
+		Amount: amount,
+		Rail:   "any",
 		Metadata: map[string]interface{}{
 			"user_id": userID,
 			"product": domainAI.ProductAICredits,
@@ -67,7 +69,7 @@ func (uc *CreateTopupUseCase) Execute(ctx context.Context, userID int, req Creat
 		paymentReq.ReturnURL = returnURL
 	}
 
-	payment, err := uc.payments.CreatePayment(ctx, idempotencyKey, paymentReq)
+	payment, err := uc.createUnpaidPayment(ctx, userID, req.Pack, paymentReq)
 	if err != nil {
 		return nil, err
 	}
@@ -79,6 +81,40 @@ func (uc *CreateTopupUseCase) Execute(ctx context.Context, userID int, req Creat
 		Credits:   credits,
 		Amount:    amount,
 	}, nil
+}
+
+func (uc *CreateTopupUseCase) createUnpaidPayment(
+	ctx context.Context,
+	userID int,
+	pack string,
+	paymentReq doit.CreatePaymentRequest,
+) (*doit.CreatePaymentResponse, error) {
+	nowFn := uc.now
+	if nowFn == nil {
+		nowFn = time.Now
+	}
+
+	for attempt := 0; attempt < 2; attempt++ {
+		stamp := nowFn().UTC().UnixNano() + int64(attempt)
+		paymentReq.Reference = fmt.Sprintf("user:%d:ai:%s:%d", userID, pack, stamp)
+		idempotencyKey := fmt.Sprintf("ai-topup:%d:%s:%d", userID, pack, stamp)
+
+		payment, err := uc.payments.CreatePayment(ctx, idempotencyKey, paymentReq)
+		if err != nil {
+			return nil, err
+		}
+		if !isPaidPayment(payment) {
+			return payment, nil
+		}
+	}
+	return nil, fmt.Errorf("doit returned paid payment for new top-up attempt")
+}
+
+func isPaidPayment(payment *doit.CreatePaymentResponse) bool {
+	if payment == nil {
+		return false
+	}
+	return strings.EqualFold(payment.Status, "paid")
 }
 
 func aiReturnURL() string {
