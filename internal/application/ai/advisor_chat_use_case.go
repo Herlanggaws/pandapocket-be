@@ -15,6 +15,12 @@ import (
 type ChatStreamer interface {
 	Configured() bool
 	StreamChat(ctx context.Context, messages []paas.Message, onDelta func(string) error) (string, int, int, error)
+	CompleteChat(ctx context.Context, messages []paas.Message, maxTokens int) (string, error)
+}
+
+// ChatCompleter is the subset used by the topic gate.
+type ChatCompleter interface {
+	CompleteChat(ctx context.Context, messages []paas.Message, maxTokens int) (string, error)
 }
 
 type StreamEventKind string
@@ -175,19 +181,51 @@ func (uc *AdvisorChatUseCase) Start(
 		_ = err
 	}
 
-	history, err := uc.threads.ListMessages(ctx, threadID)
-	if err != nil {
-		_ = uc.threads.FinishGeneration(ctx, threadID, domainAI.GenerationFailed)
-		return nil, nil, err
-	}
-
 	lang := "id"
 	if uc.prefsLang != nil {
 		if l := uc.prefsLang(ctx, userID); l != "" {
 			lang = l
 		}
 	}
-	contextJSON := buildAdvisorContextJSON(ctx, userID, creditsBefore, uc.contextDeps)
+
+	job := uc.getOrCreateJob(threadID)
+	ch, unsub := job.subscribe()
+
+	go uc.runGeneration(userID, threadID, message, lang, job, creditsBefore)
+
+	return ch, unsub, nil
+}
+
+func (uc *AdvisorChatUseCase) runGeneration(
+	userID, threadID int,
+	userMessage, lang string,
+	job *chatJob,
+	creditsBefore *CreditsView,
+) {
+	defer uc.removeJob(threadID)
+
+	bgCtx, cancel := context.WithTimeout(context.Background(), domainAI.GenerationTimeout)
+	defer cancel()
+	finishCtx := context.Background()
+
+	inScope, classifyErr := classifyTopic(bgCtx, uc.paas, userMessage)
+	if classifyErr == nil && !inScope {
+		refusal := offTopicRefusal(lang)
+		_ = uc.threads.AppendMessage(finishCtx, threadID, domainAI.RoleAssistant, refusal, 0, 0)
+		_ = uc.threads.FinishGeneration(finishCtx, threadID, domainAI.GenerationIdle)
+		_ = uc.threads.TrimOldest(finishCtx, threadID, domainAI.MaxThreadMsgs)
+		job.publish(StreamEvent{Kind: StreamDelta, Delta: refusal})
+		job.publish(StreamEvent{Kind: StreamDone, Credits: creditsBefore})
+		return
+	}
+
+	contextJSON := buildAdvisorContextJSON(bgCtx, userID, creditsBefore, uc.contextDeps)
+	history, err := uc.threads.ListMessages(bgCtx, threadID)
+	if err != nil {
+		_ = uc.threads.FinishGeneration(finishCtx, threadID, domainAI.GenerationFailed)
+		job.publish(StreamEvent{Kind: StreamError, ErrCode: "AI_CHAT_ERROR", Credits: creditsBefore})
+		return
+	}
 
 	messages := []paas.Message{
 		{Role: "system", Content: systemPrompt(lang)},
@@ -200,38 +238,15 @@ func (uc *AdvisorChatUseCase) Start(
 		messages = append(messages, paas.Message{Role: msg.Role, Content: msg.Content})
 	}
 
-	job := uc.getOrCreateJob(threadID)
-	ch, unsub := job.subscribe()
-
-	go uc.runGeneration(userID, threadID, messages, job, creditsBefore)
-
-	return ch, unsub, nil
-}
-
-func (uc *AdvisorChatUseCase) runGeneration(
-	userID, threadID int,
-	messages []paas.Message,
-	job *chatJob,
-	creditsBefore *CreditsView,
-) {
-	defer uc.removeJob(threadID)
-
-	bgCtx, cancel := context.WithTimeout(context.Background(), domainAI.GenerationTimeout)
-	defer cancel()
-
 	full, promptTokens, completionTokens, err := uc.paas.StreamChat(bgCtx, messages, func(delta string) error {
 		job.publish(StreamEvent{Kind: StreamDelta, Delta: delta})
 		return nil
 	})
 
-	finishCtx := context.Background()
 	if err != nil || strings.TrimSpace(full) == "" {
 		_ = uc.threads.AppendMessage(finishCtx, threadID, domainAI.RoleAssistant, "(gagal menghasilkan jawaban — coba lagi)", 0, 0)
 		_ = uc.threads.FinishGeneration(finishCtx, threadID, domainAI.GenerationFailed)
 		code := "AI_UPSTREAM_ERROR"
-		if err != nil && bgCtx.Err() != nil {
-			code = "AI_UPSTREAM_ERROR"
-		}
 		job.publish(StreamEvent{Kind: StreamError, ErrCode: code, Credits: creditsBefore})
 		return
 	}
@@ -259,7 +274,7 @@ func (uc *AdvisorChatUseCase) runGeneration(
 }
 
 func systemPrompt(lang string) string {
-	base := `You are Tanya AI / Ask AI for Berbudget, a personal finance app. 
+	base := `You are Tanya AI / Ask AI for Berbudget, a personal finance app.
 Give practical, non-judgmental advice using ONLY the provided financial context JSON.
 The JSON is a full read-only snapshot: primary currency, wallets + balances, cashflow (this month + previous month), top expense categories, budgets, goals, assets, liabilities/debts (including mortgage), net worth, health score, recurring rules, recent transactions, and recent transfers.
 If a section is empty, say what is missing and suggest recording it in Berbudget (e.g. [Debts](/debts) for hutang, [Goals](/goals) for target).
@@ -267,7 +282,12 @@ You are NOT a licensed financial advisor — include that caveat briefly when gi
 Read-only: never claim you created or changed transactions, budgets, liabilities, goals, or transfers.
 Prefer concise answers with clear next steps.
 When useful, include markdown links to in-app paths only, e.g. [Budgets](/budgets), [Goals](/goals), [Debts](/debts), [Insights](/insights), [Net worth](/net-worth), [Health](/health), [Transactions](/transactions), [Wallets](/wallets), [Settings billing](/settings/billing).
-Do not use external http(s) links.`
+Do not use external http(s) links.
+
+SCOPE — only the user's personal finances in Berbudget and advice grounded in the provided context JSON.
+OUT OF SCOPE — cooking/recipes, coding, weather, entertainment, general trivia, or any topic not about this user's money/data.
+If out of scope: refuse in 1–2 short sentences; do not answer the off-topic content; invite a finance question about their Berbudget data.
+Never provide recipes, code, or step-by-step for unrelated topics.`
 	if lang == "en" {
 		return base + "\nRespond in English."
 	}

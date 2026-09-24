@@ -22,9 +22,10 @@ type Message struct {
 }
 
 type ChatRequest struct {
-	Model    string    `json:"model"`
-	Messages []Message `json:"messages"`
-	Stream   bool      `json:"stream"`
+	Model     string    `json:"model"`
+	Messages  []Message `json:"messages"`
+	Stream    bool      `json:"stream"`
+	MaxTokens *int      `json:"max_tokens,omitempty"`
 }
 
 type chatCompletionResponse struct {
@@ -65,6 +66,57 @@ func NewClient() *Client {
 
 func (c *Client) Configured() bool { return c.apiKey != "" }
 func (c *Client) Model() string    { return c.model }
+
+// CompleteChat returns a non-streaming completion. maxTokens <= 0 omits the limit.
+func (c *Client) CompleteChat(ctx context.Context, messages []Message, maxTokens int) (string, error) {
+	if !c.Configured() {
+		return "", fmt.Errorf("PAAS_AI_API_KEY is not configured")
+	}
+
+	reqBody := ChatRequest{
+		Model:    c.model,
+		Messages: messages,
+		Stream:   false,
+	}
+	if maxTokens > 0 {
+		reqBody.MaxTokens = &maxTokens
+	}
+
+	body, err := json.Marshal(reqBody)
+	if err != nil {
+		return "", err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/chat/completions", bytes.NewReader(body))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.apiKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return "", err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", fmt.Errorf("paas chat failed: status %d: %s", resp.StatusCode, string(raw))
+	}
+
+	var parsed chatCompletionResponse
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		return "", err
+	}
+	if len(parsed.Choices) == 0 {
+		return "", fmt.Errorf("paas chat returned no choices")
+	}
+	return strings.TrimSpace(parsed.Choices[0].Message.Content), nil
+}
 
 // StreamChat writes content deltas to onDelta and returns full text + usage (usage may be 0 if provider omits it).
 func (c *Client) StreamChat(ctx context.Context, messages []Message, onDelta func(string) error) (string, int, int, error) {

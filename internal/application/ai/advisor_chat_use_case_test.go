@@ -14,16 +14,32 @@ import (
 )
 
 type stubStreamer struct {
-	full      string
-	err       error
-	delay     time.Duration
-	started   chan struct{}
-	release   chan struct{}
+	full           string
+	err            error
+	delay          time.Duration
+	started        chan struct{}
+	release        chan struct{}
+	classifyReply  string
+	classifyErr     error
+	streamCalls    int
+	completeCalls  int
 }
 
 func (s *stubStreamer) Configured() bool { return true }
 
+func (s *stubStreamer) CompleteChat(_ context.Context, _ []paas.Message, _ int) (string, error) {
+	s.completeCalls++
+	if s.classifyErr != nil {
+		return "", s.classifyErr
+	}
+	if s.classifyReply != "" {
+		return s.classifyReply, nil
+	}
+	return "IN_SCOPE", nil
+}
+
 func (s *stubStreamer) StreamChat(_ context.Context, _ []paas.Message, onDelta func(string) error) (string, int, int, error) {
+	s.streamCalls++
 	if s.started != nil {
 		close(s.started)
 	}
@@ -282,6 +298,126 @@ func TestAdvisorChatSpendsOnlyAfterSuccess(t *testing.T) {
 	}
 	if repo.balance.Available() != domainAI.IncludedGrant()-1 {
 		t.Fatalf("persisted available=%d", repo.balance.Available())
+	}
+}
+
+func TestAdvisorChatOutOfScopeNoSpend(t *testing.T) {
+	streamer := &stubStreamer{full: "should not stream", classifyReply: "OUT_OF_SCOPE"}
+	uc, repo, threads, threadID := newTestChat(streamer)
+	ch, unsub, err := uc.Start(context.Background(), 1, threadID, "Resep bubur kacang ijo dong")
+	if err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer unsub()
+	last := drain(ch)
+	if last == nil || last.Kind != StreamDone {
+		t.Fatalf("want done, got %#v", last)
+	}
+	if last.Credits == nil || last.Credits.Available != domainAI.IncludedGrant() {
+		t.Fatalf("credits should be unchanged, got %#v", last.Credits)
+	}
+	if repo.balance.Available() != domainAI.IncludedGrant() {
+		t.Fatalf("persisted available=%d", repo.balance.Available())
+	}
+	if streamer.streamCalls != 0 {
+		t.Fatalf("streamCalls=%d want 0", streamer.streamCalls)
+	}
+	if streamer.completeCalls != 1 {
+		t.Fatalf("completeCalls=%d want 1", streamer.completeCalls)
+	}
+	msgs, err := threads.ListMessages(context.Background(), threadID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(msgs) != 2 {
+		t.Fatalf("msgs=%d want 2", len(msgs))
+	}
+	if msgs[1].Role != domainAI.RoleAssistant {
+		t.Fatalf("role=%s", msgs[1].Role)
+	}
+	if !strings.Contains(msgs[1].Content, "keuanganmu") {
+		t.Fatalf("refusal=%q", msgs[1].Content)
+	}
+}
+
+func TestAdvisorChatInScopeStillStreams(t *testing.T) {
+	streamer := &stubStreamer{full: "Budget kamu jebol di makan.", classifyReply: "IN_SCOPE"}
+	uc, repo, _, threadID := newTestChat(streamer)
+	ch, unsub, err := uc.Start(context.Background(), 1, threadID, "Kenapa budget saya jebol?")
+	if err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer unsub()
+	last := drain(ch)
+	if last == nil || last.Kind != StreamDone {
+		t.Fatalf("want done, got %#v", last)
+	}
+	if streamer.streamCalls != 1 {
+		t.Fatalf("streamCalls=%d want 1", streamer.streamCalls)
+	}
+	if repo.balance.Available() != domainAI.IncludedGrant()-1 {
+		t.Fatalf("persisted available=%d", repo.balance.Available())
+	}
+}
+
+func TestAdvisorChatClassifyFailFallsBackToAdvice(t *testing.T) {
+	streamer := &stubStreamer{full: "Jawaban fallback.", classifyErr: errors.New("classify down")}
+	uc, repo, _, threadID := newTestChat(streamer)
+	ch, unsub, err := uc.Start(context.Background(), 1, threadID, "Kenapa budget saya jebol?")
+	if err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer unsub()
+	last := drain(ch)
+	if last == nil || last.Kind != StreamDone {
+		t.Fatalf("want done, got %#v", last)
+	}
+	if streamer.streamCalls != 1 {
+		t.Fatalf("streamCalls=%d want 1", streamer.streamCalls)
+	}
+	if repo.balance.Available() != domainAI.IncludedGrant()-1 {
+		t.Fatalf("persisted available=%d", repo.balance.Available())
+	}
+}
+
+func TestParseTopicScope(t *testing.T) {
+	cases := []struct {
+		raw     string
+		inScope bool
+		wantErr bool
+	}{
+		{"IN_SCOPE", true, false},
+		{"out_of_scope", false, false},
+		{"  OUT-OF-SCOPE\n", false, false},
+		{"Label: IN_SCOPE", true, false},
+		{"not IN_SCOPE → OUT_OF_SCOPE", false, false},
+		{"maybe finance?", true, true},
+	}
+	for _, tc := range cases {
+		inScope, err := parseTopicScope(tc.raw)
+		if tc.wantErr {
+			if err == nil {
+				t.Fatalf("%q: want err", tc.raw)
+			}
+			continue
+		}
+		if err != nil {
+			t.Fatalf("%q: %v", tc.raw, err)
+		}
+		if inScope != tc.inScope {
+			t.Fatalf("%q: inScope=%v want %v", tc.raw, inScope, tc.inScope)
+		}
+	}
+}
+
+func TestOffTopicRefusalLocale(t *testing.T) {
+	id := offTopicRefusal("id")
+	en := offTopicRefusal("en")
+	if !strings.Contains(id, "keuanganmu") {
+		t.Fatalf("id=%q", id)
+	}
+	if !strings.Contains(en, "personal finances") {
+		t.Fatalf("en=%q", en)
 	}
 }
 

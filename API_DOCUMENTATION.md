@@ -1842,7 +1842,9 @@ Deletes thread and messages. Credits unchanged.
 
 Body: `{ "message": "…" }` (max 2000 chars).
 
-**Credit policy:** 1 credit is debited only after a successful non-empty AI reply. Upstream failure or empty response → no debit (`AI_UPSTREAM_ERROR`).
+**Credit policy:** 1 credit is debited only after a successful non-empty AI advice reply. Upstream failure or empty response → no debit (`AI_UPSTREAM_ERROR`). Off-topic (pre-flight classify `OUT_OF_SCOPE`) → canned refusal as a normal assistant message, **no debit**.
+
+**Topic scope:** Only the user's personal finances in Berbudget. Unrelated topics (recipes, coding, trivia, etc.) are refused.
 
 **Async pending:** Generation runs detached from the HTTP client (≈90s timeout). Refresh does not cancel the job. While `generation_status=pending`, further chat → `409 AI_TURN_IN_PROGRESS`. Clients should poll GET until idle.
 
@@ -2455,6 +2457,9 @@ Keep this file in sync with the running API. When routes, request/response shape
 
 ## Version History
 
+- **v2.32.0**: **AI topic guard (finance-only)**
+  - Pre-flight classify before advice stream; `OUT_OF_SCOPE` → canned refusal, no credit debit
+  - Hardened advisor system prompt scope
 - **v2.31.0**: **Currency `is_system` (D5) + onboarding draft prefs (D7)**
   - `currencies.is_default` → `is_system` (run `rename_currency_is_system.sql` with BE deploy)
   - `PUT /api/preferences` accepts draft keys `monthly_income`, `monthly_expense`, `debt_balance`, `currency_id`, `currency_code` without completing onboarding
