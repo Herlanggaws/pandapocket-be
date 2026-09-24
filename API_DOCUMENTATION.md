@@ -2459,6 +2459,9 @@ Keep this file in sync with the running API. When routes, request/response shape
 
 ## Version History
 
+- **v2.34.0**: **Doit webhook staging guard + multi top-up**
+  - `POST /webhooks/doit` on prod: skip ActivatePro / AI credits when `return_url` contains `stg.berbudget.com` (misconfig guard)
+  - AI purchased credits accumulate per distinct `doit_payment_id` (Pack S/M repeat top-ups)
 - **v2.33.0**: **AI top-up idempotency**
   - `POST /api/ai/advisor/topup`: per-attempt Idempotency-Key + reference (unix nano); retry once if Doit returns `status=paid`
 - **v2.32.0**: **AI topic guard (finance-only)**

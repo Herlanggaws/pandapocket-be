@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 
@@ -65,6 +66,7 @@ func signBody(secret string, body []byte) string {
 func TestHandleDoitWebhookPaymentPaid(t *testing.T) {
 	secret := "whsec_test"
 	t.Setenv("DOIT_WEBHOOK_SECRET", secret)
+	t.Setenv("APP_URL", "https://berbudget.com")
 
 	events := &memoryWebhookEvents{}
 	subs := &memorySubs{}
@@ -116,5 +118,86 @@ func TestHandleDoitWebhookRejectsBadSignature(t *testing.T) {
 	err := uc.Execute(context.Background(), "t=1,v1=deadbeef", body)
 	if err != ErrWebhookSignatureInvalid {
 		t.Fatalf("expected signature error, got %v", err)
+	}
+}
+
+type recordingAICredits struct {
+	purchases []string
+}
+
+func (r *recordingAICredits) ApplyPurchase(_ context.Context, userID int, pack, doitPaymentID string) error {
+	r.purchases = append(r.purchases, fmt.Sprintf("%d:%s:%s", userID, pack, doitPaymentID))
+	return nil
+}
+
+func (r *recordingAICredits) UnlockFullIncluded(_ context.Context, _ int) error { return nil }
+
+func TestHandleDoitWebhookSkipsStagingBoundOnProd(t *testing.T) {
+	secret := "whsec_test"
+	t.Setenv("DOIT_WEBHOOK_SECRET", secret)
+
+	ai := &recordingAICredits{}
+	events := &memoryWebhookEvents{}
+	uc := NewHandleDoitWebhookUseCase(events, &memorySubs{}, ai)
+	uc.appURL = "https://berbudget.com"
+
+	payload := map[string]interface{}{
+		"id":   "evt_stg_ai",
+		"type": "payment.paid",
+		"data": map[string]interface{}{
+			"id":         "pay_stg_m",
+			"reference":  "user:32:ai:ai_credits_m:1",
+			"return_url": "https://stg.berbudget.com/advisor",
+			"metadata": map[string]interface{}{
+				"user_id": 32,
+				"product": "ai_credits",
+				"pack":    "ai_credits_m",
+			},
+		},
+	}
+	body, _ := json.Marshal(payload)
+	header := signBody(secret, body)
+
+	if err := uc.Execute(context.Background(), header, body); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(ai.purchases) != 0 {
+		t.Fatalf("prod must not apply staging-bound AI credits, got %v", ai.purchases)
+	}
+	if _, ok := events.seen["evt_stg_ai"]; !ok {
+		t.Fatal("event should still be deduped on prod")
+	}
+}
+
+func TestHandleDoitWebhookAppliesStagingBoundOnStaging(t *testing.T) {
+	secret := "whsec_test"
+	t.Setenv("DOIT_WEBHOOK_SECRET", secret)
+
+	ai := &recordingAICredits{}
+	uc := NewHandleDoitWebhookUseCase(&memoryWebhookEvents{}, &memorySubs{}, ai)
+	uc.appURL = "https://stg.berbudget.com"
+
+	payload := map[string]interface{}{
+		"id":   "evt_stg_ai_ok",
+		"type": "payment.paid",
+		"data": map[string]interface{}{
+			"id":         "pay_stg_s",
+			"reference":  "user:32:ai:ai_credits_s:2",
+			"return_url": "https://stg.berbudget.com/advisor",
+			"metadata": map[string]interface{}{
+				"user_id": 32,
+				"product": "ai_credits",
+				"pack":    "ai_credits_s",
+			},
+		},
+	}
+	body, _ := json.Marshal(payload)
+	header := signBody(secret, body)
+
+	if err := uc.Execute(context.Background(), header, body); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(ai.purchases) != 1 || ai.purchases[0] != "32:ai_credits_s:pay_stg_s" {
+		t.Fatalf("staging must apply AI credits, got %v", ai.purchases)
 	}
 }

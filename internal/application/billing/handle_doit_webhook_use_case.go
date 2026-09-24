@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -27,10 +28,11 @@ type AICreditApplier interface {
 }
 
 type HandleDoitWebhookUseCase struct {
-	secret   string
-	events   domainBilling.WebhookEventRepository
-	subs     domainBilling.SubscriptionRepository
+	secret    string
+	events    domainBilling.WebhookEventRepository
+	subs      domainBilling.SubscriptionRepository
 	aiCredits AICreditApplier
+	appURL    string
 }
 
 func NewHandleDoitWebhookUseCase(
@@ -43,6 +45,7 @@ func NewHandleDoitWebhookUseCase(
 		events:    events,
 		subs:      subs,
 		aiCredits: aiCredits,
+		appURL:    os.Getenv("APP_URL"),
 	}
 }
 
@@ -57,6 +60,7 @@ type paymentData struct {
 	ID        string                 `json:"id"`
 	Reference string                 `json:"reference"`
 	PaidAt    *string                `json:"paid_at"`
+	ReturnURL string                 `json:"return_url"`
 	Metadata  map[string]interface{} `json:"metadata"`
 }
 
@@ -97,6 +101,12 @@ func (uc *HandleDoitWebhookUseCase) handlePaymentPaid(ctx context.Context, data 
 	var payment paymentData
 	if err := json.Unmarshal(data, &payment); err != nil {
 		return fmt.Errorf("invalid payment.paid data: %w", err)
+	}
+
+	if uc.shouldSkipStagingBoundPayment(payment) {
+		log.Printf("doit webhook: skipping staging-bound payment on non-stg host payment_id=%s return_url=%s app_url=%s",
+			payment.ID, payment.ReturnURL, uc.appURL)
+		return nil
 	}
 
 	if isAICreditPayment(payment) {
@@ -153,6 +163,26 @@ func (uc *HandleDoitWebhookUseCase) handleAICreditPurchase(ctx context.Context, 
 	return uc.aiCredits.ApplyPurchase(ctx, userID, pack, paymentID)
 }
 
+// shouldSkipStagingBoundPayment avoids writing staging Doit payments into the prod DB
+// when the test-app webhook URL is mis-pointed at api.berbudget.com.
+func (uc *HandleDoitWebhookUseCase) shouldSkipStagingBoundPayment(payment paymentData) bool {
+	if !isStagingBoundReturnURL(payment.ReturnURL) {
+		return false
+	}
+	appURL := uc.appURL
+	if appURL == "" {
+		appURL = os.Getenv("APP_URL")
+	}
+	if strings.Contains(strings.ToLower(appURL), "stg.") {
+		return false
+	}
+	return true
+}
+
+func isStagingBoundReturnURL(returnURL string) bool {
+	return strings.Contains(strings.ToLower(returnURL), "stg.berbudget.com")
+}
+
 func isAICreditPayment(payment paymentData) bool {
 	if payment.Metadata != nil {
 		if raw, ok := payment.Metadata["product"]; ok {
@@ -191,7 +221,6 @@ func resolveAICreditPurchase(payment paymentData) (int, string, error) {
 
 	if userID == 0 || pack == "" {
 		parts := strings.Split(payment.Reference, ":")
-		// user:{id}:ai:{pack}:...
 		if len(parts) >= 4 && parts[0] == "user" && parts[2] == "ai" {
 			if parsed, err := strconv.Atoi(parts[1]); err == nil {
 				userID = parsed
