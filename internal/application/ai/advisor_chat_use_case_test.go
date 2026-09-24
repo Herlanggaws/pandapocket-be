@@ -322,8 +322,8 @@ func TestAdvisorChatOutOfScopeNoSpend(t *testing.T) {
 	if streamer.streamCalls != 0 {
 		t.Fatalf("streamCalls=%d want 0", streamer.streamCalls)
 	}
-	if streamer.completeCalls != 1 {
-		t.Fatalf("completeCalls=%d want 1", streamer.completeCalls)
+	if streamer.completeCalls != 0 {
+		t.Fatalf("completeCalls=%d want 0 (local heuristic)", streamer.completeCalls)
 	}
 	msgs, err := threads.ListMessages(context.Background(), threadID)
 	if err != nil {
@@ -363,7 +363,8 @@ func TestAdvisorChatInScopeStillStreams(t *testing.T) {
 func TestAdvisorChatClassifyFailFallsBackToAdvice(t *testing.T) {
 	streamer := &stubStreamer{full: "Jawaban fallback.", classifyErr: errors.New("classify down")}
 	uc, repo, _, threadID := newTestChat(streamer)
-	ch, unsub, err := uc.Start(context.Background(), 1, threadID, "Kenapa budget saya jebol?")
+	// Ambiguous message so PAAS classify is attempted (no local finance/off-topic hit).
+	ch, unsub, err := uc.Start(context.Background(), 1, threadID, "Bagaimana menurutmu soal ini?")
 	if err != nil {
 		t.Fatalf("start: %v", err)
 	}
@@ -372,11 +373,33 @@ func TestAdvisorChatClassifyFailFallsBackToAdvice(t *testing.T) {
 	if last == nil || last.Kind != StreamDone {
 		t.Fatalf("want done, got %#v", last)
 	}
+	if streamer.completeCalls != 1 {
+		t.Fatalf("completeCalls=%d want 1", streamer.completeCalls)
+	}
 	if streamer.streamCalls != 1 {
 		t.Fatalf("streamCalls=%d want 1", streamer.streamCalls)
 	}
 	if repo.balance.Available() != domainAI.IncludedGrant()-1 {
 		t.Fatalf("persisted available=%d", repo.balance.Available())
+	}
+}
+
+func TestQuickTopicScope(t *testing.T) {
+	cases := []struct {
+		msg       string
+		inScope   bool
+		confident bool
+	}{
+		{"Kenapa budget saya jebol?", true, true},
+		{"Resep bubur kacang ijo dong", false, true},
+		{"Bagaimana menurutmu soal ini?", true, false},
+		{"Cuaca hari ini gimana?", false, true},
+	}
+	for _, tc := range cases {
+		inScope, confident := quickTopicScope(tc.msg)
+		if inScope != tc.inScope || confident != tc.confident {
+			t.Fatalf("%q → (%v,%v) want (%v,%v)", tc.msg, inScope, confident, tc.inScope, tc.confident)
+		}
 	}
 }
 

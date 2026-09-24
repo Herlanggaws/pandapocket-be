@@ -208,7 +208,31 @@ func (uc *AdvisorChatUseCase) runGeneration(
 	defer cancel()
 	finishCtx := context.Background()
 
-	inScope, classifyErr := classifyTopic(bgCtx, uc.paas, userMessage)
+	// Overlap topic gate, finance snapshot, and history so TTFT is not
+	// classify-latency + context-latency stacked.
+	var (
+		inScope     bool
+		classifyErr error
+		contextJSON string
+		history     []domainAI.ThreadMessage
+		historyErr  error
+	)
+	var prep sync.WaitGroup
+	prep.Add(3)
+	go func() {
+		defer prep.Done()
+		inScope, classifyErr = classifyTopic(bgCtx, uc.paas, userMessage)
+	}()
+	go func() {
+		defer prep.Done()
+		contextJSON = buildAdvisorContextJSON(bgCtx, userID, creditsBefore, uc.contextDeps)
+	}()
+	go func() {
+		defer prep.Done()
+		history, historyErr = uc.threads.ListMessages(bgCtx, threadID)
+	}()
+	prep.Wait()
+
 	if classifyErr == nil && !inScope {
 		refusal := offTopicRefusal(lang)
 		_ = uc.threads.AppendMessage(finishCtx, threadID, domainAI.RoleAssistant, refusal, 0, 0)
@@ -219,9 +243,7 @@ func (uc *AdvisorChatUseCase) runGeneration(
 		return
 	}
 
-	contextJSON := buildAdvisorContextJSON(bgCtx, userID, creditsBefore, uc.contextDeps)
-	history, err := uc.threads.ListMessages(bgCtx, threadID)
-	if err != nil {
+	if historyErr != nil {
 		_ = uc.threads.FinishGeneration(finishCtx, threadID, domainAI.GenerationFailed)
 		job.publish(StreamEvent{Kind: StreamError, ErrCode: "AI_CHAT_ERROR", Credits: creditsBefore})
 		return

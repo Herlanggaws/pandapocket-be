@@ -15,6 +15,7 @@ import (
 
 const defaultBaseURL = "https://ai.paas.id"
 const defaultModel = "glm-5.3-flash"
+const streamMaxTokens = 1024
 
 type Message struct {
 	Role    string `json:"role"`
@@ -124,10 +125,12 @@ func (c *Client) StreamChat(ctx context.Context, messages []Message, onDelta fun
 		return "", 0, 0, fmt.Errorf("PAAS_AI_API_KEY is not configured")
 	}
 
+	maxTokens := streamMaxTokens
 	body, err := json.Marshal(ChatRequest{
-		Model:    c.model,
-		Messages: messages,
-		Stream:   true,
+		Model:     c.model,
+		Messages:  messages,
+		Stream:    true,
+		MaxTokens: &maxTokens,
 	})
 	if err != nil {
 		return "", 0, 0, err

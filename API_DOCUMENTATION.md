@@ -1842,13 +1842,13 @@ Deletes thread and messages. Credits unchanged.
 
 Body: `{ "message": "…" }` (max 2000 chars).
 
-**Credit policy:** 1 credit is debited only after a successful non-empty AI advice reply. Upstream failure or empty response → no debit (`AI_UPSTREAM_ERROR`). Off-topic (pre-flight classify `OUT_OF_SCOPE`) → canned refusal as a normal assistant message, **no debit**.
+**Credit policy:** 1 credit is debited only after a successful non-empty AI advice reply. Upstream failure or empty response → no debit (`AI_UPSTREAM_ERROR`). Off-topic (pre-flight classify `OUT_OF_SCOPE`, including local keyword heuristic) → canned refusal as a normal assistant message, **no debit**.
 
-**Topic scope:** Only the user's personal finances in Berbudget. Unrelated topics (recipes, coding, trivia, etc.) are refused.
+**Topic scope:** Only the user's personal finances in Berbudget. Unrelated topics (recipes, coding, trivia, etc.) are refused. Clear finance / off-topic messages skip the PAAS classify round-trip; ambiguous messages still call PAAS.
 
 **Async pending:** Generation runs detached from the HTTP client (≈90s timeout). Refresh does not cancel the job. While `generation_status=pending`, further chat → `409 AI_TURN_IN_PROGRESS`. Clients should poll GET until idle.
 
-Success: **SSE** `text/event-stream`:
+Success: **SSE** `text/event-stream` (headers include `X-Accel-Buffering: no`; stream opens with an SSE comment before the first delta):
 - `event: delta` — token chunk
 - `event: done` — JSON credits snapshot
 - `event: error` — JSON `{ error_code }`
@@ -2459,6 +2459,10 @@ Keep this file in sync with the running API. When routes, request/response shape
 
 ## Version History
 
+- **v2.35.0**: **AI advisor latency / streaming**
+  - Topic gate: local keyword heuristic before PAAS classify; classify timeout 8s
+  - Parallel prep: classify + finance context + history; parallel context section fetches
+  - Advice stream `max_tokens=1024`; SSE `X-Accel-Buffering: no` + early flush comment
 - **v2.34.0**: **Doit webhook staging guard + multi top-up**
   - `POST /webhooks/doit` on prod: skip ActivatePro / AI credits when `return_url` contains `stg.berbudget.com` (misconfig guard)
   - AI purchased credits accumulate per distinct `doit_payment_id` (Pack S/M repeat top-ups)

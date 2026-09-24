@@ -200,6 +200,8 @@ func (h *AIAdvisorHandlers) streamEvents(c *gin.Context, events <-chan appAI.Str
 	c.Writer.Header().Set("Content-Type", "text/event-stream")
 	c.Writer.Header().Set("Cache-Control", "no-cache")
 	c.Writer.Header().Set("Connection", "keep-alive")
+	// Disable nginx/proxy response buffering so deltas reach the client promptly.
+	c.Writer.Header().Set("X-Accel-Buffering", "no")
 	c.Writer.WriteHeader(http.StatusOK)
 	flusher, ok := c.Writer.(http.Flusher)
 	if !ok {
@@ -210,6 +212,10 @@ func (h *AIAdvisorHandlers) streamEvents(c *gin.Context, events <-chan appAI.Str
 		_, _ = fmt.Fprintf(c.Writer, "event: %s\ndata: %s\n\n", event, data)
 		flusher.Flush()
 	}
+
+	// Flush an SSE comment immediately so proxies open the stream before TTFT.
+	_, _ = fmt.Fprint(c.Writer, ": connected\n\n")
+	flusher.Flush()
 
 	notify := c.Request.Context().Done()
 	for {
