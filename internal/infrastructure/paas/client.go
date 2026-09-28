@@ -15,7 +15,10 @@ import (
 
 const defaultBaseURL = "https://ai.paas.id"
 const defaultModel = "glm-5.3-flash"
-const streamMaxTokens = 1024
+
+// 1024 is spent entirely on reasoning for a finance snapshot, so the visible
+// answer never starts. 4096 leaves room for that thinking plus a short reply.
+const streamMaxTokens = 4096
 
 // glm-5.3-flash always thinks. A non-stream completion with a small cap spends
 // every token on reasoning_content and returns empty visible content. Streaming
@@ -122,7 +125,6 @@ func (c *Client) streamChat(ctx context.Context, messages []Message, maxTokens i
 	}
 
 	var full strings.Builder
-	var reasoning strings.Builder
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
@@ -142,31 +144,21 @@ func (c *Client) streamChat(ctx context.Context, messages []Message, maxTokens i
 		if len(chunk.Choices) == 0 {
 			continue
 		}
-		delta := chunk.Choices[0].Delta
-		if delta.ReasoningContent != "" {
-			reasoning.WriteString(delta.ReasoningContent)
-		}
-		if delta.Content == "" {
+		// reasoning_content is scratchpad (often English, and it restates the
+		// question). Only visible content is the reply.
+		delta := chunk.Choices[0].Delta.Content
+		if delta == "" {
 			continue
 		}
-		full.WriteString(delta.Content)
+		full.WriteString(delta)
 		if onDelta != nil {
-			if err := onDelta(delta.Content); err != nil {
+			if err := onDelta(delta); err != nil {
 				return full.String(), 0, 0, err
 			}
 		}
 	}
 	if err := scanner.Err(); err != nil {
 		return full.String(), 0, 0, err
-	}
-	if strings.TrimSpace(full.String()) == "" && strings.TrimSpace(reasoning.String()) != "" {
-		fallback := strings.TrimSpace(reasoning.String())
-		if onDelta != nil {
-			if err := onDelta(fallback); err != nil {
-				return fallback, 0, 0, err
-			}
-		}
-		return fallback, 0, 0, nil
 	}
 	return full.String(), 0, 0, nil
 }

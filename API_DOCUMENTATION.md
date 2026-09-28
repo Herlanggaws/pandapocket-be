@@ -2516,7 +2516,7 @@ Keep this file in sync with the running API. When routes, request/response shape
 - **v2.35.0**: **AI advisor latency / streaming**
   - Topic gate: local keyword heuristic before PAAS classify; classify timeout 8s
   - Parallel prep: classify + finance context + history; parallel context section fetches
-  - Advice stream `max_tokens=1024`; SSE `X-Accel-Buffering: no` + early flush comment
+  - Advice stream `max_tokens=4096`; SSE `X-Accel-Buffering: no` + early flush comment. Model reasoning is not shown to the user. Reply language follows a clearly Indonesian or English question, otherwise the app locale.
 - **v2.34.0**: **Doit webhook staging guard + multi top-up**
   - `POST /webhooks/doit` on prod: skip ActivatePro / AI credits when `return_url` contains `stg.berbudget.com` (misconfig guard)
   - AI purchased credits accumulate per distinct `doit_payment_id` (Pack S/M repeat top-ups)

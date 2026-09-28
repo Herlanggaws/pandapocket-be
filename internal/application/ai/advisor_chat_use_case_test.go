@@ -558,3 +558,19 @@ func TestThreadListCreateDelete(t *testing.T) {
 		t.Fatalf("want not found, got %v", err)
 	}
 }
+
+func TestReplyLanguageFollowsTheQuestion(t *testing.T) {
+	if got := replyLanguage("Saran alokasi gaji bulan depan", "en"); got != "id" {
+		t.Fatalf("indonesian question with english prefs: %s", got)
+	}
+	if got := replyLanguage("How should I allocate next month salary?", "id"); got != "en" {
+		t.Fatalf("english question with indonesian prefs: %s", got)
+	}
+	if got := replyLanguage("?", "en"); got != "en" {
+		t.Fatalf("ambiguous uses prefs: %s", got)
+	}
+	prompt := systemPrompt("id")
+	if !strings.Contains(prompt, "Bahasa Indonesia") || !strings.Contains(prompt, "Do not restate") {
+		t.Fatalf("prompt missing language or restatement rule: %s", prompt)
+	}
+}

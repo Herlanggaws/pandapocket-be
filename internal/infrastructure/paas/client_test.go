@@ -90,10 +90,10 @@ func assertThinkingOmitted(t *testing.T, r *http.Request) {
 	}
 }
 
-func TestStreamChatFallsBackWhenContentEmpty(t *testing.T) {
+func TestStreamChatIgnoresReasoningWhenContentEmpty(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
-		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"answer from reasoning\"}}]}\n\n")
+		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"The user asks in Indonesian: Saran alokasi gaji\"}}]}\n\n")
 		_, _ = io.WriteString(w, "data: [DONE]\n\n")
 	}))
 	defer server.Close()
@@ -104,13 +104,15 @@ func TestStreamChatFallsBackWhenContentEmpty(t *testing.T) {
 		model:      "glm-5.3-flash",
 		httpClient: server.Client(),
 	}
-	full, _, _, err := client.StreamChat(context.Background(), []Message{{Role: "user", Content: "hi"}}, func(string) error {
+	var streamed strings.Builder
+	full, _, _, err := client.StreamChat(context.Background(), []Message{{Role: "user", Content: "hi"}}, func(delta string) error {
+		streamed.WriteString(delta)
 		return nil
 	})
 	if err != nil {
 		t.Fatalf("stream: %v", err)
 	}
-	if full != "answer from reasoning" {
-		t.Fatalf("got %q", full)
+	if full != "" || streamed.Len() != 0 {
+		t.Fatalf("got full %q streamed %q", full, streamed.String())
 	}
 }

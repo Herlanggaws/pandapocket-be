@@ -14,7 +14,9 @@ import (
 	"panda-pocket/internal/infrastructure/paas"
 )
 
-const insightsReportMaxTokens = 512
+// Same floor as advisor chat: a 512 cap is consumed by model reasoning
+// before any visible report text.
+const insightsReportMaxTokens = 4096
 
 var (
 	ErrInsightsReportEmpty = errors.New("insights period has no income or spending")

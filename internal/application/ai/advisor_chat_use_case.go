@@ -6,6 +6,7 @@ import (
 	"log"
 	"strings"
 	"sync"
+	"unicode"
 	"unicode/utf8"
 
 	domainAI "panda-pocket/internal/domain/ai"
@@ -234,6 +235,8 @@ func (uc *AdvisorChatUseCase) runGeneration(
 	}()
 	prep.Wait()
 
+	lang = replyLanguage(userMessage, lang)
+
 	if classifyErr == nil && !inScope {
 		refusal := offTopicRefusal(lang)
 		_ = uc.threads.AppendMessage(finishCtx, threadID, domainAI.RoleAssistant, refusal, 0, 0)
@@ -309,6 +312,8 @@ If a section is empty, say what is missing and suggest recording it in Berbudget
 You are NOT a licensed financial advisor — include that caveat briefly when giving material advice.
 Read-only: never claim you created or changed transactions, budgets, liabilities, goals, or transfers.
 Prefer concise answers with clear next steps.
+Do not restate, quote, or mention the user's question. Start directly with the advice.
+Do not include analysis notes, a draft, or a recap of what was asked.
 When useful, include markdown links to in-app paths only, e.g. [Budgets](/budgets), [Goals](/goals), [Debts](/debts), [Insights](/insights), [Net worth](/net-worth), [Health](/health), [Transactions](/transactions), [Wallets](/wallets), [Settings billing](/settings/billing).
 Do not use external http(s) links.
 
@@ -319,5 +324,52 @@ Never provide recipes, code, or step-by-step for unrelated topics.`
 	if lang == "en" {
 		return base + "\nRespond in English."
 	}
-	return base + "\nRespond in Bahasa Indonesia."
+	return base + "\nRespond only in Bahasa Indonesia."
+}
+
+func replyLanguage(userMessage, prefs string) string {
+	if messageLooksIndonesian(userMessage) {
+		return "id"
+	}
+	if messageLooksEnglish(userMessage) {
+		return "en"
+	}
+	if prefs == "en" {
+		return "en"
+	}
+	return "id"
+}
+
+func messageLooksIndonesian(userMessage string) bool {
+	return containsAnyWord(userMessage, []string{
+		"saran", "alokasi", "gaji", "bulan", "uang", "dompet", "anggaran",
+		"pengeluaran", "pemasukan", "hutang", "utang", "tabungan", "cicilan",
+		"bagaimana", "gimana", "kenapa", "mengapa", "berapa", "tolong",
+		"saya", "aku", "keuangan",
+	})
+}
+
+func messageLooksEnglish(userMessage string) bool {
+	return containsAnyWord(userMessage, []string{
+		"the", "what", "how", "should", "please", "salary", "budget", "next",
+		"month", "help", "advice", "allocate", "spending",
+	})
+}
+
+func containsAnyWord(text string, words []string) bool {
+	normalized := " "
+	for _, r := range strings.ToLower(text) {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			normalized += string(r)
+			continue
+		}
+		normalized += " "
+	}
+	normalized += " "
+	for _, word := range words {
+		if strings.Contains(normalized, " "+word+" ") {
+			return true
+		}
+	}
+	return false
 }
