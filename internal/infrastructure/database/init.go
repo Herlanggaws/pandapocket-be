@@ -179,6 +179,7 @@ func autoMigrate(db *gorm.DB) error {
 		&Notification{},
 		&UserFeedback{},
 		&SupportTicket{},
+		&FxRate{},
 		&PasswordResetToken{},
 		&AccountResetChallenge{},
 		&Token{},

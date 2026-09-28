@@ -27,6 +27,9 @@ type ChatRequest struct {
 	Messages  []Message `json:"messages"`
 	Stream    bool      `json:"stream"`
 	MaxTokens *int      `json:"max_tokens,omitempty"`
+	// glm-5.3-flash otherwise spends max_tokens on reasoning_content and
+	// returns an empty visible answer, which the advisor treats as a failure.
+	EnableThinking bool `json:"enable_thinking"`
 }
 
 type chatCompletionResponse struct {
@@ -42,7 +45,8 @@ type chatCompletionResponse struct {
 type streamChunk struct {
 	Choices []struct {
 		Delta struct {
-			Content string `json:"content"`
+			Content          string `json:"content"`
+			ReasoningContent string `json:"reasoning_content"`
 		} `json:"delta"`
 	} `json:"choices"`
 }
@@ -156,6 +160,7 @@ func (c *Client) StreamChat(ctx context.Context, messages []Message, onDelta fun
 	}
 
 	var full strings.Builder
+	var reasoning strings.Builder
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
@@ -175,19 +180,31 @@ func (c *Client) StreamChat(ctx context.Context, messages []Message, onDelta fun
 		if len(chunk.Choices) == 0 {
 			continue
 		}
-		delta := chunk.Choices[0].Delta.Content
-		if delta == "" {
+		delta := chunk.Choices[0].Delta
+		if delta.ReasoningContent != "" {
+			reasoning.WriteString(delta.ReasoningContent)
+		}
+		if delta.Content == "" {
 			continue
 		}
-		full.WriteString(delta)
+		full.WriteString(delta.Content)
 		if onDelta != nil {
-			if err := onDelta(delta); err != nil {
+			if err := onDelta(delta.Content); err != nil {
 				return full.String(), 0, 0, err
 			}
 		}
 	}
 	if err := scanner.Err(); err != nil {
 		return full.String(), 0, 0, err
+	}
+	if strings.TrimSpace(full.String()) == "" && strings.TrimSpace(reasoning.String()) != "" {
+		fallback := strings.TrimSpace(reasoning.String())
+		if onDelta != nil {
+			if err := onDelta(fallback); err != nil {
+				return fallback, 0, 0, err
+			}
+		}
+		return fallback, 0, 0, nil
 	}
 	return full.String(), 0, 0, nil
 }

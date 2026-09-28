@@ -100,11 +100,12 @@ CORS currently allows all origins (`*`). Allowed request headers: `Origin`, `Con
 | POST | `/api/liabilities/:id/archive` | Yes | |
 | POST | `/api/liabilities/:id/unarchive` | Yes | |
 | GET/POST | `/api/liabilities/:id/payments` | Yes | Payment history / record payment |
-| GET | `/api/net-worth/summary` | Yes | Liquid + assets − liabilities (primary currency) |
+| GET | `/api/net-worth/summary` | Yes | Liquid + assets − liabilities in primary currency; system currencies converted (C4) |
 | GET/PUT | `/api/preferences` | Yes | User preferences & onboarding |
 | GET | `/api/me/subscription` | Yes | Current billing subscription + `is_pro` |
 | POST | `/api/billing/checkout` | Yes | Start Doit checkout; returns `hosted_url` (does not unlock Pro) |
 | POST | `/api/billing/cancel` | Yes | Schedule cancel at period end |
+| GET | `/api/ai/advisor/credits` | Yes (Pro) | Read-only AI credit balance (no thread) |
 | GET | `/api/ai/advisor/threads` | Yes (Pro) | List AI chat threads |
 | POST | `/api/ai/advisor/threads` | Yes (Pro) | Create thread |
 | GET | `/api/ai/advisor/threads/:id` | Yes (Pro) | Thread messages + credits + `generation_status` |
@@ -115,6 +116,7 @@ CORS currently allows all origins (`*`). Allowed request headers: `Origin`, `Con
 | DELETE | `/api/ai/advisor/thread` | Yes (Pro) | Legacy: clear newest thread messages |
 | POST | `/api/ai/advisor/chat` | Yes (Pro) | Legacy: chat on newest/create thread |
 | POST | `/api/ai/advisor/topup` | Yes (Pro) | Doit one-shot for AI credit packs |
+| POST | `/api/ai/insights/report` | Yes (Pro) | One-shot Insights report; debits 1 AI credit |
 | POST | `/api/account/reset/challenge` | Yes | Issue one-time confirmation string for data reset |
 | POST | `/api/account/reset` | Yes | Wipe user financial data after typing confirmation |
 | POST | `/api/onboarding/complete` | Yes | Finish onboarding; seed pending income/expense + budget/(debt) |
@@ -1609,7 +1611,7 @@ Deleting the linked expense / income / transfer rolls back the contribution (man
 
 ## Assets & Liabilities
 
-Manual balance-sheet positions (no market feeds). Wallets remain liquid assets.
+Manual balance-sheet positions (no market price feeds). Wallets remain liquid assets. `GET /api/net-worth/summary` converts system currencies into the primary currency using a cached daily ECB rate.
 
 **Free limits:** max **1** non-archived asset and **1** non-archived liability. Extra creates → **403** `PREMIUM_REQUIRED` (`feature`: `assets` / `debts`). GET list + net-worth summary stay open.
 
@@ -1673,7 +1675,7 @@ Records a payment and reduces `current_balance`. Optionally creates an expense o
 
 ### GET /api/net-worth/summary
 
-Primary-currency only (no FX). Other-currency wallets/assets/liabilities are counted in `excluded_*` fields.
+Totals are in the user's **primary** currency. Wallets, assets, and liabilities in another **system** currency are converted with the cached Frankfurter (ECB) rate (`amount * rate[primary] / rate[source]`, pivot EUR). Custom currencies and codes with no rate stay out of the sums and increment `excluded_*`. A missing rate does not fail the request. Insights and `GET /api/wallets/summary` stay primary-only.
 
 ```json
 {
@@ -1684,15 +1686,21 @@ Primary-currency only (no FX). Other-currency wallets/assets/liabilities are cou
     "assets_total": 500000000,
     "liabilities_total": 200000000,
     "net_worth": 301250000,
+    "fx_as_of": "2026-09-26",
+    "converted_wallet_count": 1,
+    "converted_asset_count": 0,
+    "converted_liability_count": 0,
     "excluded_asset_count": 0,
     "excluded_liability_count": 0,
-    "excluded_wallet_count": 1
+    "excluded_wallet_count": 0
   },
   "error": null
 }
 ```
 
 `net_worth = liquid_net_worth + assets_total − liabilities_total`
+
+`fx_as_of` is `YYYY-MM-DD` or `null` when no rate book is cached. `converted_*` counts items included via FX. `excluded_*` counts items that could not be converted.
 
 ---
 
@@ -1878,6 +1886,42 @@ Each call creates a **new** Doit payment (Idempotency-Key + reference include un
 Return URL: `DOIT_AI_RETURN_URL` (default `/advisor`).
 
 Env: `PAAS_AI_BASE_URL`, `PAAS_AI_API_KEY`, `PAAS_AI_MODEL` (default `glm-5.3-flash`).
+
+#### GET /api/ai/advisor/credits
+
+Pro-only. Returns the same `credits` object as a thread (`available`, `included_unlocked`, `included_used`, `purchased_remaining`, `is_trialing`). Does not create a thread. Free → `403 PREMIUM_REQUIRED`.
+
+#### POST /api/ai/insights/report
+
+Pro-only one-shot report for the Insights period. Spec: `doc/insights-ai-report.md`. Shares the Tanya AI credit balance. Debits **1 credit only after** a non-empty report. Not stored.
+
+**Request:**
+```json
+{ "period": "monthly", "start_date": "2026-09-01", "end_date": "2026-09-28" }
+```
+
+`period`: `weekly` | `monthly` | `yearly` | `custom`. Custom requires both dates. The server recomputes analytics (primary currency only). `health_score` is sent to the model only when the resolved period is `monthly`.
+
+**Response `200`:**
+```json
+{
+  "status": "success",
+  "data": {
+    "summary": "…",
+    "points": ["…", "…"],
+    "period": "monthly",
+    "credits": {
+      "available": 11,
+      "included_unlocked": 15,
+      "included_used": 4,
+      "purchased_remaining": 0,
+      "is_trialing": true
+    }
+  }
+}
+```
+
+Errors: `403 PREMIUM_REQUIRED`, `402 AI_CREDITS_REQUIRED` (no model call), `400 AI_REPORT_EMPTY` (income and spending are both 0; no model call), `400 VALIDATION_ERROR` (bad dates), `502 AI_REPORT_ERROR` (upstream or blank reply; no debit), `500 AI_NOT_CONFIGURED`.
 
 ---
 
@@ -2459,6 +2503,16 @@ Keep this file in sync with the running API. When routes, request/response shape
 
 ## Version History
 
+- **v2.37.0**: **Insights AI report (C3)**
+  - `POST /api/ai/insights/report`: one-shot report for the open analytics period; 1 shared Tanya AI credit after a non-empty reply
+  - `GET /api/ai/advisor/credits`: read-only balance, no thread
+  - Empty period `400 AI_REPORT_EMPTY`; blank/upstream `502` without debit; health score only on monthly
+
+- **v2.36.0**: **Net worth FX (C4)**
+  - `GET /api/net-worth/summary` converts system currencies to primary using cached Frankfurter (ECB) rates
+  - Adds `fx_as_of`, `converted_wallet_count`, `converted_asset_count`, `converted_liability_count`
+  - `excluded_*` is only items with no rate (custom currencies or missing codes). `GET /api/wallets/summary` and analytics stay primary-only
+
 - **v2.35.0**: **AI advisor latency / streaming**
   - Topic gate: local keyword heuristic before PAAS classify; classify timeout 8s
   - Parallel prep: classify + finance context + history; parallel context section fetches
@@ -2577,7 +2631,7 @@ Keep this file in sync with the running API. When routes, request/response shape
 
 - **v2.9.0**: **Goals, full net worth, health history**
   - Savings goals CRUD with deadline and manual progress
-  - Assets + liabilities CRUD; `GET /api/net-worth/summary` (liquid + assets − liabilities, no FX)
+  - Assets + liabilities CRUD; `GET /api/net-worth/summary` (liquid + assets − liabilities; system-currency FX added in v2.36)
   - Health score upserts monthly snapshots; `GET /api/health-score/history`
 
 - **v2.8.0**: **Budget %, health score, liquid net worth**

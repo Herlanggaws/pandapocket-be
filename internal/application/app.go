@@ -18,6 +18,7 @@ import (
 	domainIdentity "panda-pocket/internal/domain/identity"
 	"panda-pocket/internal/infrastructure/database"
 	"panda-pocket/internal/infrastructure/doit"
+	"panda-pocket/internal/infrastructure/fx"
 	"panda-pocket/internal/infrastructure/notification"
 	"panda-pocket/internal/infrastructure/paas"
 	"panda-pocket/internal/interfaces/http/handlers"
@@ -45,6 +46,7 @@ type App struct {
 	cleanupExpiredTokensUseCase        *appIdentity.CleanupExpiredTokensUseCase
 	checkGoalDeadlineAlertsUseCase     *appFinance.CheckGoalDeadlineAlertsUseCase
 	processBillingSubscriptionsUseCase *appBilling.ProcessBillingSubscriptionsUseCase
+	refreshFxRatesUseCase              *appFinance.RefreshFxRatesUseCase
 }
 
 // NewApp creates a new application instance with all dependencies wired up
@@ -237,10 +239,26 @@ func NewApp(db *gorm.DB) *App {
 		liabilityService,
 		getHealthScoreUseCase,
 	)
-	getNetWorthSummaryUseCase := appFinance.NewGetNetWorthSummaryUseCase(getWalletSummaryUseCase, assetService, liabilityService, currencyService)
+	fxRateRepo := database.NewGormFxRateRepository(db)
+	refreshFxRatesUseCase := appFinance.NewRefreshFxRatesUseCase(fxRateRepo, fx.NewClient())
+	getNetWorthSummaryUseCase := appFinance.NewGetNetWorthSummaryUseCase(
+		getWalletSummaryUseCase,
+		walletService,
+		assetService,
+		liabilityService,
+		currencyService,
+		fxRateRepo,
+	)
 	createTransferUseCase := appFinance.NewCreateTransferUseCase(transferService)
 	getTransfersUseCase := appFinance.NewGetTransfersUseCase(transferService)
 	deleteTransferUseCase := appFinance.NewDeleteTransferUseCase(transferService, goalService)
+	aiPrefsLang := func(ctx context.Context, userID int) string {
+		prefs, err := prefsRepo.FindByUserID(ctx, domainIdentity.NewUserID(userID))
+		if err != nil || prefs == nil || prefs.Language() == "" {
+			return "id"
+		}
+		return prefs.Language()
+	}
 	aiChatUseCase := appAI.NewAdvisorChatUseCase(
 		aiCreditService,
 		aiThreadRepo,
@@ -261,16 +279,16 @@ func NewApp(db *gorm.DB) *App {
 			Transfers:       getTransfersUseCase,
 			PrimaryCurrency: getDefaultCurrencyUseCase,
 		},
-		func(ctx context.Context, userID int) string {
-			prefs, err := prefsRepo.FindByUserID(ctx, domainIdentity.NewUserID(userID))
-			if err != nil || prefs == nil {
-				return "id"
-			}
-			if prefs.Language() == "" {
-				return "id"
-			}
-			return prefs.Language()
-		},
+		aiPrefsLang,
+	)
+	aiInsightsReportUseCase := appAI.NewInsightsReportUseCase(
+		aiCreditService,
+		entitlementChecker,
+		getAnalyticsUseCase,
+		getHealthScoreUseCase,
+		getDefaultCurrencyUseCase,
+		paasClient,
+		aiPrefsLang,
 	)
 	// Interface layer - handlers and middleware
 	identityHandlers := handlers.NewIdentityHandlers(
@@ -378,6 +396,7 @@ func NewApp(db *gorm.DB) *App {
 		aiThreadUseCases,
 		aiChatUseCase,
 		aiTopupUseCase,
+		aiInsightsReportUseCase,
 	)
 	authMiddleware := middleware.NewAuthMiddleware(tokenService, userRepo)
 
@@ -397,6 +416,7 @@ func NewApp(db *gorm.DB) *App {
 		cleanupExpiredTokensUseCase:        cleanupExpiredTokensUseCase,
 		checkGoalDeadlineAlertsUseCase:     checkGoalDeadlineAlertsUseCase,
 		processBillingSubscriptionsUseCase: processBillingSubscriptionsUseCase,
+		refreshFxRatesUseCase:              refreshFxRatesUseCase,
 	}
 }
 
@@ -508,6 +528,8 @@ func (app *App) SetupRoutes() *gin.Engine {
 			protected.POST("/billing/checkout", app.BillingHandlers.Checkout)
 			protected.POST("/billing/cancel", app.BillingHandlers.CancelSubscription)
 
+			protected.GET("/ai/advisor/credits", app.AIAdvisorHandlers.GetCredits)
+			protected.POST("/ai/insights/report", app.AIAdvisorHandlers.InsightsReport)
 			protected.GET("/ai/advisor/threads", app.AIAdvisorHandlers.ListThreads)
 			protected.POST("/ai/advisor/threads", app.AIAdvisorHandlers.CreateThread)
 			protected.GET("/ai/advisor/threads/:id", app.AIAdvisorHandlers.GetThreadByID)
@@ -622,10 +644,18 @@ func (app *App) StartBackgroundJobs(ctx context.Context) {
 			}
 		}
 
+		runFxRates := func() {
+			if app.refreshFxRatesUseCase == nil {
+				return
+			}
+			app.refreshFxRatesUseCase.Execute(context.Background())
+		}
+
 		runPurge()
 		runTokenCleanup()
 		runGoalDeadlineAlerts()
 		runBillingMaintenance()
+		runFxRates()
 
 		ticker := time.NewTicker(time.Hour)
 		defer ticker.Stop()
@@ -639,6 +669,7 @@ func (app *App) StartBackgroundJobs(ctx context.Context) {
 				runTokenCleanup()
 				runGoalDeadlineAlerts()
 				runBillingMaintenance()
+				runFxRates()
 			}
 		}
 	}()

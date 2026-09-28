@@ -102,14 +102,18 @@ type RecordLiabilityPaymentRequest struct {
 }
 
 type NetWorthSummaryResponse struct {
-	CurrencyID             int     `json:"currency_id"`
-	LiquidNetWorth         float64 `json:"liquid_net_worth"`
-	AssetsTotal            float64 `json:"assets_total"`
-	LiabilitiesTotal       float64 `json:"liabilities_total"`
-	NetWorth               float64 `json:"net_worth"`
-	ExcludedAssetCount     int     `json:"excluded_asset_count"`
-	ExcludedLiabilityCount int     `json:"excluded_liability_count"`
-	ExcludedWalletCount    int     `json:"excluded_wallet_count"`
+	CurrencyID              int     `json:"currency_id"`
+	LiquidNetWorth          float64 `json:"liquid_net_worth"`
+	AssetsTotal             float64 `json:"assets_total"`
+	LiabilitiesTotal        float64 `json:"liabilities_total"`
+	NetWorth                float64 `json:"net_worth"`
+	FxAsOf                  *string `json:"fx_as_of"`
+	ConvertedWalletCount    int     `json:"converted_wallet_count"`
+	ConvertedAssetCount     int     `json:"converted_asset_count"`
+	ConvertedLiabilityCount int     `json:"converted_liability_count"`
+	ExcludedAssetCount      int     `json:"excluded_asset_count"`
+	ExcludedLiabilityCount  int     `json:"excluded_liability_count"`
+	ExcludedWalletCount     int     `json:"excluded_wallet_count"`
 }
 
 func parseOptionalDate(value *string) (*time.Time, error) {
@@ -458,23 +462,34 @@ func (uc *UnarchiveLiabilityUseCase) Execute(ctx context.Context, userID, id int
 
 type GetNetWorthSummaryUseCase struct {
 	walletSummaryUseCase *GetWalletSummaryUseCase
+	walletService        *finance.WalletService
 	assetService         *finance.AssetService
 	liabilityService     *finance.LiabilityService
 	currencyService      *finance.CurrencyService
+	fxRates              finance.FxRateRepository
 }
 
 func NewGetNetWorthSummaryUseCase(
 	walletSummaryUseCase *GetWalletSummaryUseCase,
+	walletService *finance.WalletService,
 	assetService *finance.AssetService,
 	liabilityService *finance.LiabilityService,
 	currencyService *finance.CurrencyService,
+	fxRates finance.FxRateRepository,
 ) *GetNetWorthSummaryUseCase {
 	return &GetNetWorthSummaryUseCase{
 		walletSummaryUseCase: walletSummaryUseCase,
+		walletService:        walletService,
 		assetService:         assetService,
 		liabilityService:     liabilityService,
 		currencyService:      currencyService,
+		fxRates:              fxRates,
 	}
+}
+
+type listedCurrency struct {
+	code     string
+	isSystem bool
 }
 
 func (uc *GetNetWorthSummaryUseCase) Execute(ctx context.Context, userID int) (*NetWorthSummaryResponse, error) {
@@ -483,47 +498,180 @@ func (uc *GetNetWorthSummaryUseCase) Execute(ctx context.Context, userID int) (*
 		return nil, err
 	}
 	primaryID := walletSummary.CurrencyID
+	owner := finance.NewUserID(userID)
 
-	assets, err := uc.assetService.List(ctx, finance.NewUserID(userID), false)
+	catalog, primaryCode, err := uc.currencyCatalog(ctx, owner, primaryID)
 	if err != nil {
 		return nil, err
 	}
-	liabilities, err := uc.liabilityService.List(ctx, finance.NewUserID(userID), false)
+	book, err := uc.loadRateBook(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	var assetsTotal float64
-	excludedAssets := 0
-	for _, asset := range assets {
-		if asset.CurrencyID().Value() != primaryID {
-			excludedAssets++
-			continue
-		}
-		assetsTotal += asset.CurrentValue()
+	assets, err := uc.assetService.List(ctx, owner, false)
+	if err != nil {
+		return nil, err
 	}
-
-	var liabilitiesTotal float64
-	excludedLiabilities := 0
-	for _, liability := range liabilities {
-		if liability.CurrencyID().Value() != primaryID {
-			excludedLiabilities++
-			continue
-		}
-		liabilitiesTotal += liability.CurrentBalance()
+	liabilities, err := uc.liabilityService.List(ctx, owner, false)
+	if err != nil {
+		return nil, err
 	}
 
 	liquid := walletSummary.LiquidNetWorth
+	convertedWallets, excludedWallets, walletAddition, err := uc.convertWallets(ctx, owner, primaryID, primaryCode, catalog, book)
+	if err != nil {
+		return nil, err
+	}
+	liquid += walletAddition
+
+	assetsTotal, convertedAssets, excludedAssets := sumConverted(assets, catalog, book, primaryID, primaryCode, func(asset *finance.Asset) (int, float64) {
+		return asset.CurrencyID().Value(), asset.CurrentValue()
+	})
+	liabilitiesTotal, convertedLiabilities, excludedLiabilities := sumConverted(liabilities, catalog, book, primaryID, primaryCode, func(liability *finance.Liability) (int, float64) {
+		return liability.CurrencyID().Value(), liability.CurrentBalance()
+	})
+
+	var fxAsOf *string
+	if book.AsOf() != "" {
+		asOf := book.AsOf()
+		fxAsOf = &asOf
+	}
+
 	return &NetWorthSummaryResponse{
-		CurrencyID:             primaryID,
-		LiquidNetWorth:         liquid,
-		AssetsTotal:            assetsTotal,
-		LiabilitiesTotal:       liabilitiesTotal,
-		NetWorth:               liquid + assetsTotal - liabilitiesTotal,
-		ExcludedAssetCount:     excludedAssets,
-		ExcludedLiabilityCount: excludedLiabilities,
-		ExcludedWalletCount:    walletSummary.ExcludedWalletCount,
+		CurrencyID:              primaryID,
+		LiquidNetWorth:          liquid,
+		AssetsTotal:             assetsTotal,
+		LiabilitiesTotal:        liabilitiesTotal,
+		NetWorth:                liquid + assetsTotal - liabilitiesTotal,
+		FxAsOf:                  fxAsOf,
+		ConvertedWalletCount:    convertedWallets,
+		ConvertedAssetCount:     convertedAssets,
+		ConvertedLiabilityCount: convertedLiabilities,
+		ExcludedAssetCount:      excludedAssets,
+		ExcludedLiabilityCount:  excludedLiabilities,
+		ExcludedWalletCount:     excludedWallets,
 	}, nil
+}
+
+func (uc *GetNetWorthSummaryUseCase) currencyCatalog(ctx context.Context, userID finance.UserID, primaryID int) (map[int]listedCurrency, string, error) {
+	currencies, err := uc.currencyService.GetCurrenciesByUser(ctx, userID)
+	if err != nil {
+		return nil, "", err
+	}
+	catalog := make(map[int]listedCurrency, len(currencies))
+	for _, currency := range currencies {
+		catalog[currency.ID().Value()] = listedCurrency{code: currency.Code(), isSystem: currency.IsSystem()}
+	}
+	return catalog, catalog[primaryID].code, nil
+}
+
+func (uc *GetNetWorthSummaryUseCase) loadRateBook(ctx context.Context) (finance.FxRateBook, error) {
+	if uc.fxRates == nil {
+		return finance.FxRateBook{}, nil
+	}
+	quotes, err := uc.fxRates.List(ctx)
+	if err != nil {
+		return finance.FxRateBook{}, err
+	}
+	return finance.NewFxRateBook(quotes), nil
+}
+
+func (uc *GetNetWorthSummaryUseCase) convertWallets(
+	ctx context.Context,
+	userID finance.UserID,
+	primaryID int,
+	primaryCode string,
+	catalog map[int]listedCurrency,
+	book finance.FxRateBook,
+) (converted int, excluded int, addition float64, err error) {
+	wallets, err := uc.walletService.GetWallets(ctx, userID, false)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	for _, wallet := range wallets {
+		if wallet.CurrencyID().Value() == primaryID {
+			continue
+		}
+		code, canConvert := convertibleSystemCode(catalog, book, wallet.CurrencyID().Value(), primaryCode)
+		if !canConvert {
+			excluded++
+			continue
+		}
+		breakdown, balanceErr := uc.walletService.GetBalance(ctx, userID, wallet.ID())
+		if balanceErr != nil {
+			continue
+		}
+		convertedAmount, ok := book.Convert(breakdown.Balance, code, primaryCode)
+		if !ok {
+			excluded++
+			continue
+		}
+		addition += convertedAmount
+		converted++
+	}
+	return converted, excluded, addition, nil
+}
+
+func convertibleSystemCode(
+	catalog map[int]listedCurrency,
+	book finance.FxRateBook,
+	currencyID int,
+	primaryCode string,
+) (string, bool) {
+	facts, ok := catalog[currencyID]
+	if !ok || !facts.isSystem || primaryCode == "" {
+		return "", false
+	}
+	if _, ok := book.Convert(1, facts.code, primaryCode); !ok {
+		return "", false
+	}
+	return facts.code, true
+}
+
+func amountInPrimary(
+	catalog map[int]listedCurrency,
+	book finance.FxRateBook,
+	currencyID int,
+	primaryID int,
+	primaryCode string,
+	amount float64,
+) (float64, bool, bool) {
+	if currencyID == primaryID {
+		return amount, true, false
+	}
+	facts, ok := catalog[currencyID]
+	if !ok || !facts.isSystem || primaryCode == "" {
+		return 0, false, false
+	}
+	converted, ok := book.Convert(amount, facts.code, primaryCode)
+	if !ok {
+		return 0, false, false
+	}
+	return converted, true, true
+}
+
+func sumConverted[T any](
+	items []T,
+	catalog map[int]listedCurrency,
+	book finance.FxRateBook,
+	primaryID int,
+	primaryCode string,
+	read func(T) (int, float64),
+) (total float64, converted int, excluded int) {
+	for _, item := range items {
+		currencyID, amount := read(item)
+		value, included, usedFX := amountInPrimary(catalog, book, currencyID, primaryID, primaryCode, amount)
+		if !included {
+			excluded++
+			continue
+		}
+		total += value
+		if usedFX {
+			converted++
+		}
+	}
+	return total, converted, excluded
 }
 
 type ListLiabilityPaymentsUseCase struct {

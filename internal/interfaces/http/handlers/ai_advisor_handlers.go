@@ -20,17 +20,20 @@ type AIAdvisorHandlers struct {
 	threads *appAI.ThreadUseCases
 	chat    *appAI.AdvisorChatUseCase
 	topup   *appAI.CreateTopupUseCase
+	report  *appAI.InsightsReportUseCase
 }
 
 func NewAIAdvisorHandlers(
 	threads *appAI.ThreadUseCases,
 	chat *appAI.AdvisorChatUseCase,
 	topup *appAI.CreateTopupUseCase,
+	report *appAI.InsightsReportUseCase,
 ) *AIAdvisorHandlers {
 	return &AIAdvisorHandlers{
 		threads: threads,
 		chat:    chat,
 		topup:   topup,
+		report:  report,
 	}
 }
 
@@ -118,6 +121,69 @@ func (h *AIAdvisorHandlers) LegacyClearThread(c *gin.Context) {
 		return
 	}
 	SuccessResponse(c, http.StatusOK, gin.H{"cleared": true})
+}
+
+func (h *AIAdvisorHandlers) GetCredits(c *gin.Context) {
+	userID := c.GetInt("user_id")
+	view, err := h.report.ViewCredits(c.Request.Context(), userID)
+	if err != nil {
+		h.mapReportErr(c, err)
+		return
+	}
+	SuccessResponse(c, http.StatusOK, view)
+}
+
+func (h *AIAdvisorHandlers) InsightsReport(c *gin.Context) {
+	userID := c.GetInt("user_id")
+	var req appAI.InsightsReportRequest
+	if c.Request.ContentLength > 0 {
+		if err := c.ShouldBindJSON(&req); err != nil {
+			ValidationErrorResponse(c, "Invalid request body")
+			return
+		}
+	}
+	resp, err := h.report.Execute(c.Request.Context(), userID, req)
+	if err != nil {
+		h.mapReportErr(c, err)
+		return
+	}
+	SuccessResponse(c, http.StatusOK, resp)
+}
+
+func (h *AIAdvisorHandlers) mapReportErr(c *gin.Context, err error) {
+	if errors.Is(err, entitlement.ErrPremiumRequired) {
+		PremiumRequiredResponse(c, err)
+		return
+	}
+	if errors.Is(err, domainAI.ErrCreditsRequired) {
+		c.JSON(http.StatusPaymentRequired, APIResponse{
+			Status: "error",
+			Error: &ErrorResponse{
+				ErrorCode:    "AI_CREDITS_REQUIRED",
+				ErrorMessage: domainAI.FormatCreditsRequired(),
+				Feature:      entitlement.FeatureAIAdvisor,
+			},
+		})
+		return
+	}
+	if errors.Is(err, appAI.ErrInsightsReportEmpty) {
+		BadRequestResponse(c, "AI_REPORT_EMPTY", "This period has no income or spending to analyze")
+		return
+	}
+	if errors.Is(err, domainAI.ErrNotConfigured) {
+		InternalServerErrorResponse(c, "AI_NOT_CONFIGURED", "AI provider is not configured")
+		return
+	}
+	if errors.Is(err, domainAI.ErrUpstream) || errors.Is(err, appAI.ErrInsightsReportBlank) {
+		SendErrorResponse(c, http.StatusBadGateway, "AI_REPORT_ERROR", "Could not create the insights report")
+		return
+	}
+	if strings.Contains(err.Error(), "start_date") || strings.Contains(err.Error(), "end_date") {
+		ValidationErrorResponse(c, err.Error())
+		return
+	}
+	log.Printf("AI insights report error: %v", err)
+	InternalServerErrorResponse(c, "AI_REPORT_ERROR", "Failed to create insights report")
 }
 
 func (h *AIAdvisorHandlers) Topup(c *gin.Context) {
