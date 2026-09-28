@@ -269,7 +269,7 @@ func (uc *AdvisorChatUseCase) runGeneration(
 		return nil
 	})
 
-	if err != nil || strings.TrimSpace(full) == "" {
+	if strings.TrimSpace(full) == "" {
 		if err != nil {
 			log.Printf("AI advisor upstream error thread=%d: %v", threadID, err)
 		} else {
@@ -280,6 +280,9 @@ func (uc *AdvisorChatUseCase) runGeneration(
 		code := "AI_UPSTREAM_ERROR"
 		job.publish(StreamEvent{Kind: StreamError, ErrCode: code, Credits: creditsBefore})
 		return
+	}
+	if err != nil {
+		log.Printf("AI advisor stream ended after partial reply thread=%d: %v", threadID, err)
 	}
 
 	if appendErr := uc.threads.AppendMessage(finishCtx, threadID, domainAI.RoleAssistant, full, promptTokens, completionTokens); appendErr != nil {
@@ -311,7 +314,7 @@ The JSON is a full read-only snapshot: primary currency, wallets + balances, cas
 If a section is empty, say what is missing and suggest recording it in Berbudget (e.g. [Debts](/debts) for hutang, [Goals](/goals) for target).
 You are NOT a licensed financial advisor — include that caveat briefly when giving material advice.
 Read-only: never claim you created or changed transactions, budgets, liabilities, goals, or transfers.
-Prefer concise answers with clear next steps.
+Prefer a short answer: at most 8 short bullets. Do the analysis privately; the visible answer starts with the recommendation, not the reasoning.
 Do not restate, quote, or mention the user's question. Start directly with the advice.
 Do not include analysis notes, a draft, or a recap of what was asked.
 When useful, include markdown links to in-app paths only, e.g. [Budgets](/budgets), [Goals](/goals), [Debts](/debts), [Insights](/insights), [Net worth](/net-worth), [Health](/health), [Transactions](/transactions), [Wallets](/wallets), [Settings billing](/settings/billing).

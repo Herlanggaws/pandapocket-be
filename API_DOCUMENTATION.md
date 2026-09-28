@@ -1854,7 +1854,7 @@ Body: `{ "message": "…" }` (max 2000 chars).
 
 **Topic scope:** Only the user's personal finances in Berbudget. Unrelated topics (recipes, coding, trivia, etc.) are refused. Clear finance / off-topic messages skip the PAAS classify round-trip; ambiguous messages still call PAAS.
 
-**Async pending:** Generation runs detached from the HTTP client (≈90s timeout). Refresh does not cancel the job. While `generation_status=pending`, further chat → `409 AI_TURN_IN_PROGRESS`. Clients should poll GET until idle.
+**Async pending:** Generation runs detached from the HTTP client (≈180s timeout). Refresh does not cancel the job. While `generation_status=pending`, further chat → `409 AI_TURN_IN_PROGRESS`. Clients should poll GET until idle.
 
 Success: **SSE** `text/event-stream` (headers include `X-Accel-Buffering: no`; stream opens with an SSE comment before the first delta):
 - `event: delta` — token chunk

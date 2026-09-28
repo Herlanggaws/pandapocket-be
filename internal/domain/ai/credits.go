@@ -39,7 +39,7 @@ const (
 	GenerationPending = "pending"
 	GenerationFailed  = "failed"
 
-	GenerationTimeout = 90 * time.Second
+	GenerationTimeout = 180 * time.Second
 )
 
 func IncludedGrant() int {
@@ -75,12 +75,12 @@ func PackCredits(pack string) (int, int, error) {
 
 // CreditBalance is the per-user AI message credit ledger snapshot.
 type CreditBalance struct {
-	UserID              int
-	IncludedGranted     int
-	IncludedUnlocked    int
-	IncludedUsed        int
-	PurchasedRemaining  int
-	UpdatedAt           time.Time
+	UserID             int
+	IncludedGranted    int
+	IncludedUnlocked   int
+	IncludedUsed       int
+	PurchasedRemaining int
+	UpdatedAt          time.Time
 }
 
 func (b *CreditBalance) IncludedRemaining() int {
@@ -136,12 +136,12 @@ func NewCreditBalance(userID int, isTrialing bool) *CreditBalance {
 	}
 	now := time.Now().UTC()
 	return &CreditBalance{
-		UserID:           userID,
-		IncludedGranted:  grant,
-		IncludedUnlocked: unlocked,
-		IncludedUsed:     0,
+		UserID:             userID,
+		IncludedGranted:    grant,
+		IncludedUnlocked:   unlocked,
+		IncludedUsed:       0,
 		PurchasedRemaining: 0,
-		UpdatedAt:        now,
+		UpdatedAt:          now,
 	}
 }
 

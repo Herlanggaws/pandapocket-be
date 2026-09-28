@@ -63,7 +63,7 @@ func NewClient() *Client {
 		baseURL: strings.TrimRight(getEnv("PAAS_AI_BASE_URL", defaultBaseURL), "/"),
 		model:   getEnv("PAAS_AI_MODEL", defaultModel),
 		httpClient: &http.Client{
-			Timeout: 120 * time.Second,
+			Timeout: 180 * time.Second,
 		},
 	}
 }
