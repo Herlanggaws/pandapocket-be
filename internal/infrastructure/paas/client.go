@@ -17,29 +17,25 @@ const defaultBaseURL = "https://ai.paas.id"
 const defaultModel = "glm-5.3-flash"
 const streamMaxTokens = 1024
 
+// glm-5.3-flash always thinks. A non-stream completion with a small cap spends
+// every token on reasoning_content and returns empty visible content. Streaming
+// still yields content. Requests below this floor are raised so the label or
+// answer can appear after that reasoning.
+const minVisibleMaxTokens = 256
+
 type Message struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`
 }
 
+// ChatRequest intentionally omits enable_thinking. glm-5.3-flash rejects false
+// ("always engages in thinking") and rejects non-boolean values. Omitting the
+// field still streams a visible answer.
 type ChatRequest struct {
 	Model     string    `json:"model"`
 	Messages  []Message `json:"messages"`
 	Stream    bool      `json:"stream"`
 	MaxTokens *int      `json:"max_tokens,omitempty"`
-	// glm-5.3-flash otherwise spends max_tokens on reasoning_content and
-	// returns an empty visible answer, which the advisor treats as a failure.
-	EnableThinking bool `json:"enable_thinking"`
-}
-
-type chatCompletionResponse struct {
-	Choices []struct {
-		Message Message `json:"message"`
-	} `json:"choices"`
-	Usage struct {
-		PromptTokens     int `json:"prompt_tokens"`
-		CompletionTokens int `json:"completion_tokens"`
-	} `json:"usage"`
 }
 
 type streamChunk struct {
@@ -72,55 +68,19 @@ func NewClient() *Client {
 func (c *Client) Configured() bool { return c.apiKey != "" }
 func (c *Client) Model() string    { return c.model }
 
-// CompleteChat returns a non-streaming completion. maxTokens <= 0 omits the limit.
+// CompleteChat returns visible assistant text. This model is streamed even for
+// callers that only need the final string: a non-stream body spends the token
+// cap on reasoning and comes back with empty content.
 func (c *Client) CompleteChat(ctx context.Context, messages []Message, maxTokens int) (string, error) {
 	if !c.Configured() {
 		return "", fmt.Errorf("PAAS_AI_API_KEY is not configured")
 	}
-
-	reqBody := ChatRequest{
-		Model:    c.model,
-		Messages: messages,
-		Stream:   false,
+	limit := maxTokens
+	if limit < minVisibleMaxTokens {
+		limit = minVisibleMaxTokens
 	}
-	if maxTokens > 0 {
-		reqBody.MaxTokens = &maxTokens
-	}
-
-	body, err := json.Marshal(reqBody)
-	if err != nil {
-		return "", err
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/chat/completions", bytes.NewReader(body))
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("Authorization", "Bearer "+c.apiKey)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if err != nil {
-		return "", err
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", fmt.Errorf("paas chat failed: status %d: %s", resp.StatusCode, string(raw))
-	}
-
-	var parsed chatCompletionResponse
-	if err := json.Unmarshal(raw, &parsed); err != nil {
-		return "", err
-	}
-	if len(parsed.Choices) == 0 {
-		return "", fmt.Errorf("paas chat returned no choices")
-	}
-	return strings.TrimSpace(parsed.Choices[0].Message.Content), nil
+	text, _, _, err := c.streamChat(ctx, messages, limit, nil)
+	return strings.TrimSpace(text), err
 }
 
 // StreamChat writes content deltas to onDelta and returns full text + usage (usage may be 0 if provider omits it).
@@ -128,8 +88,10 @@ func (c *Client) StreamChat(ctx context.Context, messages []Message, onDelta fun
 	if !c.Configured() {
 		return "", 0, 0, fmt.Errorf("PAAS_AI_API_KEY is not configured")
 	}
+	return c.streamChat(ctx, messages, streamMaxTokens, onDelta)
+}
 
-	maxTokens := streamMaxTokens
+func (c *Client) streamChat(ctx context.Context, messages []Message, maxTokens int, onDelta func(string) error) (string, int, int, error) {
 	body, err := json.Marshal(ChatRequest{
 		Model:     c.model,
 		Messages:  messages,

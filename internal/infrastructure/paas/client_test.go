@@ -11,14 +11,8 @@ import (
 )
 
 func TestStreamChatUsesVisibleContentAndFallsBackToReasoning(t *testing.T) {
-	var gotThinking *bool
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body, _ := io.ReadAll(r.Body)
-		var req ChatRequest
-		if err := json.Unmarshal(body, &req); err != nil {
-			t.Errorf("decode request: %v", err)
-		}
-		gotThinking = &req.EnableThinking
+		assertThinkingOmitted(t, r)
 		w.Header().Set("Content-Type", "text/event-stream")
 		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"think\"}}]}\n\n")
 		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"hello\"}}]}\n\n")
@@ -43,8 +37,56 @@ func TestStreamChatUsesVisibleContentAndFallsBackToReasoning(t *testing.T) {
 	if full != "hello" || streamed.String() != "hello" {
 		t.Fatalf("got full %q streamed %q", full, streamed.String())
 	}
-	if gotThinking == nil || *gotThinking {
-		t.Fatal("enable_thinking should be false")
+}
+
+func TestCompleteChatStreamsAndRaisesSmallTokenCap(t *testing.T) {
+	var gotMaxTokens int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var req ChatRequest
+		if err := json.Unmarshal(body, &req); err != nil {
+			t.Errorf("decode request: %v", err)
+		}
+		if !req.Stream {
+			t.Errorf("complete chat should stream, got stream=%v", req.Stream)
+		}
+		if req.MaxTokens != nil {
+			gotMaxTokens = *req.MaxTokens
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"IN_SCOPE\"}}]}\n\n")
+		_, _ = io.WriteString(w, "data: [DONE]\n\n")
+	}))
+	defer server.Close()
+
+	client := &Client{
+		apiKey:     "test",
+		baseURL:    server.URL,
+		model:      "glm-5.3-flash",
+		httpClient: server.Client(),
+	}
+	text, err := client.CompleteChat(context.Background(), []Message{{Role: "user", Content: "gaji"}}, 16)
+	if err != nil {
+		t.Fatalf("complete: %v", err)
+	}
+	if text != "IN_SCOPE" {
+		t.Fatalf("got %q", text)
+	}
+	if gotMaxTokens < minVisibleMaxTokens {
+		t.Fatalf("max_tokens %d below floor %d", gotMaxTokens, minVisibleMaxTokens)
+	}
+}
+
+func assertThinkingOmitted(t *testing.T, r *http.Request) {
+	t.Helper()
+	body, _ := io.ReadAll(r.Body)
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(body, &raw); err != nil {
+		t.Errorf("decode request: %v", err)
+		return
+	}
+	if _, ok := raw["enable_thinking"]; ok {
+		t.Fatal("enable_thinking must be omitted; glm-5.3-flash rejects false")
 	}
 }
 

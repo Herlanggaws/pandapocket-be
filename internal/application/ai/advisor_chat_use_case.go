@@ -3,6 +3,7 @@ package ai
 import (
 	"context"
 	"fmt"
+	"log"
 	"strings"
 	"sync"
 	"unicode/utf8"
@@ -32,11 +33,11 @@ const (
 )
 
 type StreamEvent struct {
-	Kind     StreamEventKind
-	Delta    string
-	Credits  *CreditsView
-	ErrCode  string
-	ErrMsg   string
+	Kind    StreamEventKind
+	Delta   string
+	Credits *CreditsView
+	ErrCode string
+	ErrMsg  string
 }
 
 type chatJob struct {
@@ -266,6 +267,11 @@ func (uc *AdvisorChatUseCase) runGeneration(
 	})
 
 	if err != nil || strings.TrimSpace(full) == "" {
+		if err != nil {
+			log.Printf("AI advisor upstream error thread=%d: %v", threadID, err)
+		} else {
+			log.Printf("AI advisor upstream empty reply thread=%d", threadID)
+		}
 		_ = uc.threads.AppendMessage(finishCtx, threadID, domainAI.RoleAssistant, "(gagal menghasilkan jawaban — coba lagi)", 0, 0)
 		_ = uc.threads.FinishGeneration(finishCtx, threadID, domainAI.GenerationFailed)
 		code := "AI_UPSTREAM_ERROR"
