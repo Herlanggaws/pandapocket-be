@@ -17,6 +17,14 @@ type memoryWebhookEvents struct {
 	seen map[string]string
 }
 
+func (m *memoryWebhookEvents) Exists(_ context.Context, eventID string) (bool, error) {
+	if m.seen == nil {
+		return false, nil
+	}
+	_, ok := m.seen[eventID]
+	return ok, nil
+}
+
 func (m *memoryWebhookEvents) TryInsert(_ context.Context, eventID, payload string) (bool, error) {
 	if m.seen == nil {
 		m.seen = map[string]string{}
@@ -123,6 +131,7 @@ func TestHandleDoitWebhookRejectsBadSignature(t *testing.T) {
 
 type recordingAICredits struct {
 	purchases []string
+	unlocks   []int
 }
 
 func (r *recordingAICredits) ApplyPurchase(_ context.Context, userID int, pack, doitPaymentID string) error {
@@ -130,7 +139,10 @@ func (r *recordingAICredits) ApplyPurchase(_ context.Context, userID int, pack, 
 	return nil
 }
 
-func (r *recordingAICredits) UnlockFullIncluded(_ context.Context, _ int) error { return nil }
+func (r *recordingAICredits) UnlockFullIncluded(_ context.Context, userID int) error {
+	r.unlocks = append(r.unlocks, userID)
+	return nil
+}
 
 func TestHandleDoitWebhookSkipsStagingBoundOnProd(t *testing.T) {
 	secret := "whsec_test"
@@ -199,5 +211,47 @@ func TestHandleDoitWebhookAppliesStagingBoundOnStaging(t *testing.T) {
 	}
 	if len(ai.purchases) != 1 || ai.purchases[0] != "32:ai_credits_s:pay_stg_s" {
 		t.Fatalf("staging must apply AI credits, got %v", ai.purchases)
+	}
+	if len(ai.unlocks) != 0 {
+		t.Fatalf("credit pack must not unlock included grant, got %v", ai.unlocks)
+	}
+}
+
+func TestHandleDoitWebhookSubscriptionUnlocksIncludedOnce(t *testing.T) {
+	secret := "whsec_test"
+	t.Setenv("DOIT_WEBHOOK_SECRET", secret)
+	t.Setenv("APP_URL", "https://berbudget.com")
+
+	ai := &recordingAICredits{}
+	events := &memoryWebhookEvents{}
+	uc := NewHandleDoitWebhookUseCase(events, &memorySubs{}, ai)
+
+	payload := map[string]interface{}{
+		"id":   "evt_pro_unlock",
+		"type": "payment.paid",
+		"data": map[string]interface{}{
+			"id":        "pay_pro_1",
+			"reference": "user:42:monthly",
+			"paid_at":   "2026-09-21T12:00:00Z",
+			"metadata": map[string]interface{}{
+				"user_id":  42,
+				"interval": "monthly",
+			},
+		},
+	}
+	body, _ := json.Marshal(payload)
+	header := signBody(secret, body)
+
+	if err := uc.Execute(context.Background(), header, body); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if err := uc.Execute(context.Background(), header, body); err != nil {
+		t.Fatalf("replay should be ok: %v", err)
+	}
+	if len(ai.unlocks) != 1 || ai.unlocks[0] != 42 {
+		t.Fatalf("unlocks=%v", ai.unlocks)
+	}
+	if len(ai.purchases) != 0 {
+		t.Fatalf("subscription payment must not purchase credits, got %v", ai.purchases)
 	}
 }

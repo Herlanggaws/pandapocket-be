@@ -80,6 +80,14 @@ func (uc *HandleDoitWebhookUseCase) Execute(ctx context.Context, signatureHeader
 		return fmt.Errorf("webhook event id is required")
 	}
 
+	seen, err := uc.events.Exists(ctx, envelope.ID)
+	if err != nil {
+		return err
+	}
+	if seen {
+		return nil
+	}
+
 	switch envelope.Type {
 	case "payment.paid":
 		if err := uc.handlePaymentPaid(ctx, envelope.Data); err != nil {
