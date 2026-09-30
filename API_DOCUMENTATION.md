@@ -1933,7 +1933,7 @@ Errors: `403 PREMIUM_REQUIRED`, `402 AI_CREDITS_REQUIRED` (no model call), `400 
 
 Pro-only. Multipart field `image` (JPEG, PNG, or WebP, max 4MB). Spec: `doc/receipt-scan.md`. Shares the Tanya AI credit balance. Debits **1 credit only after** a parsed total greater than 0. Does not store the image and does not create an expense.
 
-Uses `PAAS_AI_VISION_MODEL` (not `PAAS_AI_MODEL`).
+Uses `PAAS_AI_VISION_MODEL=qwen3.7-flash` (chat stays on `PAAS_AI_MODEL`).
 
 **Response `200`:**
 ```json
