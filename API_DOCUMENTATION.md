@@ -117,6 +117,7 @@ CORS currently allows all origins (`*`). Allowed request headers: `Origin`, `Con
 | POST | `/api/ai/advisor/chat` | Yes (Pro) | Legacy: chat on newest/create thread |
 | POST | `/api/ai/advisor/topup` | Yes (Pro) | Doit one-shot for AI credit packs |
 | POST | `/api/ai/insights/report` | Yes (Pro) | One-shot Insights report; debits 1 AI credit |
+| POST | `/api/ai/receipts/scan` | Yes (Pro) | Receipt photo → one expense draft; debits 1 AI credit after a readable total |
 | POST | `/api/account/reset/challenge` | Yes | Issue one-time confirmation string for data reset |
 | POST | `/api/account/reset` | Yes | Wipe user financial data after typing confirmation |
 | POST | `/api/onboarding/complete` | Yes | Finish onboarding; seed pending income/expense + budget/(debt) |
@@ -1923,6 +1924,37 @@ Pro-only one-shot report for the Insights period. Spec: `doc/insights-ai-report.
 
 Errors: `403 PREMIUM_REQUIRED`, `402 AI_CREDITS_REQUIRED` (no model call), `400 AI_REPORT_EMPTY` (income and spending are both 0; no model call), `400 VALIDATION_ERROR` (bad dates), `502 AI_REPORT_ERROR` (upstream or blank reply; no debit), `500 AI_NOT_CONFIGURED`.
 
+#### POST /api/ai/receipts/scan
+
+Pro-only. Multipart field `image` (JPEG, PNG, or WebP, max 4MB). Spec: `doc/receipt-scan.md`. Shares the Tanya AI credit balance. Debits **1 credit only after** a parsed total greater than 0. Does not store the image and does not create an expense.
+
+Uses `PAAS_AI_VISION_MODEL` (not `PAAS_AI_MODEL`).
+
+**Response `200`:**
+```json
+{
+  "status": "success",
+  "data": {
+    "merchant": "Indomaret",
+    "amount": 18500,
+    "date": "2026-09-30",
+    "category_id": 7,
+    "currency_code": "IDR",
+    "credits": {
+      "available": 11,
+      "included_unlocked": 15,
+      "included_used": 4,
+      "purchased_remaining": 0,
+      "is_trialing": true
+    }
+  }
+}
+```
+
+`date`, `category_id`, and `currency_code` are omitted when unknown. `category_id` is set only when the model returns one of the user's expense category names.
+
+Errors: `403 PREMIUM_REQUIRED`, `402 AI_CREDITS_REQUIRED` (no model call), `400 RECEIPT_INVALID` (missing file, wrong type, or over 4MB; no debit), `422 RECEIPT_UNREADABLE` (no total; no debit), `502 RECEIPT_SCAN_ERROR` (upstream; no debit), `500 AI_NOT_CONFIGURED` (vision model unset; no debit).
+
 ---
 
 ### POST /api/billing/checkout
@@ -2502,6 +2534,12 @@ Keep this file in sync with the running API. When routes, request/response shape
 ---
 
 ## Version History
+
+- **v2.38.0**: **Receipt scan (C2)**
+  - `POST /api/ai/receipts/scan`: multipart image → one expense draft; 1 shared Tanya AI credit after a total greater than 0
+  - Image is not stored. Expense is created only when the user saves the existing form
+  - Unreadable `422 RECEIPT_UNREADABLE`; invalid image `400 RECEIPT_INVALID`; both without debit
+  - Vision model env `PAAS_AI_VISION_MODEL` (chat model unchanged)
 
 - **v2.37.0**: **Insights AI report (C3)**
   - `POST /api/ai/insights/report`: one-shot report for the open analytics period; 1 shared Tanya AI credit after a non-empty reply

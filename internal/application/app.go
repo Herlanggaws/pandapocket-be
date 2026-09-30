@@ -290,6 +290,25 @@ func NewApp(db *gorm.DB) *App {
 		paasClient,
 		aiPrefsLang,
 	)
+	aiReceiptScanUseCase := appAI.NewReceiptScanUseCase(
+		aiCreditService,
+		entitlementChecker,
+		func(ctx context.Context, userID int) ([]appAI.ReceiptCategory, error) {
+			list, err := categoryRepo.FindByUserIDAndType(ctx, domainFinance.NewUserID(userID), domainFinance.CategoryTypeExpense)
+			if err != nil {
+				return nil, err
+			}
+			categories := make([]appAI.ReceiptCategory, 0, len(list))
+			for _, category := range list {
+				categories = append(categories, appAI.ReceiptCategory{
+					ID:   category.ID().Value(),
+					Name: category.Name(),
+				})
+			}
+			return categories, nil
+		},
+		paasClient,
+	)
 	// Interface layer - handlers and middleware
 	identityHandlers := handlers.NewIdentityHandlers(
 		registerUserUseCase,
@@ -397,6 +416,7 @@ func NewApp(db *gorm.DB) *App {
 		aiChatUseCase,
 		aiTopupUseCase,
 		aiInsightsReportUseCase,
+		aiReceiptScanUseCase,
 	)
 	authMiddleware := middleware.NewAuthMiddleware(tokenService, userRepo)
 
@@ -530,6 +550,7 @@ func (app *App) SetupRoutes() *gin.Engine {
 
 			protected.GET("/ai/advisor/credits", app.AIAdvisorHandlers.GetCredits)
 			protected.POST("/ai/insights/report", app.AIAdvisorHandlers.InsightsReport)
+			protected.POST("/ai/receipts/scan", app.AIAdvisorHandlers.ScanReceipt)
 			protected.GET("/ai/advisor/threads", app.AIAdvisorHandlers.ListThreads)
 			protected.POST("/ai/advisor/threads", app.AIAdvisorHandlers.CreateThread)
 			protected.GET("/ai/advisor/threads/:id", app.AIAdvisorHandlers.GetThreadByID)

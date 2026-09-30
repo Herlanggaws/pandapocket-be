@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"strconv"
@@ -21,6 +22,7 @@ type AIAdvisorHandlers struct {
 	chat    *appAI.AdvisorChatUseCase
 	topup   *appAI.CreateTopupUseCase
 	report  *appAI.InsightsReportUseCase
+	receipt *appAI.ReceiptScanUseCase
 }
 
 func NewAIAdvisorHandlers(
@@ -28,12 +30,14 @@ func NewAIAdvisorHandlers(
 	chat *appAI.AdvisorChatUseCase,
 	topup *appAI.CreateTopupUseCase,
 	report *appAI.InsightsReportUseCase,
+	receipt *appAI.ReceiptScanUseCase,
 ) *AIAdvisorHandlers {
 	return &AIAdvisorHandlers{
 		threads: threads,
 		chat:    chat,
 		topup:   topup,
 		report:  report,
+		receipt: receipt,
 	}
 }
 
@@ -148,6 +152,68 @@ func (h *AIAdvisorHandlers) InsightsReport(c *gin.Context) {
 		return
 	}
 	SuccessResponse(c, http.StatusOK, resp)
+}
+
+func (h *AIAdvisorHandlers) ScanReceipt(c *gin.Context) {
+	userID := c.GetInt("user_id")
+	file, err := c.FormFile("image")
+	if err != nil {
+		BadRequestResponse(c, "RECEIPT_INVALID", "A JPEG, PNG, or WebP receipt image is required")
+		return
+	}
+	opened, err := file.Open()
+	if err != nil {
+		BadRequestResponse(c, "RECEIPT_INVALID", "Could not read the receipt image")
+		return
+	}
+	defer opened.Close()
+	image, err := io.ReadAll(io.LimitReader(opened, appAI.ReceiptMaxImageBytes+1))
+	if err != nil {
+		BadRequestResponse(c, "RECEIPT_INVALID", "Could not read the receipt image")
+		return
+	}
+	resp, err := h.receipt.Execute(c.Request.Context(), userID, image)
+	if err != nil {
+		h.mapReceiptErr(c, err)
+		return
+	}
+	SuccessResponse(c, http.StatusOK, resp)
+}
+
+func (h *AIAdvisorHandlers) mapReceiptErr(c *gin.Context, err error) {
+	if errors.Is(err, entitlement.ErrPremiumRequired) {
+		PremiumRequiredResponse(c, err)
+		return
+	}
+	if errors.Is(err, domainAI.ErrCreditsRequired) {
+		c.JSON(http.StatusPaymentRequired, APIResponse{
+			Status: "error",
+			Error: &ErrorResponse{
+				ErrorCode:    "AI_CREDITS_REQUIRED",
+				ErrorMessage: domainAI.FormatCreditsRequired(),
+				Feature:      entitlement.FeatureAIAdvisor,
+			},
+		})
+		return
+	}
+	if errors.Is(err, appAI.ErrReceiptInvalid) {
+		BadRequestResponse(c, "RECEIPT_INVALID", "Upload a JPEG, PNG, or WebP image up to 4MB")
+		return
+	}
+	if errors.Is(err, appAI.ErrReceiptUnreadable) {
+		SendErrorResponse(c, http.StatusUnprocessableEntity, "RECEIPT_UNREADABLE", "Could not read a total from this receipt")
+		return
+	}
+	if errors.Is(err, domainAI.ErrNotConfigured) {
+		InternalServerErrorResponse(c, "AI_NOT_CONFIGURED", "AI provider is not configured")
+		return
+	}
+	if errors.Is(err, domainAI.ErrUpstream) {
+		SendErrorResponse(c, http.StatusBadGateway, "RECEIPT_SCAN_ERROR", "Could not scan this receipt")
+		return
+	}
+	log.Printf("AI receipt scan error: %v", err)
+	InternalServerErrorResponse(c, "RECEIPT_SCAN_ERROR", "Failed to scan receipt")
 }
 
 func (h *AIAdvisorHandlers) mapReportErr(c *gin.Context, err error) {

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -50,26 +51,51 @@ type streamChunk struct {
 	} `json:"choices"`
 }
 
+type visionContentPart struct {
+	Type     string          `json:"type"`
+	Text     string          `json:"text,omitempty"`
+	ImageURL *visionImageURL `json:"image_url,omitempty"`
+}
+
+type visionImageURL struct {
+	URL string `json:"url"`
+}
+
+type visionMessage struct {
+	Role    string `json:"role"`
+	Content any    `json:"content"`
+}
+
+type visionChatRequest struct {
+	Model     string          `json:"model"`
+	Messages  []visionMessage `json:"messages"`
+	Stream    bool            `json:"stream"`
+	MaxTokens *int            `json:"max_tokens,omitempty"`
+}
+
 type Client struct {
-	apiKey     string
-	baseURL    string
-	model      string
-	httpClient *http.Client
+	apiKey      string
+	baseURL     string
+	model       string
+	visionModel string
+	httpClient  *http.Client
 }
 
 func NewClient() *Client {
 	return &Client{
-		apiKey:  os.Getenv("PAAS_AI_API_KEY"),
-		baseURL: strings.TrimRight(getEnv("PAAS_AI_BASE_URL", defaultBaseURL), "/"),
-		model:   getEnv("PAAS_AI_MODEL", defaultModel),
+		apiKey:      os.Getenv("PAAS_AI_API_KEY"),
+		baseURL:     strings.TrimRight(getEnv("PAAS_AI_BASE_URL", defaultBaseURL), "/"),
+		model:       getEnv("PAAS_AI_MODEL", defaultModel),
+		visionModel: os.Getenv("PAAS_AI_VISION_MODEL"),
 		httpClient: &http.Client{
 			Timeout: 180 * time.Second,
 		},
 	}
 }
 
-func (c *Client) Configured() bool { return c.apiKey != "" }
-func (c *Client) Model() string    { return c.model }
+func (c *Client) Configured() bool       { return c.apiKey != "" }
+func (c *Client) Model() string          { return c.model }
+func (c *Client) VisionConfigured() bool { return c.apiKey != "" && c.visionModel != "" }
 
 // CompleteChat returns visible assistant text. This model is streamed even for
 // callers that only need the final string: a non-stream body spends the token
@@ -94,6 +120,39 @@ func (c *Client) StreamChat(ctx context.Context, messages []Message, onDelta fun
 	return c.streamChat(ctx, messages, streamMaxTokens, onDelta)
 }
 
+// CompleteVision sends one image as an OpenAI-style content part. The chat
+// model stays on PAAS_AI_MODEL; receipt scans never fall back to it.
+func (c *Client) CompleteVision(ctx context.Context, systemPrompt, userText, mime string, image []byte, maxTokens int) (string, error) {
+	if !c.Configured() {
+		return "", fmt.Errorf("PAAS_AI_API_KEY is not configured")
+	}
+	if c.visionModel == "" {
+		return "", fmt.Errorf("PAAS_AI_VISION_MODEL is not configured")
+	}
+	limit := maxTokens
+	if limit < minVisibleMaxTokens {
+		limit = minVisibleMaxTokens
+	}
+	dataURL := "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(image)
+	body, err := json.Marshal(visionChatRequest{
+		Model: c.visionModel,
+		Messages: []visionMessage{
+			{Role: "system", Content: systemPrompt},
+			{Role: "user", Content: []visionContentPart{
+				{Type: "text", Text: userText},
+				{Type: "image_url", ImageURL: &visionImageURL{URL: dataURL}},
+			}},
+		},
+		Stream:    true,
+		MaxTokens: &limit,
+	})
+	if err != nil {
+		return "", err
+	}
+	text, _, _, err := c.postStream(ctx, body, nil)
+	return strings.TrimSpace(text), err
+}
+
 func (c *Client) streamChat(ctx context.Context, messages []Message, maxTokens int, onDelta func(string) error) (string, int, int, error) {
 	body, err := json.Marshal(ChatRequest{
 		Model:     c.model,
@@ -104,7 +163,10 @@ func (c *Client) streamChat(ctx context.Context, messages []Message, maxTokens i
 	if err != nil {
 		return "", 0, 0, err
 	}
+	return c.postStream(ctx, body, onDelta)
+}
 
+func (c *Client) postStream(ctx context.Context, body []byte, onDelta func(string) error) (string, int, int, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/chat/completions", bytes.NewReader(body))
 	if err != nil {
 		return "", 0, 0, err
