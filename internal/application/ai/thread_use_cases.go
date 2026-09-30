@@ -2,6 +2,7 @@ package ai
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -11,9 +12,11 @@ import (
 )
 
 type ThreadMessageDTO struct {
-	Role      string    `json:"role"`
-	Content   string    `json:"content"`
-	CreatedAt time.Time `json:"created_at"`
+	ID        int               `json:"id"`
+	Role      string            `json:"role"`
+	Content   string            `json:"content"`
+	CreatedAt time.Time         `json:"created_at"`
+	Draft     *TransactionDraft `json:"draft,omitempty"`
 }
 
 type ThreadSummaryDTO struct {
@@ -120,7 +123,7 @@ func (uc *ThreadUseCases) Get(ctx context.Context, userID, threadID int) (*GetTh
 		if m.Role != domainAI.RoleUser && m.Role != domainAI.RoleAssistant {
 			continue
 		}
-		out = append(out, ThreadMessageDTO{Role: m.Role, Content: m.Content, CreatedAt: m.CreatedAt})
+		out = append(out, threadMessageDTO(m))
 	}
 	title := uc.resolveTitle(ctx, *thread)
 	status := thread.GenerationStatus
@@ -134,6 +137,53 @@ func (uc *ThreadUseCases) Get(ctx context.Context, userID, threadID int) (*GetTh
 		Messages:         out,
 		Credits:          credits,
 	}, nil
+}
+
+func threadMessageDTO(message domainAI.ThreadMessage) ThreadMessageDTO {
+	dto := ThreadMessageDTO{
+		ID:        message.ID,
+		Role:      message.Role,
+		Content:   message.Content,
+		CreatedAt: message.CreatedAt,
+	}
+	if strings.TrimSpace(message.DraftJSON) == "" {
+		return dto
+	}
+	var draft TransactionDraft
+	if err := json.Unmarshal([]byte(message.DraftJSON), &draft); err != nil {
+		return dto
+	}
+	dto.Draft = &draft
+	return dto
+}
+
+func (uc *ThreadUseCases) MarkDraftSaved(ctx context.Context, userID, threadID, messageID int) error {
+	if err := RequireProAI(ctx, uc.entitlements, userID); err != nil {
+		return err
+	}
+	if _, err := uc.threads.FindByIDForUser(ctx, threadID, userID); err != nil {
+		return err
+	}
+	message, err := uc.threads.FindMessage(ctx, threadID, messageID)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(message.DraftJSON) == "" {
+		return domainAI.ErrDraftNotFound
+	}
+	var draft TransactionDraft
+	if err := json.Unmarshal([]byte(message.DraftJSON), &draft); err != nil {
+		return domainAI.ErrDraftNotFound
+	}
+	if draft.Status == DraftStatusSaved {
+		return nil
+	}
+	draft.Status = DraftStatusSaved
+	raw, err := json.Marshal(draft)
+	if err != nil {
+		return err
+	}
+	return uc.threads.UpdateMessageDraft(ctx, threadID, messageID, string(raw))
 }
 
 func (uc *ThreadUseCases) Delete(ctx context.Context, userID, threadID int) error {

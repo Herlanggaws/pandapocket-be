@@ -19,6 +19,7 @@ var (
 	ErrBalanceNotFound = errors.New("ai credit balance not found")
 	ErrThreadNotFound  = errors.New("ai advisor thread not found")
 	ErrTurnInProgress  = errors.New("ai turn already in progress")
+	ErrDraftNotFound   = errors.New("ai transaction draft not found")
 )
 
 const (
@@ -177,6 +178,7 @@ type ThreadMessage struct {
 	ID               int
 	Role             string
 	Content          string
+	DraftJSON        string
 	PromptTokens     int
 	CompletionTokens int
 	CreatedAt        time.Time
@@ -203,6 +205,9 @@ type ThreadRepository interface {
 	FinishGeneration(ctx context.Context, threadID int, status string) error
 	ListMessages(ctx context.Context, threadID int) ([]ThreadMessage, error)
 	AppendMessage(ctx context.Context, threadID int, role, content string, promptTokens, completionTokens int) error
+	AppendAssistant(ctx context.Context, threadID int, content, draftJSON string, promptTokens, completionTokens int) error
+	FindMessage(ctx context.Context, threadID, messageID int) (ThreadMessage, error)
+	UpdateMessageDraft(ctx context.Context, threadID, messageID int, draftJSON string) error
 	ClearMessages(ctx context.Context, threadID int) error
 	TrimOldest(ctx context.Context, threadID int, keep int) error
 	FirstUserMessageContent(ctx context.Context, threadID int) (string, error)

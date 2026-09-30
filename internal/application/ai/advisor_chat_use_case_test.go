@@ -14,15 +14,15 @@ import (
 )
 
 type stubStreamer struct {
-	full           string
-	err            error
-	delay          time.Duration
-	started        chan struct{}
-	release        chan struct{}
-	classifyReply  string
-	classifyErr     error
-	streamCalls    int
-	completeCalls  int
+	full          string
+	err           error
+	delay         time.Duration
+	started       chan struct{}
+	release       chan struct{}
+	classifyReply string
+	classifyErr   error
+	streamCalls   int
+	completeCalls int
 }
 
 func (s *stubStreamer) Configured() bool { return true }
@@ -217,13 +217,52 @@ func (m *memThreads) ListMessages(_ context.Context, threadID int) ([]domainAI.T
 }
 
 func (m *memThreads) AppendMessage(_ context.Context, threadID int, role, content string, _, _ int) error {
+	return m.append(threadID, role, content, "")
+}
+
+func (m *memThreads) AppendAssistant(_ context.Context, threadID int, content, draftJSON string, _, _ int) error {
+	return m.append(threadID, domainAI.RoleAssistant, content, draftJSON)
+}
+
+func (m *memThreads) append(threadID int, role, content, draftJSON string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.msgs[threadID] = append(m.msgs[threadID], domainAI.ThreadMessage{Role: role, Content: content})
+	m.nextID++
+	m.msgs[threadID] = append(m.msgs[threadID], domainAI.ThreadMessage{
+		ID:        m.nextID,
+		Role:      role,
+		Content:   content,
+		DraftJSON: draftJSON,
+	})
 	if t, ok := m.threads[threadID]; ok {
 		t.UpdatedAt = time.Now().UTC()
 	}
 	return nil
+}
+
+func (m *memThreads) FindMessage(_ context.Context, threadID, messageID int) (domainAI.ThreadMessage, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, msg := range m.msgs[threadID] {
+		if msg.ID == messageID {
+			return msg, nil
+		}
+	}
+	return domainAI.ThreadMessage{}, domainAI.ErrDraftNotFound
+}
+
+func (m *memThreads) UpdateMessageDraft(_ context.Context, threadID, messageID int, draftJSON string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	msgs := m.msgs[threadID]
+	for i := range msgs {
+		if msgs[i].ID == messageID {
+			msgs[i].DraftJSON = draftJSON
+			m.msgs[threadID] = msgs
+			return nil
+		}
+	}
+	return domainAI.ErrDraftNotFound
 }
 
 func (m *memThreads) ClearMessages(_ context.Context, threadID int) error {

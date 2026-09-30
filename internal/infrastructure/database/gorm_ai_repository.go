@@ -24,15 +24,15 @@ type AICreditBalance struct {
 func (AICreditBalance) TableName() string { return "ai_credit_balances" }
 
 type AICreditLedgerEntry struct {
-	ID            uint      `gorm:"primaryKey" json:"id"`
-	UserID        uint      `gorm:"not null;index" json:"user_id"`
-	Kind          string    `gorm:"type:varchar(32);not null" json:"kind"`
-	DeltaPurchased int      `gorm:"not null;default:0" json:"delta_purchased"`
-	DeltaIncludedUsed int   `gorm:"not null;default:0" json:"delta_included_used"`
-	Pack          *string   `gorm:"type:varchar(32)" json:"pack,omitempty"`
-	DoitPaymentID *string   `gorm:"type:varchar(128);uniqueIndex" json:"doit_payment_id,omitempty"`
-	Note          string    `gorm:"type:text" json:"note"`
-	CreatedAt     time.Time `json:"created_at"`
+	ID                uint      `gorm:"primaryKey" json:"id"`
+	UserID            uint      `gorm:"not null;index" json:"user_id"`
+	Kind              string    `gorm:"type:varchar(32);not null" json:"kind"`
+	DeltaPurchased    int       `gorm:"not null;default:0" json:"delta_purchased"`
+	DeltaIncludedUsed int       `gorm:"not null;default:0" json:"delta_included_used"`
+	Pack              *string   `gorm:"type:varchar(32)" json:"pack,omitempty"`
+	DoitPaymentID     *string   `gorm:"type:varchar(128);uniqueIndex" json:"doit_payment_id,omitempty"`
+	Note              string    `gorm:"type:text" json:"note"`
+	CreatedAt         time.Time `json:"created_at"`
 }
 
 func (AICreditLedgerEntry) TableName() string { return "ai_credit_ledger" }
@@ -54,6 +54,7 @@ type AIAdvisorMessage struct {
 	ThreadID         uint      `gorm:"not null;index" json:"thread_id"`
 	Role             string    `gorm:"type:varchar(16);not null" json:"role"`
 	Content          string    `gorm:"type:text;not null" json:"content"`
+	Draft            string    `gorm:"type:text;not null;default:''" json:"draft,omitempty"`
 	PromptTokens     int       `gorm:"not null;default:0" json:"prompt_tokens"`
 	CompletionTokens int       `gorm:"not null;default:0" json:"completion_tokens"`
 	CreatedAt        time.Time `json:"created_at"`
@@ -323,23 +324,37 @@ func (r *GormAIThreadRepository) ListMessages(ctx context.Context, threadID int)
 	}
 	out := make([]domainAI.ThreadMessage, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, domainAI.ThreadMessage{
-			ID:               int(row.ID),
-			Role:             row.Role,
-			Content:          row.Content,
-			PromptTokens:     row.PromptTokens,
-			CompletionTokens: row.CompletionTokens,
-			CreatedAt:        row.CreatedAt,
-		})
+		out = append(out, mapAdvisorMessage(row))
 	}
 	return out, nil
 }
 
+func mapAdvisorMessage(row AIAdvisorMessage) domainAI.ThreadMessage {
+	return domainAI.ThreadMessage{
+		ID:               int(row.ID),
+		Role:             row.Role,
+		Content:          row.Content,
+		DraftJSON:        row.Draft,
+		PromptTokens:     row.PromptTokens,
+		CompletionTokens: row.CompletionTokens,
+		CreatedAt:        row.CreatedAt,
+	}
+}
+
 func (r *GormAIThreadRepository) AppendMessage(ctx context.Context, threadID int, role, content string, promptTokens, completionTokens int) error {
+	return r.insertMessage(ctx, threadID, role, content, "", promptTokens, completionTokens)
+}
+
+func (r *GormAIThreadRepository) AppendAssistant(ctx context.Context, threadID int, content, draftJSON string, promptTokens, completionTokens int) error {
+	return r.insertMessage(ctx, threadID, domainAI.RoleAssistant, content, draftJSON, promptTokens, completionTokens)
+}
+
+func (r *GormAIThreadRepository) insertMessage(ctx context.Context, threadID int, role, content, draftJSON string, promptTokens, completionTokens int) error {
 	msg := AIAdvisorMessage{
 		ThreadID:         uint(threadID),
 		Role:             role,
 		Content:          content,
+		Draft:            draftJSON,
 		PromptTokens:     promptTokens,
 		CompletionTokens: completionTokens,
 		CreatedAt:        time.Now().UTC(),
@@ -348,6 +363,31 @@ func (r *GormAIThreadRepository) AppendMessage(ctx context.Context, threadID int
 		return err
 	}
 	return r.db.WithContext(ctx).Model(&AIAdvisorThread{}).Where("id = ?", threadID).Update("updated_at", time.Now().UTC()).Error
+}
+
+func (r *GormAIThreadRepository) FindMessage(ctx context.Context, threadID, messageID int) (domainAI.ThreadMessage, error) {
+	var row AIAdvisorMessage
+	err := r.db.WithContext(ctx).Where("id = ? AND thread_id = ?", messageID, threadID).First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return domainAI.ThreadMessage{}, domainAI.ErrDraftNotFound
+	}
+	if err != nil {
+		return domainAI.ThreadMessage{}, err
+	}
+	return mapAdvisorMessage(row), nil
+}
+
+func (r *GormAIThreadRepository) UpdateMessageDraft(ctx context.Context, threadID, messageID int, draftJSON string) error {
+	res := r.db.WithContext(ctx).Model(&AIAdvisorMessage{}).
+		Where("id = ? AND thread_id = ?", messageID, threadID).
+		Update("draft", draftJSON)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return domainAI.ErrDraftNotFound
+	}
+	return nil
 }
 
 func (r *GormAIThreadRepository) ClearMessages(ctx context.Context, threadID int) error {

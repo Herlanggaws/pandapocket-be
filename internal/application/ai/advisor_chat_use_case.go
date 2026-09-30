@@ -77,12 +77,13 @@ func (j *chatJob) publish(ev StreamEvent) {
 }
 
 type AdvisorChatUseCase struct {
-	credits      *CreditService
-	threads      domainAI.ThreadRepository
-	entitlements entitlement.Checker
-	paas         ChatStreamer
-	contextDeps  *AdvisorContextDeps
-	prefsLang    func(ctx context.Context, userID int) string
+	credits          *CreditService
+	threads          domainAI.ThreadRepository
+	entitlements     entitlement.Checker
+	paas             ChatStreamer
+	contextDeps      *AdvisorContextDeps
+	prefsLang        func(ctx context.Context, userID int) string
+	loadDraftCatalog func(ctx context.Context, userID int) (TransactionDraftCatalog, error)
 
 	jobsMu sync.Mutex
 	jobs   map[int]*chatJob
@@ -253,6 +254,12 @@ func (uc *AdvisorChatUseCase) runGeneration(
 		return
 	}
 
+	if uc.loadDraftCatalog != nil && uc.respondIfTransactionDraft(
+		bgCtx, finishCtx, userID, threadID, userMessage, lang, history, job, creditsBefore,
+	) {
+		return
+	}
+
 	messages := []paas.Message{
 		{Role: "system", Content: systemPrompt(lang)},
 		{Role: "system", Content: "User financial context (JSON):\n" + contextJSON},
@@ -313,7 +320,7 @@ Give practical, non-judgmental advice using ONLY the provided financial context 
 The JSON is a full read-only snapshot: primary currency, wallets + balances, cashflow (this month + previous month), top expense categories, budgets, goals, assets, liabilities/debts (including mortgage), net worth, health score, recurring rules, recent transactions, and recent transfers.
 If a section is empty, say what is missing and suggest recording it in Berbudget (e.g. [Debts](/debts) for hutang, [Goals](/goals) for target).
 You are NOT a licensed financial advisor — include that caveat briefly when giving material advice.
-Read-only: never claim you created or changed transactions, budgets, liabilities, goals, or transfers.
+Read-only: never claim you created or changed transactions, budgets, liabilities, goals, or transfers. A record request is handled as a confirmation card, not by saying it was saved.
 Prefer a short answer: at most 8 short bullets. Do the analysis privately; the visible answer starts with the recommendation, not the reasoning.
 Do not restate, quote, or mention the user's question. Start directly with the advice.
 Do not include analysis notes, a draft, or a recap of what was asked.

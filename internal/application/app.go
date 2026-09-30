@@ -281,6 +281,17 @@ func NewApp(db *gorm.DB) *App {
 		},
 		aiPrefsLang,
 	)
+	aiChatUseCase.EnableTransactionDrafts(func(ctx context.Context, userID int) (appAI.TransactionDraftCatalog, error) {
+		wallets, err := getWalletsUseCase.Execute(ctx, userID, false)
+		if err != nil {
+			return appAI.TransactionDraftCatalog{}, err
+		}
+		categories, err := getCategoriesUseCase.Execute(ctx, userID, "")
+		if err != nil {
+			return appAI.TransactionDraftCatalog{}, err
+		}
+		return appAI.CatalogFromFinance(wallets, categories.Categories), nil
+	})
 	aiInsightsReportUseCase := appAI.NewInsightsReportUseCase(
 		aiCreditService,
 		entitlementChecker,
@@ -557,6 +568,7 @@ func (app *App) SetupRoutes() *gin.Engine {
 			protected.PATCH("/ai/advisor/threads/:id", app.AIAdvisorHandlers.RenameThread)
 			protected.DELETE("/ai/advisor/threads/:id", app.AIAdvisorHandlers.DeleteThread)
 			protected.POST("/ai/advisor/threads/:id/chat", app.AIAdvisorHandlers.ChatOnThread)
+			protected.POST("/ai/advisor/threads/:id/messages/:messageId/draft/saved", app.AIAdvisorHandlers.MarkDraftSaved)
 			protected.GET("/ai/advisor/thread", app.AIAdvisorHandlers.LegacyGetThread)
 			protected.DELETE("/ai/advisor/thread", app.AIAdvisorHandlers.LegacyClearThread)
 			protected.POST("/ai/advisor/chat", app.AIAdvisorHandlers.LegacyChat)

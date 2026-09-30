@@ -112,6 +112,7 @@ CORS currently allows all origins (`*`). Allowed request headers: `Origin`, `Con
 | PATCH | `/api/ai/advisor/threads/:id` | Yes (Pro) | Rename thread |
 | DELETE | `/api/ai/advisor/threads/:id` | Yes (Pro) | Delete thread |
 | POST | `/api/ai/advisor/threads/:id/chat` | Yes (Pro) | Stream chat (SSE); async pending survives refresh |
+| POST | `/api/ai/advisor/threads/:id/messages/:messageId/draft/saved` | Yes (Pro) | Mark a chat transaction draft as saved |
 | GET | `/api/ai/advisor/thread` | Yes (Pro) | Legacy: newest/create thread |
 | DELETE | `/api/ai/advisor/thread` | Yes (Pro) | Legacy: clear newest thread messages |
 | POST | `/api/ai/advisor/chat` | Yes (Pro) | Legacy: chat on newest/create thread |
@@ -1827,7 +1828,7 @@ Creates an empty thread.
     "id": 1,
     "title": "…",
     "generation_status": "idle",
-    "messages": [{ "role": "user", "content": "…", "created_at": "…" }],
+    "messages": [{ "id": 2, "role": "assistant", "content": "…", "created_at": "…", "draft": { "kind": "expense", "amount": 25000, "date": "2026-09-30", "note": "kopi", "wallet_id": 1, "wallet_name": "Tunai", "category_id": 4, "category_name": "Makanan", "status": "pending" } }],
     "credits": {
       "available": 12,
       "included_unlocked": 15,
@@ -1853,7 +1854,9 @@ Deletes thread and messages. Credits unchanged.
 
 Body: `{ "message": "…" }` (max 2000 chars).
 
-**Credit policy:** 1 credit is debited only after a successful non-empty AI advice reply. Upstream failure or empty response → no debit (`AI_UPSTREAM_ERROR`). Off-topic (pre-flight classify `OUT_OF_SCOPE`, including local keyword heuristic) → canned refusal as a normal assistant message, **no debit**.
+**Credit policy:** 1 credit is debited only after a successful non-empty AI advice reply, or after a usable transaction draft card (C9). Upstream failure or empty response → no debit (`AI_UPSTREAM_ERROR`). Off-topic (pre-flight classify `OUT_OF_SCOPE`, including local keyword heuristic) → canned refusal as a normal assistant message, **no debit**. A record request that cannot become one draft (missing amount, unknown named wallet, transfer without two wallets) → short ask, **no debit**. Saving the draft does not debit again.
+
+**Transaction draft (C9):** one message, one expense, income, or transfer card. `draft` on the assistant message. `POST /api/ai/advisor/threads/:id/messages/:messageId/draft/saved` marks it saved after `POST /api/expenses`, `/api/incomes`, or `/api/transfers`. Idempotent. `404 AI_DRAFT_NOT_FOUND` when the message has no draft.
 
 **Topic scope:** Only the user's personal finances in Berbudget. Unrelated topics (recipes, coding, trivia, etc.) are refused. Clear finance / off-topic messages skip the PAAS classify round-trip; ambiguous messages still call PAAS.
 
@@ -2536,6 +2539,12 @@ Keep this file in sync with the running API. When routes, request/response shape
 ---
 
 ## Version History
+
+- **v2.40.0**: **Chat transaction draft (C9)**
+  - Record intent in Tanya AI prepares one expense, income, or transfer draft on the assistant message
+  - 1 shared credit after the card is stored; unusable drafts and upstream failures do not debit
+  - `POST /api/ai/advisor/threads/:id/messages/:messageId/draft/saved` marks the card saved; the ledger write stays on the existing transaction endpoints
+  - Thread messages include `id` and optional `draft`
 
 - **v2.39.0**: **Onboarding multi-goal (F4)**
   - `POST /api/onboarding/complete` accepts `goals` (`save` \| `track` \| `budget` \| `debt`); at least one required

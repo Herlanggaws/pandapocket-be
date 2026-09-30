@@ -75,6 +75,23 @@ func (h *AIAdvisorHandlers) GetThreadByID(c *gin.Context) {
 	SuccessResponse(c, http.StatusOK, resp)
 }
 
+func (h *AIAdvisorHandlers) MarkDraftSaved(c *gin.Context) {
+	userID := c.GetInt("user_id")
+	threadID, ok := parseThreadID(c)
+	if !ok {
+		return
+	}
+	messageID, ok := parseMessageID(c)
+	if !ok {
+		return
+	}
+	if err := h.threads.MarkDraftSaved(c.Request.Context(), userID, threadID, messageID); err != nil {
+		h.mapThreadErr(c, err, "AI_DRAFT_ERROR", "Failed to update the transaction draft")
+		return
+	}
+	SuccessResponse(c, http.StatusOK, gin.H{"status": appAI.DraftStatusSaved})
+}
+
 func (h *AIAdvisorHandlers) DeleteThread(c *gin.Context) {
 	userID := c.GetInt("user_id")
 	threadID, ok := parseThreadID(c)
@@ -397,9 +414,28 @@ func parseThreadID(c *gin.Context) (int, bool) {
 	return id, true
 }
 
+func parseMessageID(c *gin.Context) (int, bool) {
+	id, err := strconv.Atoi(c.Param("messageId"))
+	if err != nil || id < 1 {
+		ValidationErrorResponse(c, "invalid message id")
+		return 0, false
+	}
+	return id, true
+}
+
 func (h *AIAdvisorHandlers) mapThreadErr(c *gin.Context, err error, code, msg string) {
 	if errors.Is(err, entitlement.ErrPremiumRequired) {
 		PremiumRequiredResponse(c, err)
+		return
+	}
+	if errors.Is(err, domainAI.ErrDraftNotFound) {
+		c.JSON(http.StatusNotFound, APIResponse{
+			Status: "error",
+			Error: &ErrorResponse{
+				ErrorCode:    "AI_DRAFT_NOT_FOUND",
+				ErrorMessage: "Transaction draft not found",
+			},
+		})
 		return
 	}
 	if errors.Is(err, domainAI.ErrThreadNotFound) {
