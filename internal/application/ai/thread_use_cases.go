@@ -110,6 +110,10 @@ func (uc *ThreadUseCases) Get(ctx context.Context, userID, threadID int) (*GetTh
 	if err != nil {
 		return nil, err
 	}
+	thread, err = uc.settleIfAbandoned(ctx, thread, domainAI.GenerationTimeout)
+	if err != nil {
+		return nil, err
+	}
 	credits, err := uc.credits.View(ctx, userID)
 	if err != nil {
 		return nil, err
@@ -137,6 +141,62 @@ func (uc *ThreadUseCases) Get(ctx context.Context, userID, threadID int) (*GetTh
 		Messages:         out,
 		Credits:          credits,
 	}, nil
+}
+
+// RecoverAbandonedGenerations clears every pending turn. Call it on process
+// start: in-memory chat jobs died with the previous process, so a pending row
+// would lock the composer until the client gave up.
+func (uc *ThreadUseCases) RecoverAbandonedGenerations(ctx context.Context) (int, error) {
+	pending, err := uc.threads.ListPendingGenerations(ctx)
+	if err != nil {
+		return 0, err
+	}
+	released := 0
+	for i := range pending {
+		if _, err := uc.abandonGeneration(ctx, &pending[i]); err != nil {
+			return released, err
+		}
+		released++
+	}
+	return released, nil
+}
+
+func (uc *ThreadUseCases) settleIfAbandoned(ctx context.Context, thread *domainAI.Thread, maxAge time.Duration) (*domainAI.Thread, error) {
+	if !generationAbandoned(thread, maxAge) {
+		return thread, nil
+	}
+	return uc.abandonGeneration(ctx, thread)
+}
+
+func generationAbandoned(thread *domainAI.Thread, maxAge time.Duration) bool {
+	if thread.GenerationStatus != domainAI.GenerationPending {
+		return false
+	}
+	if thread.GenerationStartedAt == nil {
+		return true
+	}
+	return time.Since(*thread.GenerationStartedAt) >= maxAge
+}
+
+func (uc *ThreadUseCases) abandonGeneration(ctx context.Context, thread *domainAI.Thread) (*domainAI.Thread, error) {
+	if err := uc.appendFailureIfUnanswered(ctx, thread.ID); err != nil {
+		return nil, err
+	}
+	if err := uc.threads.FinishGeneration(ctx, thread.ID, domainAI.GenerationFailed); err != nil {
+		return nil, err
+	}
+	return uc.threads.FindByIDForUser(ctx, thread.ID, thread.UserID)
+}
+
+func (uc *ThreadUseCases) appendFailureIfUnanswered(ctx context.Context, threadID int) error {
+	messages, err := uc.threads.ListMessages(ctx, threadID)
+	if err != nil {
+		return err
+	}
+	if len(messages) == 0 || messages[len(messages)-1].Role != domainAI.RoleUser {
+		return nil
+	}
+	return uc.threads.AppendMessage(ctx, threadID, domainAI.RoleAssistant, generationFailedReply, 0, 0)
 }
 
 func threadMessageDTO(message domainAI.ThreadMessage) ThreadMessageDTO {

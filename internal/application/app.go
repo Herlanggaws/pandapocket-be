@@ -47,6 +47,7 @@ type App struct {
 	checkGoalDeadlineAlertsUseCase     *appFinance.CheckGoalDeadlineAlertsUseCase
 	processBillingSubscriptionsUseCase *appBilling.ProcessBillingSubscriptionsUseCase
 	refreshFxRatesUseCase              *appFinance.RefreshFxRatesUseCase
+	recoverAbandonedAIGenerations      func(context.Context) (int, error)
 }
 
 // NewApp creates a new application instance with all dependencies wired up
@@ -448,6 +449,7 @@ func NewApp(db *gorm.DB) *App {
 		checkGoalDeadlineAlertsUseCase:     checkGoalDeadlineAlertsUseCase,
 		processBillingSubscriptionsUseCase: processBillingSubscriptionsUseCase,
 		refreshFxRatesUseCase:              refreshFxRatesUseCase,
+		recoverAbandonedAIGenerations:      aiThreadUseCases.RecoverAbandonedGenerations,
 	}
 }
 
@@ -682,6 +684,15 @@ func (app *App) StartBackgroundJobs(ctx context.Context) {
 				return
 			}
 			app.refreshFxRatesUseCase.Execute(context.Background())
+		}
+
+		if app.recoverAbandonedAIGenerations != nil {
+			released, err := app.recoverAbandonedAIGenerations(context.Background())
+			if err != nil {
+				log.Printf("ai advisor abandoned generation recovery failed: %v", err)
+			} else if released > 0 {
+				log.Printf("ai advisor released %d abandoned generation(s)", released)
+			}
 		}
 
 		runPurge()

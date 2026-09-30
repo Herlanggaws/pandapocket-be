@@ -211,6 +211,7 @@ type ThreadRepository interface {
 	ClearMessages(ctx context.Context, threadID int) error
 	TrimOldest(ctx context.Context, threadID int, keep int) error
 	FirstUserMessageContent(ctx context.Context, threadID int) (string, error)
+	ListPendingGenerations(ctx context.Context) ([]Thread, error)
 }
 
 func TruncateTitle(message string) string {

@@ -302,6 +302,21 @@ func (r *GormAIThreadRepository) TryBeginGeneration(ctx context.Context, threadI
 	return nil
 }
 
+func (r *GormAIThreadRepository) ListPendingGenerations(ctx context.Context) ([]domainAI.Thread, error) {
+	var rows []AIAdvisorThread
+	if err := r.db.WithContext(ctx).
+		Where("generation_status = ?", domainAI.GenerationPending).
+		Order("id asc").
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	out := make([]domainAI.Thread, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, mapThread(row))
+	}
+	return out, nil
+}
+
 func (r *GormAIThreadRepository) FinishGeneration(ctx context.Context, threadID int, status string) error {
 	if status != domainAI.GenerationIdle && status != domainAI.GenerationFailed {
 		status = domainAI.GenerationIdle

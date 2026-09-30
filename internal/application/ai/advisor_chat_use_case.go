@@ -33,6 +33,8 @@ const (
 	StreamError StreamEventKind = "error"
 )
 
+const generationFailedReply = "(gagal menghasilkan jawaban — coba lagi)"
+
 type StreamEvent struct {
 	Kind    StreamEventKind
 	Delta   string
@@ -117,6 +119,15 @@ func (uc *AdvisorChatUseCase) getOrCreateJob(threadID int) *chatJob {
 	j := &chatJob{}
 	uc.jobs[threadID] = j
 	return j
+}
+
+func (uc *AdvisorChatUseCase) markGenerationFailed(threadID int) {
+	ctx := context.Background()
+	messages, err := uc.threads.ListMessages(ctx, threadID)
+	if err == nil && (len(messages) == 0 || messages[len(messages)-1].Role == domainAI.RoleUser) {
+		_ = uc.threads.AppendMessage(ctx, threadID, domainAI.RoleAssistant, generationFailedReply, 0, 0)
+	}
+	_ = uc.threads.FinishGeneration(ctx, threadID, domainAI.GenerationFailed)
 }
 
 func (uc *AdvisorChatUseCase) removeJob(threadID int) {
@@ -206,6 +217,15 @@ func (uc *AdvisorChatUseCase) runGeneration(
 	creditsBefore *CreditsView,
 ) {
 	defer uc.removeJob(threadID)
+	defer func() {
+		recovered := recover()
+		if recovered == nil {
+			return
+		}
+		log.Printf("AI advisor generation panic thread=%d: %v", threadID, recovered)
+		uc.markGenerationFailed(threadID)
+		job.publish(StreamEvent{Kind: StreamError, ErrCode: "AI_CHAT_ERROR", Credits: creditsBefore})
+	}()
 
 	bgCtx, cancel := context.WithTimeout(context.Background(), domainAI.GenerationTimeout)
 	defer cancel()
@@ -282,7 +302,7 @@ func (uc *AdvisorChatUseCase) runGeneration(
 		} else {
 			log.Printf("AI advisor upstream empty reply thread=%d", threadID)
 		}
-		_ = uc.threads.AppendMessage(finishCtx, threadID, domainAI.RoleAssistant, "(gagal menghasilkan jawaban — coba lagi)", 0, 0)
+		_ = uc.threads.AppendMessage(finishCtx, threadID, domainAI.RoleAssistant, generationFailedReply, 0, 0)
 		_ = uc.threads.FinishGeneration(finishCtx, threadID, domainAI.GenerationFailed)
 		code := "AI_UPSTREAM_ERROR"
 		job.publish(StreamEvent{Kind: StreamError, ErrCode: code, Credits: creditsBefore})

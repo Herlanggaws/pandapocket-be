@@ -1860,7 +1860,7 @@ Body: `{ "message": "…" }` (max 2000 chars).
 
 **Topic scope:** Only the user's personal finances in Berbudget. Unrelated topics (recipes, coding, trivia, etc.) are refused. Clear finance / off-topic messages skip the PAAS classify round-trip; ambiguous messages still call PAAS.
 
-**Async pending:** Generation runs detached from the HTTP client (≈180s timeout). Refresh does not cancel the job. While `generation_status=pending`, further chat → `409 AI_TURN_IN_PROGRESS`. Clients should poll GET until idle.
+**Async pending:** Generation runs detached from the HTTP client (≈180s timeout). Refresh does not cancel the job. While `generation_status=pending`, further chat → `409 AI_TURN_IN_PROGRESS`. Clients should poll GET until idle. A process restart releases every pending row. GET also settles a pending row older than the timeout: status returns `idle`, and if the last message is still the user, a failure stub is appended with no credit debit.
 
 Success: **SSE** `text/event-stream` (headers include `X-Accel-Buffering: no`; stream opens with an SSE comment before the first delta):
 - `event: delta` — token chunk
@@ -2539,6 +2539,10 @@ Keep this file in sync with the running API. When routes, request/response shape
 ---
 
 ## Version History
+
+- **v2.41.0**: **AI chat lock recovery**
+  - Process start clears abandoned `generation_status=pending` left by a crash
+  - `GET /api/ai/advisor/threads/:id` settles a pending turn older than ~180s to `idle` (failure stub if the user message has no reply; no debit)
 
 - **v2.40.0**: **Chat transaction draft (C9)**
   - Record intent in Tanya AI prepares one expense, income, or transfer draft on the assistant message

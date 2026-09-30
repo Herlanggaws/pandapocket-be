@@ -274,6 +274,19 @@ func (m *memThreads) ClearMessages(_ context.Context, threadID int) error {
 
 func (m *memThreads) TrimOldest(_ context.Context, _, _ int) error { return nil }
 
+func (m *memThreads) ListPendingGenerations(_ context.Context) ([]domainAI.Thread, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]domainAI.Thread, 0)
+	for _, thread := range m.threads {
+		if thread.GenerationStatus != domainAI.GenerationPending {
+			continue
+		}
+		out = append(out, *thread)
+	}
+	return out, nil
+}
+
 func (m *memThreads) FirstUserMessageContent(_ context.Context, threadID int) (string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -612,4 +625,73 @@ func TestReplyLanguageFollowsTheQuestion(t *testing.T) {
 	if !strings.Contains(prompt, "Bahasa Indonesia") || !strings.Contains(prompt, "Do not restate") {
 		t.Fatalf("prompt missing language or restatement rule: %s", prompt)
 	}
+}
+
+func TestGetReleasesStalePendingTurn(t *testing.T) {
+	uc, threads, threadID := newPendingThread(t, time.Now().Add(-domainAI.GenerationTimeout-time.Second))
+	got, err := uc.Get(context.Background(), 1, threadID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.GenerationStatus != domainAI.GenerationIdle {
+		t.Fatalf("status=%s", got.GenerationStatus)
+	}
+	last := got.Messages[len(got.Messages)-1]
+	if last.Role != domainAI.RoleAssistant || last.Content != generationFailedReply {
+		t.Fatalf("last=%+v", last)
+	}
+	stored, _ := threads.FindByIDForUser(context.Background(), threadID, 1)
+	if stored.GenerationStartedAt != nil {
+		t.Fatal("started_at still set")
+	}
+}
+
+func TestGetKeepsFreshPendingTurn(t *testing.T) {
+	uc, _, threadID := newPendingThread(t, time.Now())
+	got, err := uc.Get(context.Background(), 1, threadID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.GenerationStatus != domainAI.GenerationPending {
+		t.Fatalf("status=%s", got.GenerationStatus)
+	}
+	if len(got.Messages) != 1 || got.Messages[0].Role != domainAI.RoleUser {
+		t.Fatalf("messages=%+v", got.Messages)
+	}
+}
+
+func TestRecoverAbandonedGenerationsClearsFreshPending(t *testing.T) {
+	uc, threads, threadID := newPendingThread(t, time.Now())
+	released, err := uc.RecoverAbandonedGenerations(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if released != 1 {
+		t.Fatalf("released=%d", released)
+	}
+	stored, err := threads.FindByIDForUser(context.Background(), threadID, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.GenerationStatus != domainAI.GenerationIdle {
+		t.Fatalf("status=%s", stored.GenerationStatus)
+	}
+}
+
+func newPendingThread(t *testing.T, started time.Time) (*ThreadUseCases, *memThreads, int) {
+	t.Helper()
+	credits := NewCreditService(&memCredits{balance: domainAI.NewCreditBalance(1, false)}, emptySubs{})
+	threads := newMemThreads()
+	created, err := threads.Create(context.Background(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := threads.AppendMessage(context.Background(), created.ID, domainAI.RoleUser, "berapa yang bisa ditabung?", 0, 0); err != nil {
+		t.Fatal(err)
+	}
+	started = started.UTC()
+	thread := threads.threads[created.ID]
+	thread.GenerationStatus = domainAI.GenerationPending
+	thread.GenerationStartedAt = &started
+	return NewThreadUseCases(credits, threads, alwaysPro{}), threads, created.ID
 }
