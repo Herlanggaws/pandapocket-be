@@ -1715,7 +1715,7 @@ Authenticated. Marks onboarding complete, updates preferences, and seeds baselin
 ```json
 {
   "primary_currency_id": 1,
-  "goal": "budget",
+  "goals": ["budget", "debt"],
   "topics": ["Food & Dining", "Transport"],
   "monthly_income": 10000000,
   "monthly_expense": 7000000,
@@ -1725,10 +1725,12 @@ Authenticated. Marks onboarding complete, updates preferences, and seeds baselin
 }
 ```
 
+`goals` is one or more of `save`, `track`, `budget`, `debt`. A legacy `goal` string is still accepted when `goals` is omitted or empty. Unknown ids and an empty selection return 400. Stored onboarding JSON uses `goals` (the old `goal` string is dropped on complete). Draft sync writes `onboarding.goals` via `PUT /api/preferences`.
+
 - First completion (when amounts > 0): creates monthly recurring income/expense rules, enqueues open `pending_transactions` for today, and a monthly fixed budget from expense
 - Confirming a pending posts a real income/expense; rejecting skips that occurrence (recurring schedule still continues next month)
 - Re-running after `onboarding_completed` is already true updates preferences only (no duplicate seed); overlapping budgets are ignored so retries/redos do not fail
-- When `goal` is `debt` and `debt_balance` > 0, creates one liability on first completion
+- When `goals` includes `debt` and `debt_balance` > 0, creates one liability on first completion
 
 **Response** includes `onboarding` map and optional `health_score`.
 
@@ -1742,7 +1744,7 @@ Partial update. Accepts any of:
 - `primary_currency_id`
 - `email_notifications`, `budget_alerts`, `recurring_reminders`, `goal_deadline_alerts`
 - `language` (`id` | `en`, default `id`)
-- Onboarding fields: `onboarding_completed`, `goal`, `topics`, `cadence`, `start_path`
+- Onboarding fields: `onboarding_completed`, `goal`, `topics`, `cadence`, `start_path`. Draft “Saya ingin…” choices are `onboarding.goals` (`string[]`). A legacy `onboarding.goal` string still hydrates as one choice.
 - Draft onboarding (D7, no complete): `monthly_income`, `monthly_expense`, `debt_balance`, `currency_id`, `currency_code` — merged into `onboarding` JSON; do **not** set `onboarding_completed` until `POST /onboarding/complete` or plan step
 - Nested `onboarding` object is deep-merged into the stored JSON
 
@@ -2534,6 +2536,12 @@ Keep this file in sync with the running API. When routes, request/response shape
 ---
 
 ## Version History
+
+- **v2.39.0**: **Onboarding multi-goal (F4)**
+  - `POST /api/onboarding/complete` accepts `goals` (`save` \| `track` \| `budget` \| `debt`); at least one required
+  - Legacy `goal` string still accepted when `goals` is empty
+  - Liability seed runs when `goals` includes `debt` and `debt_balance` > 0
+  - Stored prefs use `onboarding.goals`
 
 - **v2.38.0**: **Receipt scan (C2)**
   - `POST /api/ai/receipts/scan`: multipart image → one expense draft; 1 shared Tanya AI credit after a total greater than 0

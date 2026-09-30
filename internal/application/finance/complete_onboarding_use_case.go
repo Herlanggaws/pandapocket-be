@@ -15,6 +15,7 @@ import (
 
 type CompleteOnboardingRequest struct {
 	PrimaryCurrencyID *int     `json:"primary_currency_id"`
+	Goals             []string `json:"goals"`
 	Goal              string   `json:"goal"`
 	Topics            []string `json:"topics"`
 	MonthlyIncome     float64  `json:"monthly_income" binding:"required,gte=0"`
@@ -89,6 +90,50 @@ func (uc *CompleteOnboardingUseCase) findCategoryID(ctx context.Context, userID 
 	return categories[0].ID().Value(), nil
 }
 
+var allowedOnboardingGoals = map[string]struct{}{
+	"save":   {},
+	"track":  {},
+	"budget": {},
+	"debt":   {},
+}
+
+func resolveOnboardingGoals(goals []string, legacyGoal string) ([]string, error) {
+	source := goals
+	if len(source) == 0 && strings.TrimSpace(legacyGoal) != "" {
+		source = []string{legacyGoal}
+	}
+	if len(source) == 0 {
+		return nil, errors.New("at least one goal is required")
+	}
+
+	seen := map[string]struct{}{}
+	resolved := make([]string, 0, len(source))
+	for _, raw := range source {
+		id := strings.TrimSpace(raw)
+		if _, ok := allowedOnboardingGoals[id]; !ok {
+			return nil, errors.New("goal must be save, track, budget, or debt")
+		}
+		if _, exists := seen[id]; exists {
+			continue
+		}
+		seen[id] = struct{}{}
+		resolved = append(resolved, id)
+	}
+	if len(resolved) == 0 {
+		return nil, errors.New("at least one goal is required")
+	}
+	return resolved, nil
+}
+
+func onboardingGoalsIncludeDebt(goals []string) bool {
+	for _, id := range goals {
+		if id == "debt" {
+			return true
+		}
+	}
+	return false
+}
+
 func isOnboardingCompletedFlag(onboardingMap map[string]interface{}) bool {
 	value, ok := onboardingMap["onboarding_completed"]
 	if !ok || value == nil {
@@ -154,6 +199,11 @@ func (uc *CompleteOnboardingUseCase) seedMonthlyPending(
 }
 
 func (uc *CompleteOnboardingUseCase) Execute(ctx context.Context, userID int, req CompleteOnboardingRequest) (*CompleteOnboardingResponse, error) {
+	goals, err := resolveOnboardingGoals(req.Goals, req.Goal)
+	if err != nil {
+		return nil, err
+	}
+
 	user := domainIdentity.NewUserID(userID)
 
 	prefs, err := uc.prefsRepo.FindByUserID(ctx, user)
@@ -176,9 +226,8 @@ func (uc *CompleteOnboardingUseCase) Execute(ctx context.Context, userID int, re
 	_ = json.Unmarshal(prefs.Onboarding(), &onboardingMap)
 	alreadyCompleted := isOnboardingCompletedFlag(onboardingMap)
 
-	if req.Goal != "" {
-		onboardingMap["goal"] = req.Goal
-	}
+	onboardingMap["goals"] = goals
+	delete(onboardingMap, "goal")
 	if req.Topics != nil {
 		onboardingMap["topics"] = req.Topics
 	}
@@ -253,7 +302,7 @@ func (uc *CompleteOnboardingUseCase) Execute(ctx context.Context, userID int, re
 			}
 		}
 
-		if req.Goal == "debt" && req.DebtBalance != nil && *req.DebtBalance > 0 {
+		if onboardingGoalsIncludeDebt(goals) && req.DebtBalance != nil && *req.DebtBalance > 0 {
 			debtType := req.DebtType
 			if debtType == "" {
 				debtType = "other"
