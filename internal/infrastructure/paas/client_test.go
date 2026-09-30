@@ -129,8 +129,8 @@ func TestCompleteVisionUsesImagePartsAndVisionModel(t *testing.T) {
 		if raw["model"] != "vision-test" {
 			t.Errorf("model=%v", raw["model"])
 		}
-		if _, ok := raw["enable_thinking"]; ok {
-			t.Error("enable_thinking must be omitted")
+		if raw["enable_thinking"] != false {
+			t.Errorf("enable_thinking=%v", raw["enable_thinking"])
 		}
 		encoded, _ := json.Marshal(raw["messages"])
 		if !strings.Contains(string(encoded), base64.StdEncoding.EncodeToString(image)) {

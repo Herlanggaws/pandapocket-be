@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -92,7 +93,7 @@ func (uc *ReceiptScanUseCase) Execute(ctx context.Context, userID int, image []b
 		if strings.Contains(err.Error(), "not configured") {
 			return nil, domainAI.ErrNotConfigured
 		}
-		return nil, domainAI.ErrUpstream
+		return nil, fmt.Errorf("%w: %s", domainAI.ErrUpstream, err.Error())
 	}
 
 	draft, err := parseReceiptDraft(reply, categories)

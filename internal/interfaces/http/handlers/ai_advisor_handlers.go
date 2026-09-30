@@ -226,6 +226,7 @@ func (h *AIAdvisorHandlers) mapReceiptErr(c *gin.Context, err error) {
 		return
 	}
 	if errors.Is(err, domainAI.ErrUpstream) {
+		log.Printf("AI receipt scan upstream: %v", err)
 		SendErrorResponse(c, http.StatusBadGateway, "RECEIPT_SCAN_ERROR", "Could not scan this receipt")
 		return
 	}

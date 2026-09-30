@@ -67,10 +67,11 @@ type visionMessage struct {
 }
 
 type visionChatRequest struct {
-	Model     string          `json:"model"`
-	Messages  []visionMessage `json:"messages"`
-	Stream    bool            `json:"stream"`
-	MaxTokens *int            `json:"max_tokens,omitempty"`
+	Model          string          `json:"model"`
+	Messages       []visionMessage `json:"messages"`
+	Stream         bool            `json:"stream"`
+	MaxTokens      *int            `json:"max_tokens,omitempty"`
+	EnableThinking *bool           `json:"enable_thinking,omitempty"`
 }
 
 type Client struct {
@@ -133,6 +134,10 @@ func (c *Client) CompleteVision(ctx context.Context, systemPrompt, userText, mim
 	if limit < minVisibleMaxTokens {
 		limit = minVisibleMaxTokens
 	}
+	// qwen3.7-flash spends the wait on reasoning_content unless this is false.
+	// The receipt JSON then never arrives and the scan returns 502. Chat keeps
+	// omitting the field because glm-5.3-flash rejects false.
+	thinking := false
 	dataURL := "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(image)
 	body, err := json.Marshal(visionChatRequest{
 		Model: c.visionModel,
@@ -143,8 +148,9 @@ func (c *Client) CompleteVision(ctx context.Context, systemPrompt, userText, mim
 				{Type: "image_url", ImageURL: &visionImageURL{URL: dataURL}},
 			}},
 		},
-		Stream:    true,
-		MaxTokens: &limit,
+		Stream:         true,
+		MaxTokens:      &limit,
+		EnableThinking: &thinking,
 	})
 	if err != nil {
 		return "", err
