@@ -279,6 +279,42 @@ type HealthScoreSnapshot struct {
 	User *User `gorm:"foreignKey:UserID" json:"user,omitempty"`
 }
 
+// LoggingStreakFreeze records the one Pro freeze used in a calendar month (Asia/Jakarta).
+type LoggingStreakFreeze struct {
+	ID         uint      `gorm:"primaryKey" json:"id"`
+	UserID     uint      `gorm:"not null;uniqueIndex:idx_streak_freeze_user_month" json:"user_id"`
+	YearMonth  string    `gorm:"size:7;not null;uniqueIndex:idx_streak_freeze_user_month" json:"year_month"`
+	GapDate    time.Time `gorm:"type:date;not null" json:"gap_date"`
+	ConsumedAt time.Time `gorm:"not null" json:"consumed_at"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
+
+	User *User `gorm:"foreignKey:UserID" json:"user,omitempty"`
+}
+
+func (LoggingStreakFreeze) TableName() string {
+	return "logging_streak_freezes"
+}
+
+// GoalMilestone records a 25/50/75/100 progress threshold the goal has reached.
+type GoalMilestone struct {
+	ID           uint       `gorm:"primaryKey" json:"id"`
+	UserID       uint       `gorm:"not null;index" json:"user_id"`
+	GoalID       uint       `gorm:"not null;uniqueIndex:idx_goal_milestone_percent" json:"goal_id"`
+	Percent      int        `gorm:"not null;uniqueIndex:idx_goal_milestone_percent" json:"percent"`
+	ReachedAt    time.Time  `gorm:"not null" json:"reached_at"`
+	CelebratedAt *time.Time `json:"celebrated_at,omitempty"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
+
+	Goal *FinancialGoal `gorm:"foreignKey:GoalID" json:"goal,omitempty"`
+	User *User          `gorm:"foreignKey:UserID" json:"user,omitempty"`
+}
+
+func (GoalMilestone) TableName() string {
+	return "goal_milestones"
+}
+
 // RecurringTransaction represents a recurring transaction in the database
 type RecurringTransaction struct {
 	ID          uint      `gorm:"primaryKey" json:"id"`

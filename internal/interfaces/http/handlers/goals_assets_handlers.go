@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -18,6 +19,49 @@ func (h *FinanceHandlers) GetHealthScoreHistory(c *gin.Context) {
 		return
 	}
 	SuccessResponse(c, http.StatusOK, gin.H{"history": response})
+}
+
+func (h *FinanceHandlers) GetActivityStreak(c *gin.Context) {
+	userID := c.GetInt("user_id")
+	response, err := h.getActivityStreakUseCase.Execute(c.Request.Context(), userID)
+	if err != nil {
+		InternalServerErrorResponse(c, "ACTIVITY_STREAK_ERROR", "Failed to compute activity streak")
+		return
+	}
+	SuccessResponse(c, http.StatusOK, response)
+}
+
+func (h *FinanceHandlers) GetHealthScoreMonthClose(c *gin.Context) {
+	userID := c.GetInt("user_id")
+	response, err := h.getHealthScoreMonthCloseUseCase.Execute(c.Request.Context(), userID)
+	if err != nil {
+		InternalServerErrorResponse(c, "HEALTH_SCORE_MONTH_CLOSE_ERROR", "Failed to compare health score months")
+		return
+	}
+	SuccessResponse(c, http.StatusOK, response)
+}
+
+func (h *FinanceHandlers) CelebrateGoalMilestone(c *gin.Context) {
+	userID := c.GetInt("user_id")
+	goalID, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		ValidationErrorResponse(c, "invalid goal id")
+		return
+	}
+	percent, err := strconv.Atoi(c.Param("percent"))
+	if err != nil {
+		ValidationErrorResponse(c, "invalid milestone percent")
+		return
+	}
+	if err := h.celebrateGoalMilestoneUseCase.Execute(c.Request.Context(), userID, goalID, percent); err != nil {
+		if errors.Is(err, finance.ErrMilestoneNotReached) {
+			SendErrorResponse(c, http.StatusNotFound, "MILESTONE_NOT_REACHED", "Milestone is not ready to celebrate")
+			return
+		}
+		HandleError(c, err, http.StatusBadRequest)
+		return
+	}
+	SuccessResponse(c, http.StatusOK, gin.H{"celebrated": percent})
 }
 
 func (h *FinanceHandlers) CreateGoal(c *gin.Context) {

@@ -150,9 +150,19 @@ func NewApp(db *gorm.DB) *App {
 	getCategoriesUseCase := appFinance.NewGetCategoriesUseCase(categoryService)
 	getAnalyticsUseCase := appFinance.NewGetAnalyticsUseCase(transactionService, categoryService, currencyService, entitlementChecker)
 	getHealthScoreUseCase := appFinance.NewGetHealthScoreUseCase(budgetService, categoryService, transactionService, getAnalyticsUseCase, healthSnapshotRepo)
+	getHealthScoreHistoryUseCase := appFinance.NewGetHealthScoreHistoryUseCase(healthSnapshotRepo)
+	getHealthScoreMonthCloseUseCase := appFinance.NewGetHealthScoreMonthCloseUseCase(
+		getHealthScoreUseCase,
+		healthSnapshotRepo,
+		entitlementChecker,
+	)
+	getActivityStreakUseCase := appFinance.NewGetActivityStreakUseCase(
+		database.NewGormActivityDayRepository(db),
+		database.NewGormStreakFreezeRepository(db),
+		entitlementChecker,
+	)
 	aiThreadUseCases := appAI.NewThreadUseCases(aiCreditService, aiThreadRepo, entitlementChecker)
 	aiTopupUseCase := appAI.NewCreateTopupUseCase(doitClient, entitlementChecker)
-	getHealthScoreHistoryUseCase := appFinance.NewGetHealthScoreHistoryUseCase(healthSnapshotRepo)
 	createBudgetUseCase := appFinance.NewCreateBudgetUseCase(budgetService, currencyService, categoryService, transactionService, entitlementChecker)
 	getBudgetsUseCase := appFinance.NewGetBudgetsUseCase(budgetService, categoryService, transactionService)
 	updateBudgetUseCase := appFinance.NewUpdateBudgetUseCase(budgetService, categoryService, transactionService)
@@ -213,6 +223,13 @@ func NewApp(db *gorm.DB) *App {
 		categoryService,
 		notificationHelper,
 	)
+	goalMilestoneSync := appFinance.NewGoalMilestoneSync(database.NewGormGoalMilestoneRepository(db))
+	createGoalUseCase.UseMilestones(goalMilestoneSync)
+	getGoalsUseCase.UseMilestones(goalMilestoneSync)
+	getGoalUseCase.UseMilestones(goalMilestoneSync)
+	updateGoalUseCase.UseMilestones(goalMilestoneSync)
+	recordGoalContributionUseCase.UseMilestones(goalMilestoneSync)
+	celebrateGoalMilestoneUseCase := appFinance.NewCelebrateGoalMilestoneUseCase(goalService, goalMilestoneSync)
 	checkGoalDeadlineAlertsUseCase := appFinance.NewCheckGoalDeadlineAlertsUseCase(
 		goalService,
 		walletService,
@@ -402,6 +419,11 @@ func NewApp(db *gorm.DB) *App {
 		getTransfersUseCase,
 		deleteTransferUseCase,
 	)
+	financeHandlers.WireGamification(
+		getActivityStreakUseCase,
+		getHealthScoreMonthCloseUseCase,
+		celebrateGoalMilestoneUseCase,
+	)
 	exportHandlers := handlers.NewExportHandlers(exportTransactionsUseCase)
 	dashboardHandlers := handlers.NewDashboardHandlers(getDashboardStatsUseCase)
 	notificationHandlers := handlers.NewNotificationHandlers(
@@ -544,6 +566,8 @@ func (app *App) SetupRoutes() *gin.Engine {
 			protected.GET("/analytics", app.FinanceHandlers.GetAnalytics)
 			protected.GET("/health-score", app.FinanceHandlers.GetHealthScore)
 			protected.GET("/health-score/history", app.FinanceHandlers.GetHealthScoreHistory)
+			protected.GET("/health-score/month-close", app.FinanceHandlers.GetHealthScoreMonthClose)
+			protected.GET("/activity-streak", app.FinanceHandlers.GetActivityStreak)
 
 			protected.GET("/goals", app.FinanceHandlers.GetGoals)
 			protected.POST("/goals", app.FinanceHandlers.CreateGoal)
@@ -552,6 +576,7 @@ func (app *App) SetupRoutes() *gin.Engine {
 			protected.DELETE("/goals/:id", app.FinanceHandlers.DeleteGoal)
 			protected.GET("/goals/:id/contributions", app.FinanceHandlers.GetGoalContributions)
 			protected.POST("/goals/:id/contributions", app.FinanceHandlers.RecordGoalContribution)
+			protected.POST("/goals/:id/milestones/:percent/celebrate", app.FinanceHandlers.CelebrateGoalMilestone)
 
 			protected.GET("/assets", app.FinanceHandlers.GetAssets)
 			protected.POST("/assets", app.FinanceHandlers.CreateAsset)

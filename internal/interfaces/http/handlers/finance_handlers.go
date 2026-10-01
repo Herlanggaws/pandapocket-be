@@ -15,68 +15,71 @@ import (
 
 // FinanceHandlers handles finance-related HTTP requests
 type FinanceHandlers struct {
-	createTransactionUseCase      *finance.CreateTransactionUseCase
-	getTransactionsUseCase        *finance.GetTransactionsUseCase
-	getAllTransactionsUseCase     *finance.GetAllTransactionsUseCase
-	updateTransactionUseCase      *finance.UpdateTransactionUseCase
-	deleteTransactionUseCase      *finance.DeleteTransactionUseCase
-	createCategoryUseCase         *finance.CreateCategoryUseCase
-	updateCategoryUseCase         *finance.UpdateCategoryUseCase
-	deleteCategoryUseCase         *finance.DeleteCategoryUseCase
-	getCategoriesUseCase          *finance.GetCategoriesUseCase
-	getAnalyticsUseCase           *finance.GetAnalyticsUseCase
-	createBudgetUseCase           *finance.CreateBudgetUseCase
-	getBudgetsUseCase             *finance.GetBudgetsUseCase
-	updateBudgetUseCase           *finance.UpdateBudgetUseCase
-	deleteBudgetUseCase           *finance.DeleteBudgetUseCase
-	createCurrencyUseCase         *finance.CreateCurrencyUseCase
-	getCurrenciesUseCase          *finance.GetCurrenciesUseCase
-	updateCurrencyUseCase         *finance.UpdateCurrencyUseCase
-	deleteCurrencyUseCase         *finance.DeleteCurrencyUseCase
-	setDefaultCurrencyUseCase     *finance.SetDefaultCurrencyUseCase
-	getDefaultCurrencyUseCase     *finance.GetDefaultCurrencyUseCase
-	checkBudgetAlertsUseCase      *finance.CheckBudgetAlertsUseCase
-	createRecurringUseCase        *finance.CreateRecurringTransactionUseCase
-	getRecurringUseCase           *finance.GetRecurringTransactionsUseCase
-	deleteRecurringUseCase        *finance.DeleteRecurringTransactionUseCase
-	listPendingUseCase            *finance.ListPendingTransactionsUseCase
-	confirmPendingUseCase         *finance.ConfirmPendingTransactionUseCase
-	rejectPendingUseCase          *finance.RejectPendingTransactionUseCase
-	createWalletUseCase           *finance.CreateWalletUseCase
-	getWalletsUseCase             *finance.GetWalletsUseCase
-	getWalletUseCase              *finance.GetWalletUseCase
-	updateWalletUseCase           *finance.UpdateWalletUseCase
-	setDefaultWalletUseCase       *finance.SetDefaultWalletUseCase
-	archiveWalletUseCase          *finance.ArchiveWalletUseCase
-	unarchiveWalletUseCase        *finance.UnarchiveWalletUseCase
-	getWalletBalanceUseCase       *finance.GetWalletBalanceUseCase
-	getWalletSummaryUseCase       *finance.GetWalletSummaryUseCase
-	getHealthScoreUseCase         *finance.GetHealthScoreUseCase
-	getHealthScoreHistoryUseCase  *finance.GetHealthScoreHistoryUseCase
-	createGoalUseCase             *finance.CreateGoalUseCase
-	getGoalsUseCase               *finance.GetGoalsUseCase
-	getGoalUseCase                *finance.GetGoalUseCase
-	updateGoalUseCase             *finance.UpdateGoalUseCase
-	deleteGoalUseCase             *finance.DeleteGoalUseCase
-	listGoalContributionsUseCase  *finance.ListGoalContributionsUseCase
-	recordGoalContributionUseCase *finance.RecordGoalContributionUseCase
-	createAssetUseCase            *finance.CreateAssetUseCase
-	getAssetsUseCase              *finance.GetAssetsUseCase
-	updateAssetUseCase            *finance.UpdateAssetUseCase
-	archiveAssetUseCase           *finance.ArchiveAssetUseCase
-	unarchiveAssetUseCase         *finance.UnarchiveAssetUseCase
-	createLiabilityUseCase        *finance.CreateLiabilityUseCase
-	getLiabilitiesUseCase         *finance.GetLiabilitiesUseCase
-	updateLiabilityUseCase        *finance.UpdateLiabilityUseCase
-	archiveLiabilityUseCase       *finance.ArchiveLiabilityUseCase
-	unarchiveLiabilityUseCase     *finance.UnarchiveLiabilityUseCase
-	listLiabilityPaymentsUseCase  *finance.ListLiabilityPaymentsUseCase
-	recordLiabilityPaymentUseCase *finance.RecordLiabilityPaymentUseCase
-	completeOnboardingUseCase     *finance.CompleteOnboardingUseCase
-	getNetWorthSummaryUseCase     *finance.GetNetWorthSummaryUseCase
-	createTransferUseCase         *finance.CreateTransferUseCase
-	getTransfersUseCase           *finance.GetTransfersUseCase
-	deleteTransferUseCase         *finance.DeleteTransferUseCase
+	createTransactionUseCase        *finance.CreateTransactionUseCase
+	getTransactionsUseCase          *finance.GetTransactionsUseCase
+	getAllTransactionsUseCase       *finance.GetAllTransactionsUseCase
+	updateTransactionUseCase        *finance.UpdateTransactionUseCase
+	deleteTransactionUseCase        *finance.DeleteTransactionUseCase
+	createCategoryUseCase           *finance.CreateCategoryUseCase
+	updateCategoryUseCase           *finance.UpdateCategoryUseCase
+	deleteCategoryUseCase           *finance.DeleteCategoryUseCase
+	getCategoriesUseCase            *finance.GetCategoriesUseCase
+	getAnalyticsUseCase             *finance.GetAnalyticsUseCase
+	createBudgetUseCase             *finance.CreateBudgetUseCase
+	getBudgetsUseCase               *finance.GetBudgetsUseCase
+	updateBudgetUseCase             *finance.UpdateBudgetUseCase
+	deleteBudgetUseCase             *finance.DeleteBudgetUseCase
+	createCurrencyUseCase           *finance.CreateCurrencyUseCase
+	getCurrenciesUseCase            *finance.GetCurrenciesUseCase
+	updateCurrencyUseCase           *finance.UpdateCurrencyUseCase
+	deleteCurrencyUseCase           *finance.DeleteCurrencyUseCase
+	setDefaultCurrencyUseCase       *finance.SetDefaultCurrencyUseCase
+	getDefaultCurrencyUseCase       *finance.GetDefaultCurrencyUseCase
+	checkBudgetAlertsUseCase        *finance.CheckBudgetAlertsUseCase
+	createRecurringUseCase          *finance.CreateRecurringTransactionUseCase
+	getRecurringUseCase             *finance.GetRecurringTransactionsUseCase
+	deleteRecurringUseCase          *finance.DeleteRecurringTransactionUseCase
+	listPendingUseCase              *finance.ListPendingTransactionsUseCase
+	confirmPendingUseCase           *finance.ConfirmPendingTransactionUseCase
+	rejectPendingUseCase            *finance.RejectPendingTransactionUseCase
+	createWalletUseCase             *finance.CreateWalletUseCase
+	getWalletsUseCase               *finance.GetWalletsUseCase
+	getWalletUseCase                *finance.GetWalletUseCase
+	updateWalletUseCase             *finance.UpdateWalletUseCase
+	setDefaultWalletUseCase         *finance.SetDefaultWalletUseCase
+	archiveWalletUseCase            *finance.ArchiveWalletUseCase
+	unarchiveWalletUseCase          *finance.UnarchiveWalletUseCase
+	getWalletBalanceUseCase         *finance.GetWalletBalanceUseCase
+	getWalletSummaryUseCase         *finance.GetWalletSummaryUseCase
+	getHealthScoreUseCase           *finance.GetHealthScoreUseCase
+	getHealthScoreHistoryUseCase    *finance.GetHealthScoreHistoryUseCase
+	createGoalUseCase               *finance.CreateGoalUseCase
+	getGoalsUseCase                 *finance.GetGoalsUseCase
+	getGoalUseCase                  *finance.GetGoalUseCase
+	updateGoalUseCase               *finance.UpdateGoalUseCase
+	deleteGoalUseCase               *finance.DeleteGoalUseCase
+	listGoalContributionsUseCase    *finance.ListGoalContributionsUseCase
+	recordGoalContributionUseCase   *finance.RecordGoalContributionUseCase
+	createAssetUseCase              *finance.CreateAssetUseCase
+	getAssetsUseCase                *finance.GetAssetsUseCase
+	updateAssetUseCase              *finance.UpdateAssetUseCase
+	archiveAssetUseCase             *finance.ArchiveAssetUseCase
+	unarchiveAssetUseCase           *finance.UnarchiveAssetUseCase
+	createLiabilityUseCase          *finance.CreateLiabilityUseCase
+	getLiabilitiesUseCase           *finance.GetLiabilitiesUseCase
+	updateLiabilityUseCase          *finance.UpdateLiabilityUseCase
+	archiveLiabilityUseCase         *finance.ArchiveLiabilityUseCase
+	unarchiveLiabilityUseCase       *finance.UnarchiveLiabilityUseCase
+	listLiabilityPaymentsUseCase    *finance.ListLiabilityPaymentsUseCase
+	recordLiabilityPaymentUseCase   *finance.RecordLiabilityPaymentUseCase
+	completeOnboardingUseCase       *finance.CompleteOnboardingUseCase
+	getNetWorthSummaryUseCase       *finance.GetNetWorthSummaryUseCase
+	createTransferUseCase           *finance.CreateTransferUseCase
+	getTransfersUseCase             *finance.GetTransfersUseCase
+	deleteTransferUseCase           *finance.DeleteTransferUseCase
+	getActivityStreakUseCase        *finance.GetActivityStreakUseCase
+	getHealthScoreMonthCloseUseCase *finance.GetHealthScoreMonthCloseUseCase
+	celebrateGoalMilestoneUseCase   *finance.CelebrateGoalMilestoneUseCase
 }
 
 // NewFinanceHandlers creates a new finance handlers instance
@@ -208,6 +211,16 @@ func NewFinanceHandlers(
 		getTransfersUseCase:           getTransfersUseCase,
 		deleteTransferUseCase:         deleteTransferUseCase,
 	}
+}
+
+func (h *FinanceHandlers) WireGamification(
+	streak *finance.GetActivityStreakUseCase,
+	monthClose *finance.GetHealthScoreMonthCloseUseCase,
+	celebrate *finance.CelebrateGoalMilestoneUseCase,
+) {
+	h.getActivityStreakUseCase = streak
+	h.getHealthScoreMonthCloseUseCase = monthClose
+	h.celebrateGoalMilestoneUseCase = celebrate
 }
 
 // CreateExpense handles expense creation

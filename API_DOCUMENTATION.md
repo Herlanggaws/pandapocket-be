@@ -88,9 +88,12 @@ CORS currently allows all origins (`*`). Allowed request headers: `Origin`, `Con
 | GET | `/api/analytics` | Yes | |
 | GET | `/api/health-score` | Yes | Financial health score 0–100 (+ monthly snapshot upsert) |
 | GET | `/api/health-score/history` | Yes | Monthly score history (`limit`, default 12) |
+| GET | `/api/health-score/month-close` | Yes | This month vs last month; Pro also returns best month in the trailing 12 |
+| GET | `/api/activity-streak` | Yes | Logging streak from expense/income/transfer `created_at` (Asia/Jakarta). Pro auto-uses one freeze per month |
 | GET/POST | `/api/goals` | Yes | Savings goals with deadline |
 | GET/PUT/DELETE | `/api/goals/:id` | Yes | |
 | GET/POST | `/api/goals/:id/contributions` | Yes | Catat tabungan (C8) |
+| POST | `/api/goals/:id/milestones/:percent/celebrate` | Yes | Mark 25/50/75/100 milestone celebrated |
 | GET/POST | `/api/assets` | Yes | Non-wallet assets |
 | PUT | `/api/assets/:id` | Yes | |
 | POST | `/api/assets/:id/archive` | Yes | |
@@ -1535,6 +1538,62 @@ Newest-first monthly snapshots. Query `limit` (default 12, max 24).
 }
 ```
 
+### GET /api/health-score/month-close
+
+Compares the live month (same computation and snapshot upsert as `GET /api/health-score`) with the previous calendar month snapshot. A missing previous month returns `previous`, `score_delta`, and `component_delta` as `null` — not zeros.
+
+`moved_most` is `budget_adherence`, `cashflow`, or `coverage` (largest absolute component change; adherence wins a tie). Empty when there is no previous month.
+
+`best_month` is the highest score in the trailing 12 snapshots, including the live month (newer month wins a tie). Free: `best_month` is `null` and `best_month_locked` is `true`. Pro: `best_month_locked` is `false`. The existing history list stays available to Free and Pro.
+
+```json
+{
+  "status": "success",
+  "data": {
+    "current": {
+      "year_month": "2026-10",
+      "score": 72,
+      "components": { "budget_adherence": 80, "cashflow": 65, "coverage": 100 }
+    },
+    "previous": {
+      "year_month": "2026-09",
+      "score": 68,
+      "components": { "budget_adherence": 70, "cashflow": 65, "coverage": 100 }
+    },
+    "score_delta": 4,
+    "component_delta": { "budget_adherence": 10, "cashflow": 0, "coverage": 0 },
+    "moved_most": "budget_adherence",
+    "best_month": null,
+    "best_month_locked": true
+  },
+  "error": null
+}
+```
+
+---
+
+## Logging streak
+
+`GET /api/activity-streak`
+
+A day counts when the user saves an expense, income, or transfer. The calendar day is `created_at` in `Asia/Jakarta`, not the transaction `date`, so backfilling many receipt dates in one sitting is one day.
+
+Today can be empty without breaking the streak. Exactly one missing closed day is covered when the user is Pro and has not used a freeze this calendar month; the freeze is stored in `logging_streak_freezes` and consumed by this GET. Two missing days end the streak, and the freeze is not spent. Free never consumes a freeze. `would_have_saved` is true when a one-day gap cut a Free streak that a freeze would have kept.
+
+```json
+{
+  "status": "success",
+  "data": {
+    "current_streak": 4,
+    "logged_today": true,
+    "freeze_available": false,
+    "freeze_used_this_month": true,
+    "would_have_saved": false
+  },
+  "error": null
+}
+```
+
 ---
 
 ## Goals
@@ -1552,7 +1611,7 @@ Savings goals with a required deadline. Progress is **manual** (`current_amount`
 
 Query: `include_archived=true` to include archived goals.
 
-Response goal fields include: `wallet_id`, `wallet_name` (when linked), `progress_source` (`manual` | `wallet`), effective `current_amount` / `progress_percent`.
+Response goal fields include: `wallet_id`, `wallet_name` (when linked), `progress_source` (`manual` | `wallet`), effective `current_amount` / `progress_percent`, and `uncelebrated_milestones` (25 / 50 / 75 / 100 not yet celebrated). Crossing a threshold inserts a `goal_milestones` row; dropping below it deletes that row so a later re-cross can celebrate again.
 
 ### POST /api/goals
 
@@ -1611,7 +1670,11 @@ Record savings toward a goal. Always creates a ledger entry visible on Transacti
 | Linked + other same-currency wallet | Transfer `from_wallet_id` → linked wallet | `transfer` |
 | Linked + only one wallet | Income into linked wallet (`from_wallet_id` ignored) | `income` |
 
-Deleting the linked expense / income / transfer rolls back the contribution (manual expense also decreases `current_amount`).
+Deleting the linked expense / income / transfer rolls back the contribution (manual expense also decreases `current_amount`). The next goal read drops milestone rows that are no longer met.
+
+### POST /api/goals/:id/milestones/:percent/celebrate
+
+`percent` is `25`, `50`, `75`, or `100`. Sets `celebrated_at`. Already celebrated is success. Unknown or not-yet-reached percent is **404** `MILESTONE_NOT_REACHED`. Free and Pro.
 
 ---
 
@@ -2110,7 +2173,7 @@ Authenticated. Issues a random confirmation string (TTL ~5 minutes). Previous ch
 
 ### POST /api/account/reset
 
-Authenticated. Requires exact match of `confirmation_text` from the active challenge (case-sensitive). On success, hard-deletes user-owned rows: pending transactions, liability payments, recurring, transfers, expenses, incomes, budgets, goals, assets, liabilities, wallets, health snapshots, notifications, user-owned categories/currencies, preferences, password-reset tokens, and the challenge itself.
+Authenticated. Requires exact match of `confirmation_text` from the active challenge (case-sensitive). On success, hard-deletes user-owned rows: pending transactions, liability payments, recurring, transfers, expenses, incomes, budgets, logging streak freezes, goal milestones, goals, assets, liabilities, wallets, health snapshots, notifications, user-owned categories/currencies, preferences, password-reset tokens, and the challenge itself.
 
 **Body:**
 ```json
@@ -2566,6 +2629,11 @@ Keep this file in sync with the running API. When routes, request/response shape
 ---
 
 ## Version History
+
+- **v2.43.0**: **Habit loop**
+  - `GET /api/activity-streak`: logging days from expense/income/transfer `created_at` in Asia/Jakarta; Pro auto-consumes one monthly freeze
+  - `GET /api/health-score/month-close`: current vs previous month for everyone; `best_month` only for Pro
+  - Goal milestones 25/50/75/100 on `GET /api/goals` (`uncelebrated_milestones`); `POST /api/goals/:id/milestones/:percent/celebrate`
 
 - **v2.42.0**: **Read-only MCP for Pro (C10)**
   - `GET/POST/DELETE /api/me/mcp-token` — one token per user, hash stored, plaintext once, revoke

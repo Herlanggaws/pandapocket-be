@@ -137,14 +137,16 @@ func (r *GormGoalRepository) FindActiveForDeadlineDates(ctx context.Context, dat
 }
 
 func (r *GormGoalRepository) Delete(ctx context.Context, id finance.GoalID, userID finance.UserID) error {
-	res := r.db.WithContext(ctx).Where("id = ? AND user_id = ?", id.Value(), userID.Value()).Delete(&FinancialGoal{})
-	if res.Error != nil {
-		return res.Error
-	}
-	if res.RowsAffected == 0 {
-		return errors.New("goal not found")
-	}
-	return nil
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		res := tx.Where("id = ? AND user_id = ?", id.Value(), userID.Value()).Delete(&FinancialGoal{})
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return errors.New("goal not found")
+		}
+		return tx.Where("goal_id = ? AND user_id = ?", id.Value(), userID.Value()).Delete(&GoalMilestone{}).Error
+	})
 }
 
 type GormAssetRepository struct {
@@ -580,4 +582,31 @@ func (r *GormHealthScoreSnapshotRepository) FindByUserID(ctx context.Context, us
 		))
 	}
 	return result, nil
+}
+
+func (r *GormHealthScoreSnapshotRepository) FindByYearMonth(
+	ctx context.Context,
+	userID finance.UserID,
+	yearMonth string,
+) (*finance.HealthScoreSnapshot, error) {
+	var model HealthScoreSnapshot
+	err := r.db.WithContext(ctx).
+		Where("user_id = ? AND year_month = ?", userID.Value(), yearMonth).
+		First(&model).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return finance.ReconstituteHealthScoreSnapshot(
+		int(model.ID),
+		finance.NewUserID(int(model.UserID)),
+		model.YearMonth,
+		model.Score,
+		model.BudgetAdherence,
+		model.Cashflow,
+		model.Coverage,
+		model.ComputedAt,
+	), nil
 }

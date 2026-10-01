@@ -11,18 +11,19 @@ import (
 )
 
 type GoalResponse struct {
-	ID              int     `json:"id"`
-	Name            string  `json:"name"`
-	TargetAmount    float64 `json:"target_amount"`
-	CurrencyID      int     `json:"currency_id"`
-	CurrentAmount   float64 `json:"current_amount"`
-	TargetDate      string  `json:"target_date"`
-	Status          string  `json:"status"`
-	ProgressPercent float64 `json:"progress_percent"`
-	WalletID        *int    `json:"wallet_id"`
-	WalletName      *string `json:"wallet_name,omitempty"`
-	ProgressSource  string  `json:"progress_source"`
-	CreatedAt       string  `json:"created_at"`
+	ID                     int     `json:"id"`
+	Name                   string  `json:"name"`
+	TargetAmount           float64 `json:"target_amount"`
+	CurrencyID             int     `json:"currency_id"`
+	CurrentAmount          float64 `json:"current_amount"`
+	TargetDate             string  `json:"target_date"`
+	Status                 string  `json:"status"`
+	ProgressPercent        float64 `json:"progress_percent"`
+	WalletID               *int    `json:"wallet_id"`
+	WalletName             *string `json:"wallet_name,omitempty"`
+	ProgressSource         string  `json:"progress_source"`
+	UncelebratedMilestones []int   `json:"uncelebrated_milestones"`
+	CreatedAt              string  `json:"created_at"`
 }
 
 type CreateGoalRequest struct {
@@ -71,6 +72,7 @@ type goalResponseBuilder struct {
 	walletService      *finance.WalletService
 	goalService        *finance.GoalService
 	notificationHelper *appNotification.CreateNotificationHelper
+	milestones         goalMilestoneSyncer
 }
 
 func (b *goalResponseBuilder) build(
@@ -119,20 +121,45 @@ func (b *goalResponseBuilder) build(
 		}
 	}
 
+	progress := finance.ProgressPercent(effective, goal.TargetAmount())
+	uncelebrated, err := b.uncelebratedMilestones(ctx, goal, progress)
+	if err != nil {
+		return GoalResponse{}, err
+	}
+
 	return GoalResponse{
-		ID:              goal.ID().Value(),
-		Name:            goal.Name(),
-		TargetAmount:    goal.TargetAmount(),
-		CurrencyID:      goal.CurrencyID().Value(),
-		CurrentAmount:   effective,
-		TargetDate:      goal.TargetDate().Format("2006-01-02"),
-		Status:          string(goal.Status()),
-		ProgressPercent: finance.ProgressPercent(effective, goal.TargetAmount()),
-		WalletID:        walletID,
-		WalletName:      walletName,
-		ProgressSource:  source,
-		CreatedAt:       goal.CreatedAt().Format(time.RFC3339),
+		ID:                     goal.ID().Value(),
+		Name:                   goal.Name(),
+		TargetAmount:           goal.TargetAmount(),
+		CurrencyID:             goal.CurrencyID().Value(),
+		CurrentAmount:          effective,
+		TargetDate:             goal.TargetDate().Format("2006-01-02"),
+		Status:                 string(goal.Status()),
+		ProgressPercent:        progress,
+		WalletID:               walletID,
+		WalletName:             walletName,
+		ProgressSource:         source,
+		UncelebratedMilestones: uncelebrated,
+		CreatedAt:              goal.CreatedAt().Format(time.RFC3339),
 	}, nil
+}
+
+func (b *goalResponseBuilder) uncelebratedMilestones(
+	ctx context.Context,
+	goal *finance.FinancialGoal,
+	progress float64,
+) ([]int, error) {
+	if b.milestones == nil {
+		return []int{}, nil
+	}
+	uncelebrated, err := b.milestones.Sync(ctx, goal.UserID().Value(), goal.ID().Value(), progress)
+	if err != nil {
+		return nil, err
+	}
+	if uncelebrated == nil {
+		return []int{}, nil
+	}
+	return uncelebrated, nil
 }
 
 type CreateGoalUseCase struct {
@@ -140,6 +167,11 @@ type CreateGoalUseCase struct {
 	currencyService    *finance.CurrencyService
 	walletService      *finance.WalletService
 	notificationHelper *appNotification.CreateNotificationHelper
+	milestones         goalMilestoneSyncer
+}
+
+func (uc *CreateGoalUseCase) UseMilestones(sync goalMilestoneSyncer) {
+	uc.milestones = sync
 }
 
 func NewCreateGoalUseCase(
@@ -203,6 +235,7 @@ func (uc *CreateGoalUseCase) Execute(ctx context.Context, userID int, req Create
 		walletService:      uc.walletService,
 		goalService:        uc.goalService,
 		notificationHelper: uc.notificationHelper,
+		milestones:         uc.milestones,
 	}
 	resp, err := builder.build(ctx, goal, true)
 	if err != nil {
@@ -215,6 +248,11 @@ type GetGoalsUseCase struct {
 	goalService        *finance.GoalService
 	walletService      *finance.WalletService
 	notificationHelper *appNotification.CreateNotificationHelper
+	milestones         goalMilestoneSyncer
+}
+
+func (uc *GetGoalsUseCase) UseMilestones(sync goalMilestoneSyncer) {
+	uc.milestones = sync
 }
 
 func NewGetGoalsUseCase(
@@ -238,6 +276,7 @@ func (uc *GetGoalsUseCase) Execute(ctx context.Context, userID int, includeArchi
 		walletService:      uc.walletService,
 		goalService:        uc.goalService,
 		notificationHelper: uc.notificationHelper,
+		milestones:         uc.milestones,
 	}
 	result := make([]GoalResponse, 0, len(goals))
 	for _, g := range goals {
@@ -254,6 +293,11 @@ type GetGoalUseCase struct {
 	goalService        *finance.GoalService
 	walletService      *finance.WalletService
 	notificationHelper *appNotification.CreateNotificationHelper
+	milestones         goalMilestoneSyncer
+}
+
+func (uc *GetGoalUseCase) UseMilestones(sync goalMilestoneSyncer) {
+	uc.milestones = sync
 }
 
 func NewGetGoalUseCase(
@@ -277,6 +321,7 @@ func (uc *GetGoalUseCase) Execute(ctx context.Context, userID, id int) (*GoalRes
 		walletService:      uc.walletService,
 		goalService:        uc.goalService,
 		notificationHelper: uc.notificationHelper,
+		milestones:         uc.milestones,
 	}
 	resp, err := builder.build(ctx, goal, true)
 	if err != nil {
@@ -289,6 +334,11 @@ type UpdateGoalUseCase struct {
 	goalService        *finance.GoalService
 	walletService      *finance.WalletService
 	notificationHelper *appNotification.CreateNotificationHelper
+	milestones         goalMilestoneSyncer
+}
+
+func (uc *UpdateGoalUseCase) UseMilestones(sync goalMilestoneSyncer) {
+	uc.milestones = sync
 }
 
 func NewUpdateGoalUseCase(
@@ -370,6 +420,7 @@ func (uc *UpdateGoalUseCase) Execute(ctx context.Context, userID, id int, req Up
 		walletService:      uc.walletService,
 		goalService:        uc.goalService,
 		notificationHelper: uc.notificationHelper,
+		milestones:         uc.milestones,
 	}
 	resp, err := builder.build(ctx, goal, true)
 	if err != nil {
@@ -447,16 +498,16 @@ func toGoalContributionResponse(c *finance.GoalContribution) GoalContributionRes
 }
 
 type RecordGoalContributionRequest struct {
-	Amount         float64 `json:"amount" binding:"required,gt=0"`
-	ContributedAt  string  `json:"contributed_at" binding:"required"`
-	Note           string  `json:"note"`
-	FromWalletID   *int    `json:"from_wallet_id"`
+	Amount        float64 `json:"amount" binding:"required,gt=0"`
+	ContributedAt string  `json:"contributed_at" binding:"required"`
+	Note          string  `json:"note"`
+	FromWalletID  *int    `json:"from_wallet_id"`
 }
 
 type RecordGoalContributionResponse struct {
-	Goal         *GoalResponse               `json:"goal"`
-	Contribution *GoalContributionResponse   `json:"contribution"`
-	Kind         string                      `json:"kind"` // expense | income | transfer
+	Goal         *GoalResponse             `json:"goal"`
+	Contribution *GoalContributionResponse `json:"contribution"`
+	Kind         string                    `json:"kind"` // expense | income | transfer
 }
 
 type ListGoalContributionsUseCase struct {
@@ -486,6 +537,11 @@ type RecordGoalContributionUseCase struct {
 	createTransactionUseCase *CreateTransactionUseCase
 	categoryService          *finance.CategoryService
 	notificationHelper       *appNotification.CreateNotificationHelper
+	milestones               goalMilestoneSyncer
+}
+
+func (uc *RecordGoalContributionUseCase) UseMilestones(sync goalMilestoneSyncer) {
+	uc.milestones = sync
 }
 
 func NewRecordGoalContributionUseCase(
@@ -662,6 +718,7 @@ func (uc *RecordGoalContributionUseCase) Execute(
 		walletService:      uc.walletService,
 		goalService:        uc.goalService,
 		notificationHelper: uc.notificationHelper,
+		milestones:         uc.milestones,
 	}
 	goalResp, err := builder.build(ctx, updatedGoal, true)
 	if err != nil {
