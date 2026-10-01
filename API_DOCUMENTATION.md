@@ -1588,11 +1588,16 @@ Today can be empty without breaking the streak. Exactly one missing closed day i
     "logged_today": true,
     "freeze_available": false,
     "freeze_used_this_month": true,
-    "would_have_saved": false
+    "would_have_saved": false,
+    "today": "2026-10-01",
+    "recent_days": ["2026-09-28", "2026-09-29", "2026-10-01"],
+    "freeze_gap_date": "2026-09-30"
   },
   "error": null
 }
 ```
+
+`today` is the Asia/Jakarta calendar date. `recent_days` lists logged dates in the last 90 days, including today when logged. `freeze_gap_date` is the covered gap when a freeze was used this month, otherwise `null`.
 
 ---
 
@@ -2629,6 +2634,9 @@ Keep this file in sync with the running API. When routes, request/response shape
 ---
 
 ## Version History
+
+- **v2.44.0**: **Habit loop display**
+  - `GET /api/activity-streak` adds `today`, `recent_days` (logged dates in the last 90 Jakarta days), and `freeze_gap_date`
 
 - **v2.43.0**: **Habit loop**
   - `GET /api/activity-streak`: logging days from expense/income/transfer `created_at` in Asia/Jakarta; Pro auto-consumes one monthly freeze

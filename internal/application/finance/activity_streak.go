@@ -117,12 +117,19 @@ type StreakFreezeStore interface {
 }
 
 type ActivityStreakResponse struct {
-	CurrentStreak       int  `json:"current_streak"`
-	LoggedToday         bool `json:"logged_today"`
-	FreezeAvailable     bool `json:"freeze_available"`
-	FreezeUsedThisMonth bool `json:"freeze_used_this_month"`
-	WouldHaveSaved      bool `json:"would_have_saved"`
+	CurrentStreak       int      `json:"current_streak"`
+	LoggedToday         bool     `json:"logged_today"`
+	FreezeAvailable     bool     `json:"freeze_available"`
+	FreezeUsedThisMonth bool     `json:"freeze_used_this_month"`
+	WouldHaveSaved      bool     `json:"would_have_saved"`
+	Today               string   `json:"today"`
+	RecentDays          []string `json:"recent_days"`
+	FreezeGapDate       *string  `json:"freeze_gap_date"`
 }
+
+// heatmapLookbackDays covers a Monday-aligned 12-week grid, which can start
+// up to six days before an 84-day window.
+const heatmapLookbackDays = 90
 
 type GetActivityStreakUseCase struct {
 	days         ActivityDayReader
@@ -189,7 +196,34 @@ func (uc *GetActivityStreakUseCase) Execute(ctx context.Context, userID int) (*A
 		FreezeAvailable:     result.FreezeAvailable,
 		FreezeUsedThisMonth: result.FreezeUsedThisMonth,
 		WouldHaveSaved:      result.WouldHaveSaved,
+		Today:               today.Format("2006-01-02"),
+		RecentDays:          recentActivityDays(activityDateSet(dates), today),
+		FreezeGapDate:       freezeGapDate(result.NewGap, existing, result.FreezeUsedThisMonth),
 	}, nil
+}
+
+func recentActivityDays(logged map[string]struct{}, today time.Time) []string {
+	start := today.AddDate(0, 0, -(heatmapLookbackDays - 1))
+	days := make([]string, 0)
+	for cursor := start; !cursor.After(today); cursor = cursor.AddDate(0, 0, 1) {
+		key := cursor.Format("2006-01-02")
+		if _, ok := logged[key]; ok {
+			days = append(days, key)
+		}
+	}
+	return days
+}
+
+func freezeGapDate(newGap, existing *time.Time, used bool) *string {
+	gap := newGap
+	if gap == nil && used {
+		gap = existing
+	}
+	if gap == nil {
+		return nil
+	}
+	value := gap.Format("2006-01-02")
+	return &value
 }
 
 func activityDateSet(dates []time.Time) map[string]struct{} {

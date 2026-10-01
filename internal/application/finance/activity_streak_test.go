@@ -60,6 +60,25 @@ func TestStreakTwoDayBreakDoesNotFreeze(t *testing.T) {
 	}
 }
 
+func TestRecentActivityDaysKeepsOnlyLookback(t *testing.T) {
+	today := streakDay("2026-10-01")
+	days := recentActivityDays(loggedDays("2026-06-01", "2026-09-30", "2026-10-01", "2026-10-02"), today)
+	if len(days) != 2 || days[0] != "2026-09-30" || days[1] != "2026-10-01" {
+		t.Fatalf("unexpected recent days %v", days)
+	}
+}
+
+func TestFreezeGapDateUsesExistingWhenAlreadyConsumed(t *testing.T) {
+	existing := streakDay("2026-09-30")
+	got := freezeGapDate(nil, &existing, true)
+	if got == nil || *got != "2026-09-30" {
+		t.Fatalf("unexpected gap %v", got)
+	}
+	if freezeGapDate(nil, &existing, false) != nil {
+		t.Fatal("unused freeze must not expose a gap date")
+	}
+}
+
 func TestStreakFreeDoesNotConsumeFreeze(t *testing.T) {
 	result := ComputeActivityStreak(streakComputeInput{
 		Today:  streakDay("2026-10-01"),
