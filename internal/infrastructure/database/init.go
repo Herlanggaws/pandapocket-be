@@ -183,6 +183,7 @@ func autoMigrate(db *gorm.DB) error {
 		&PasswordResetToken{},
 		&AccountResetChallenge{},
 		&Token{},
+		&McpToken{},
 	)
 }
 

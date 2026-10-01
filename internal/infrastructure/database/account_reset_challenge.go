@@ -115,6 +115,7 @@ func wipeUserOwnedRows(tx *gorm.DB, userID uint) error {
 		func() error { return tx.Where("user_id = ?", userID).Delete(&UserPreferences{}).Error },
 		func() error { return tx.Where("user_id = ?", userID).Delete(&AccountResetChallenge{}).Error },
 		func() error { return tx.Where("user_id = ?", userID).Delete(&PasswordResetToken{}).Error },
+		func() error { return tx.Where("user_id = ?", userID).Delete(&McpToken{}).Error },
 	}
 
 	for _, deleteFn := range deletes {

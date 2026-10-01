@@ -103,6 +103,10 @@ CORS currently allows all origins (`*`). Allowed request headers: `Origin`, `Con
 | GET | `/api/net-worth/summary` | Yes | Liquid + assets − liabilities in primary currency; system currencies converted (C4) |
 | GET/PUT | `/api/preferences` | Yes | User preferences & onboarding |
 | GET | `/api/me/subscription` | Yes | Current billing subscription + `is_pro` |
+| GET | `/api/me/mcp-token` | Yes (Pro) | MCP token status (prefix only, no secret) |
+| POST | `/api/me/mcp-token` | Yes (Pro) | Create or replace the one MCP token; plaintext returned once |
+| DELETE | `/api/me/mcp-token` | Yes (Pro) | Revoke the MCP token |
+| POST | `/mcp` | MCP Bearer | JSON-RPC MCP (read-only tools). Not a session JWT |
 | POST | `/api/billing/checkout` | Yes | Start Doit checkout; returns `hosted_url` (does not unlock Pro) |
 | POST | `/api/billing/cancel` | Yes | Schedule cancel at period end |
 | GET | `/api/ai/advisor/credits` | Yes (Pro) | Read-only AI credit balance (no thread) |
@@ -1800,6 +1804,29 @@ Returns the authenticated user's current subscription. Creates a Free row (`plan
 
 ---
 
+### MCP (C10)
+
+Pro-only remote MCP. Spec: `doc/mcp.md`. Session JWTs are not accepted on `POST /mcp`. An MCP token is not accepted on `/api/*` routes.
+
+| Method | Path | Auth |
+| --- | --- | --- |
+| GET | `/api/me/mcp-token` | Session Bearer, Pro |
+| POST | `/api/me/mcp-token` | Session Bearer, Pro |
+| DELETE | `/api/me/mcp-token` | Session Bearer, Pro |
+| POST | `/mcp` | `Authorization: Bearer bb_mcp_…` |
+
+**GET** returns `{ active, prefix?, created_at? }`. Secret is never returned again.
+
+**POST** replaces any existing token. Response `{ token, prefix, created_at }`. `token` is shown once. Free → `403 PREMIUM_REQUIRED` (`feature`: `mcp`).
+
+**DELETE** sets the token revoked. Missing token is still success (`active: false`).
+
+**POST /mcp** is JSON-RPC 2.0 (`initialize`, `tools/list`, `tools/call`, `ping`). A message without `id` gets HTTP 202 and an empty body. `tools/call` checks `IsPro()` again. A valid token after Pro ends returns a tool result with `isError: true` and text starting `PREMIUM_REQUIRED`. Tools: `list_wallets`, `list_transactions` (default last 30 days, max 50), `list_budgets`, `list_goals`, `net_worth`. No write tools. No AI credit debit.
+
+Account data reset deletes the `mcp_tokens` row.
+
+---
+
 ### Tanya AI / Ask AI (C1)
 
 Pro-only (`IsPro()`). Free → `403 PREMIUM_REQUIRED` (`feature`: `ai_advisor`). Spec: `doc/ai-advisor.md`, `doc/prd-ai-advisor.md`.
@@ -2539,6 +2566,11 @@ Keep this file in sync with the running API. When routes, request/response shape
 ---
 
 ## Version History
+
+- **v2.42.0**: **Read-only MCP for Pro (C10)**
+  - `GET/POST/DELETE /api/me/mcp-token` — one token per user, hash stored, plaintext once, revoke
+  - `POST /mcp` — JSON-RPC tools `list_wallets`, `list_transactions` (30 days, max 50), `list_budgets`, `list_goals`, `net_worth`
+  - `tools/call` requires Pro; Free management routes return `403 PREMIUM_REQUIRED`. No Tanya AI credit debit. No write tools
 
 - **v2.41.0**: **AI chat lock recovery**
   - Process start clears abandoned `generation_status=pending` left by a crash

@@ -43,6 +43,7 @@ func setupWipeTestDB(t *testing.T) *gorm.DB {
 		&SupportTicket{},
 		&PasswordResetToken{},
 		&AccountResetChallenge{},
+		&McpToken{},
 	)
 	if err != nil {
 		t.Fatalf("migrate: %v", err)
@@ -149,6 +150,15 @@ func TestWipeUserDataScopedByUserID(t *testing.T) {
 		t.Fatalf("prefsB: %v", err)
 	}
 
+	tokenA := McpToken{UserID: userA.ID, TokenHash: "hash-a", Prefix: "bb_mcp_aaaaaaaa"}
+	tokenB := McpToken{UserID: userB.ID, TokenHash: "hash-b", Prefix: "bb_mcp_bbbbbbbb"}
+	if err := db.Create(&tokenA).Error; err != nil {
+		t.Fatalf("tokenA: %v", err)
+	}
+	if err := db.Create(&tokenB).Error; err != nil {
+		t.Fatalf("tokenB: %v", err)
+	}
+
 	if err := wiper.WipeUserData(ctx, userA.ID); err != nil {
 		t.Fatalf("WipeUserData: %v", err)
 	}
@@ -199,6 +209,13 @@ func TestWipeUserDataScopedByUserID(t *testing.T) {
 	db.Model(&UserPreferences{}).Where("user_id = ?", userB.ID).Count(&prefsCountB)
 	if prefsCountA != 0 || prefsCountB != 1 {
 		t.Fatalf("prefs A=%d B=%d", prefsCountA, prefsCountB)
+	}
+
+	var mcpCountA, mcpCountB int64
+	db.Model(&McpToken{}).Where("user_id = ?", userA.ID).Count(&mcpCountA)
+	db.Model(&McpToken{}).Where("user_id = ?", userB.ID).Count(&mcpCountB)
+	if mcpCountA != 0 || mcpCountB != 1 {
+		t.Fatalf("mcp tokens A=%d B=%d", mcpCountA, mcpCountB)
 	}
 
 	var userCount int64

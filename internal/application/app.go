@@ -11,6 +11,7 @@ import (
 	appFeedback "panda-pocket/internal/application/feedback"
 	appFinance "panda-pocket/internal/application/finance"
 	appIdentity "panda-pocket/internal/application/identity"
+	appMCP "panda-pocket/internal/application/mcp"
 	appNotification "panda-pocket/internal/application/notification"
 	appTicket "panda-pocket/internal/application/ticket"
 	"panda-pocket/internal/domain/entitlement"
@@ -41,6 +42,7 @@ type App struct {
 	TicketHandlers                     *handlers.TicketHandlers
 	BillingHandlers                    *handlers.BillingHandlers
 	AIAdvisorHandlers                  *handlers.AIAdvisorHandlers
+	MCPHandlers                        *handlers.MCPHandlers
 	AuthMiddleware                     *middleware.AuthMiddleware
 	purgeDeletedAccountsUseCase        *appIdentity.PurgeDeletedAccountsUseCase
 	cleanupExpiredTokensUseCase        *appIdentity.CleanupExpiredTokensUseCase
@@ -431,6 +433,15 @@ func NewApp(db *gorm.DB) *App {
 		aiReceiptScanUseCase,
 	)
 	authMiddleware := middleware.NewAuthMiddleware(tokenService, userRepo)
+	mcpTokenService := appMCP.NewTokenService(database.NewGormMcpTokenRepository(db), entitlementChecker)
+	mcpServer := appMCP.NewServer(entitlementChecker, appMCP.FinanceReader{
+		Wallets:      getWalletsUseCase,
+		Transactions: getAllTransactionsUseCase,
+		Budgets:      getBudgetsUseCase,
+		Goals:        getGoalsUseCase,
+		NetWorthSum:  getNetWorthSummaryUseCase,
+	})
+	mcpHandlers := handlers.NewMCPHandlers(mcpTokenService, mcpServer)
 
 	return &App{
 		DB:                                 db,
@@ -443,6 +454,7 @@ func NewApp(db *gorm.DB) *App {
 		TicketHandlers:                     ticketHandlers,
 		BillingHandlers:                    billingHandlers,
 		AIAdvisorHandlers:                  aiAdvisorHandlers,
+		MCPHandlers:                        mcpHandlers,
 		AuthMiddleware:                     authMiddleware,
 		purgeDeletedAccountsUseCase:        purgeDeletedAccountsUseCase,
 		cleanupExpiredTokensUseCase:        cleanupExpiredTokensUseCase,
@@ -466,6 +478,8 @@ func (app *App) SetupRoutes() *gin.Engine {
 	config.AllowHeaders = []string{"Origin", "Content-Type", "Accept", "Authorization"}
 	config.AllowCredentials = false
 	r.Use(cors.New(config))
+
+	r.POST("/mcp", app.MCPHandlers.Serve)
 
 	api := r.Group("/api")
 	{
@@ -558,6 +572,9 @@ func (app *App) SetupRoutes() *gin.Engine {
 			protected.GET("/preferences", app.IdentityHandlers.GetPreferences)
 			protected.PUT("/preferences", app.IdentityHandlers.UpdatePreferences)
 			protected.GET("/me/subscription", app.BillingHandlers.GetSubscription)
+			protected.GET("/me/mcp-token", app.MCPHandlers.GetToken)
+			protected.POST("/me/mcp-token", app.MCPHandlers.IssueToken)
+			protected.DELETE("/me/mcp-token", app.MCPHandlers.RevokeToken)
 			protected.POST("/billing/checkout", app.BillingHandlers.Checkout)
 			protected.POST("/billing/cancel", app.BillingHandlers.CancelSubscription)
 
