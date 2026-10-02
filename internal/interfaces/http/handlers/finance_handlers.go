@@ -517,7 +517,7 @@ func (h *FinanceHandlers) UpdateExpense(c *gin.Context) {
 	var req struct {
 		CategoryID  int     `json:"category_id" binding:"required"`
 		Amount      float64 `json:"amount" binding:"required"`
-		Description string  `json:"description" binding:"required"`
+		Description string  `json:"description"`
 		Date        string  `json:"date" binding:"required"`
 	}
 
@@ -526,13 +526,11 @@ func (h *FinanceHandlers) UpdateExpense(c *gin.Context) {
 		return
 	}
 
-	// Update the expense transaction
 	transaction, err := h.updateTransactionUseCase.Execute(
 		c.Request.Context(),
 		expenseID,
 		userID,
 		strconv.Itoa(req.CategoryID),
-		"1", // Default currency ID for now
 		req.Amount,
 		req.Description,
 		req.Date,
@@ -569,7 +567,7 @@ func (h *FinanceHandlers) UpdateIncome(c *gin.Context) {
 	var req struct {
 		CategoryID  int     `json:"category_id" binding:"required"`
 		Amount      float64 `json:"amount" binding:"required"`
-		Description string  `json:"description" binding:"required"`
+		Description string  `json:"description"`
 		Date        string  `json:"date" binding:"required"`
 	}
 
@@ -578,13 +576,11 @@ func (h *FinanceHandlers) UpdateIncome(c *gin.Context) {
 		return
 	}
 
-	// Update the income transaction
 	transaction, err := h.updateTransactionUseCase.Execute(
 		c.Request.Context(),
 		incomeID,
 		userID,
 		strconv.Itoa(req.CategoryID),
-		"1", // Default currency ID for now
 		req.Amount,
 		req.Description,
 		req.Date,

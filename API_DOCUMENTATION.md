@@ -660,7 +660,7 @@ Create a new expense transaction.
 
 ### PUT /api/expenses/:id
 
-Update an existing expense transaction.
+Update an existing expense transaction. `description` is optional. The stored currency is kept.
 
 **Request Body:**
 ```json
@@ -725,7 +725,7 @@ The "access denied" error can occur in the following scenarios:
      "error": "access denied to currency"
    }
    ```
-   **Note**: Currently, the handler uses currency ID `1` (default USD). If this currency doesn't exist or isn't accessible, you'll get this error.
+   **Note**: Updates keep the transaction's existing currency. Amount and description edits do not change currency.
 
 **400 Bad Request - Transaction Not Found:**
 ```json
@@ -827,7 +827,7 @@ Create a new income transaction.
 
 ### PUT /api/incomes/:id
 
-Update an existing income transaction.
+Update an existing income transaction. `description` is optional. The stored currency is kept.
 
 **Request Body:**
 ```json
@@ -915,7 +915,7 @@ The "access denied" error can occur in the following scenarios:
      }
    }
    ```
-   **Note**: Currently, the handler uses currency ID `1` (default USD). If this currency doesn't exist or isn't accessible, you'll get this error.
+   **Note**: Updates keep the transaction's existing currency. Amount and description edits do not change currency.
 
 **400 Bad Request - Transaction Not Found:**
 ```json
@@ -2648,6 +2648,11 @@ Keep this file in sync with the running API. When routes, request/response shape
 ---
 
 ## Version History
+
+- **v2.46.0**: **Transaction update keeps currency**
+  - `PUT /api/expenses/:id` and `PUT /api/incomes/:id` no longer force currency ID `1`
+  - Amount and description edits keep the transaction's stored currency
+  - `description` is optional on update
 
 - **v2.45.0**: **Category type update**
   - `PUT /api/categories/:id` persists `type`

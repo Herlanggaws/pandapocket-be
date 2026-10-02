@@ -134,14 +134,13 @@ func (s *TransactionService) GetTransactionsByUserWithFilters(
 	return s.transactionRepo.FindByUserIDWithFilters(ctx, userID, filters)
 }
 
-// UpdateTransaction updates a transaction
+// UpdateTransaction updates a transaction. Currency stays on the existing row so an amount or description edit cannot be rejected as a currency change.
 func (s *TransactionService) UpdateTransaction(
 	ctx context.Context,
 	transactionID TransactionID,
 	userID UserID,
 	categoryID CategoryID,
-	currencyID CurrencyID,
-	amount Money,
+	amount float64,
 	description string,
 	date time.Time,
 	expectedType TransactionType,
@@ -161,6 +160,12 @@ func (s *TransactionService) UpdateTransaction(
 		return nil, errors.New("transaction type mismatch")
 	}
 
+	currencyID := transaction.CurrencyID()
+	amountDomain, err := NewMoney(amount, currencyID)
+	if err != nil {
+		return nil, err
+	}
+
 	// Validate category exists and user has access
 	category, err := s.categoryRepo.FindByID(ctx, categoryID)
 	if err != nil {
@@ -172,7 +177,7 @@ func (s *TransactionService) UpdateTransaction(
 		return nil, errors.New("access denied to category")
 	}
 
-	// Validate currency exists and user has access
+	// Validate the stored currency still exists and the user can use it
 	currency, err := s.currencyRepo.FindByID(ctx, currencyID)
 	if err != nil {
 		return nil, errors.New("currency not found")
@@ -184,15 +189,13 @@ func (s *TransactionService) UpdateTransaction(
 	}
 
 	// Update transaction fields
-	if err := transaction.UpdateAmount(amount); err != nil {
+	if err := transaction.UpdateAmount(amountDomain); err != nil {
 		return nil, err
 	}
 	transaction.UpdateDescription(description)
 	transaction.UpdateDate(date)
 
-	// Update the category and currency IDs (these need to be set directly)
 	transaction.categoryID = categoryID
-	transaction.currencyID = currencyID
 
 	// Save updated transaction
 	if err := s.transactionRepo.Save(ctx, transaction); err != nil {
