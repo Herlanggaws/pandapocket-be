@@ -217,6 +217,94 @@ func TestHandleDoitWebhookAppliesStagingBoundOnStaging(t *testing.T) {
 	}
 }
 
+func TestLegacyPaidPayloadsKeepOriginalPeriods(t *testing.T) {
+	secret := "whsec_test"
+	t.Setenv("DOIT_WEBHOOK_SECRET", secret)
+	t.Setenv("APP_URL", "https://berbudget.com")
+	paidAt := time.Date(2026, 9, 21, 12, 0, 0, 0, time.UTC)
+
+	cases := []struct {
+		name      string
+		eventID   string
+		reference string
+		interval  string
+		userID    int
+		days      int
+	}{
+		{name: "monthly reference", eventID: "evt_legacy_m", reference: "user:8:monthly", interval: "monthly", userID: 8, days: 30},
+		{name: "yearly metadata", eventID: "evt_legacy_y", reference: "user:7:yearly", interval: "yearly", userID: 7, days: 365},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			subs := &memorySubs{}
+			uc := NewHandleDoitWebhookUseCase(&memoryWebhookEvents{}, subs, nil)
+			payload := map[string]interface{}{
+				"id":   tc.eventID,
+				"type": "payment.paid",
+				"data": map[string]interface{}{
+					"id":        "pay_" + tc.eventID,
+					"reference": tc.reference,
+					"paid_at":   paidAt.Format(time.RFC3339),
+					"metadata": map[string]interface{}{
+						"user_id":  tc.userID,
+						"interval": tc.interval,
+					},
+				},
+			}
+			body, _ := json.Marshal(payload)
+			if err := uc.Execute(context.Background(), signBody(secret, body), body); err != nil {
+				t.Fatal(err)
+			}
+			sub, err := subs.FindByUserID(context.Background(), tc.userID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := paidAt.AddDate(0, 0, tc.days)
+			if sub.CurrentPeriodEnd() == nil || !sub.CurrentPeriodEnd().Equal(want) {
+				t.Fatalf("period end want %v got %v", want, sub.CurrentPeriodEnd())
+			}
+			if sub.BillingInterval() == nil || string(*sub.BillingInterval()) != tc.interval {
+				t.Fatalf("interval=%v", sub.BillingInterval())
+			}
+		})
+	}
+}
+
+func TestSemiannualPaymentActivates183Days(t *testing.T) {
+	secret := "whsec_test"
+	t.Setenv("DOIT_WEBHOOK_SECRET", secret)
+	t.Setenv("APP_URL", "https://berbudget.com")
+	paidAt := time.Date(2026, 10, 2, 8, 0, 0, 0, time.UTC)
+
+	subs := &memorySubs{}
+	uc := NewHandleDoitWebhookUseCase(&memoryWebhookEvents{}, subs, nil)
+	payload := map[string]interface{}{
+		"id":   "evt_semi",
+		"type": "payment.paid",
+		"data": map[string]interface{}{
+			"id":        "pay_semi",
+			"reference": "user:11:semiannual",
+			"paid_at":   paidAt.Format(time.RFC3339),
+			"metadata": map[string]interface{}{
+				"user_id":  11,
+				"interval": "semiannual",
+			},
+		},
+	}
+	body, _ := json.Marshal(payload)
+	if err := uc.Execute(context.Background(), signBody(secret, body), body); err != nil {
+		t.Fatal(err)
+	}
+	sub, err := subs.FindByUserID(context.Background(), 11)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := paidAt.AddDate(0, 0, 183)
+	if sub.CurrentPeriodEnd() == nil || !sub.CurrentPeriodEnd().Equal(want) {
+		t.Fatalf("period end want %v got %v", want, sub.CurrentPeriodEnd())
+	}
+}
+
 func TestHandleDoitWebhookSubscriptionUnlocksIncludedOnce(t *testing.T) {
 	secret := "whsec_test"
 	t.Setenv("DOIT_WEBHOOK_SECRET", secret)

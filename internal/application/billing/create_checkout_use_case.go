@@ -2,6 +2,7 @@ package billing
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -10,9 +11,13 @@ import (
 )
 
 const (
-	amountMonthly = 19000
-	amountYearly  = 149000
+	amountMonthly    = 19000
+	amountSemiannual = 99000
+	amountYearly     = 149000
 )
+
+// ErrShorterIntervalBlocked means a shorter prepaid interval was requested while a longer paid period is still open.
+var ErrShorterIntervalBlocked = errors.New("shorter billing interval applies at the end of the current period")
 
 // PaymentCreator creates a Doit one-shot payment.
 type PaymentCreator interface {
@@ -33,10 +38,11 @@ type CreateCheckoutResponse struct {
 
 type CreateCheckoutUseCase struct {
 	payments PaymentCreator
+	subs     domainBilling.SubscriptionRepository
 }
 
-func NewCreateCheckoutUseCase(payments PaymentCreator) *CreateCheckoutUseCase {
-	return &CreateCheckoutUseCase{payments: payments}
+func NewCreateCheckoutUseCase(payments PaymentCreator, subs domainBilling.SubscriptionRepository) *CreateCheckoutUseCase {
+	return &CreateCheckoutUseCase{payments: payments, subs: subs}
 }
 
 func (uc *CreateCheckoutUseCase) Execute(ctx context.Context, userID int, req CreateCheckoutRequest) (*CreateCheckoutResponse, error) {
@@ -46,6 +52,10 @@ func (uc *CreateCheckoutUseCase) Execute(ctx context.Context, userID int, req Cr
 
 	interval, amount, err := resolveCheckoutInterval(req.Interval)
 	if err != nil {
+		return nil, err
+	}
+
+	if err := uc.rejectShorterInterval(ctx, userID, interval); err != nil {
 		return nil, err
 	}
 
@@ -77,13 +87,41 @@ func (uc *CreateCheckoutUseCase) Execute(ctx context.Context, userID int, req Cr
 	}, nil
 }
 
+func (uc *CreateCheckoutUseCase) rejectShorterInterval(ctx context.Context, userID int, requested domainBilling.BillingInterval) error {
+	if uc.subs == nil {
+		return nil
+	}
+	sub, err := uc.subs.FindByUserID(ctx, userID)
+	if err != nil {
+		if errors.Is(err, domainBilling.ErrNotFound) {
+			return nil
+		}
+		return err
+	}
+	if blocksShorterInterval(sub, requested, time.Now().UTC()) {
+		return ErrShorterIntervalBlocked
+	}
+	return nil
+}
+
+func blocksShorterInterval(sub *domainBilling.Subscription, requested domainBilling.BillingInterval, now time.Time) bool {
+	current := sub.BillingInterval()
+	periodEnd := sub.CurrentPeriodEnd()
+	if current == nil || periodEnd == nil || !periodEnd.After(now) {
+		return false
+	}
+	return requested.ShorterThan(*current)
+}
+
 func resolveCheckoutInterval(raw string) (domainBilling.BillingInterval, int, error) {
 	switch domainBilling.BillingInterval(raw) {
 	case domainBilling.IntervalMonthly:
 		return domainBilling.IntervalMonthly, amountMonthly, nil
+	case domainBilling.IntervalSemiannual:
+		return domainBilling.IntervalSemiannual, amountSemiannual, nil
 	case domainBilling.IntervalYearly:
 		return domainBilling.IntervalYearly, amountYearly, nil
 	default:
-		return "", 0, fmt.Errorf("interval must be monthly or yearly")
+		return "", 0, fmt.Errorf("interval must be monthly, semiannual, or yearly")
 	}
 }

@@ -126,7 +126,7 @@ func NewApp(db *gorm.DB) *App {
 	aiCreditService := appAI.NewCreditService(aiCreditRepo, subscriptionRepo)
 	paasClient := paas.NewClient()
 	getSubscriptionUseCase := appBilling.NewGetSubscriptionUseCase(subscriptionRepo)
-	createCheckoutUseCase := appBilling.NewCreateCheckoutUseCase(doitClient)
+	createCheckoutUseCase := appBilling.NewCreateCheckoutUseCase(doitClient, subscriptionRepo)
 	handleDoitWebhookUseCase := appBilling.NewHandleDoitWebhookUseCase(billingWebhookEventRepo, subscriptionRepo, aiCreditService)
 	cancelSubscriptionUseCase := appBilling.NewCancelSubscriptionUseCase(subscriptionRepo)
 	processBillingSubscriptionsUseCase := appBilling.NewProcessBillingSubscriptionsUseCase(subscriptionRepo)

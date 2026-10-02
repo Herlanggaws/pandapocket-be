@@ -282,7 +282,9 @@ func resolvePaidUser(payment paymentData) (int, domainBilling.BillingInterval, e
 	if userID <= 0 {
 		return 0, "", fmt.Errorf("user_id not found in payment")
 	}
-	if interval != domainBilling.IntervalMonthly && interval != domainBilling.IntervalYearly {
+	switch interval {
+	case domainBilling.IntervalMonthly, domainBilling.IntervalSemiannual, domainBilling.IntervalYearly:
+	default:
 		return 0, "", fmt.Errorf("billing interval not found in payment")
 	}
 	return userID, interval, nil

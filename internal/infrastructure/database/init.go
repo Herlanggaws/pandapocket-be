@@ -152,7 +152,7 @@ func autoMigrate(db *gorm.DB) error {
 		_ = db.Exec(`DROP INDEX IF EXISTS uni_ai_advisor_threads_user_id`).Error
 	}
 
-	return db.AutoMigrate(
+	if err := db.AutoMigrate(
 		&User{},
 		&Currency{},
 		&Category{},
@@ -186,7 +186,22 @@ func autoMigrate(db *gorm.DB) error {
 		&AccountResetChallenge{},
 		&Token{},
 		&McpToken{},
-	)
+	); err != nil {
+		return err
+	}
+	return widenBillingIntervalCheck(db)
+}
+
+// widenBillingIntervalCheck adds semiannual to the existing check.
+// AutoMigrate does not rewrite a CHECK that is already on the table, and this statement does not update subscription rows.
+func widenBillingIntervalCheck(db *gorm.DB) error {
+	if db.Dialector.Name() != "postgres" || !db.Migrator().HasTable("subscriptions") {
+		return nil
+	}
+	if err := db.Exec(`ALTER TABLE subscriptions DROP CONSTRAINT IF EXISTS chk_subscriptions_billing_interval`).Error; err != nil {
+		return err
+	}
+	return db.Exec(`ALTER TABLE subscriptions ADD CONSTRAINT chk_subscriptions_billing_interval CHECK (billing_interval IS NULL OR billing_interval IN ('monthly','semiannual','yearly'))`).Error
 }
 
 // createDefaultData creates default categories and currencies using GORM

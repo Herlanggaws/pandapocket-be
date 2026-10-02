@@ -54,7 +54,7 @@ func (h *BillingHandlers) Checkout(c *gin.Context) {
 	response, err := h.createCheckoutUseCase.Execute(c.Request.Context(), userID, req)
 	if err != nil {
 		msg := err.Error()
-		if strings.Contains(msg, "interval must be") {
+		if strings.Contains(msg, "interval must be") || errors.Is(err, appBilling.ErrShorterIntervalBlocked) {
 			ValidationErrorResponse(c, msg)
 			return
 		}

@@ -23,8 +23,9 @@ func (p Plan) String() string { return string(p) }
 type BillingInterval string
 
 const (
-	IntervalMonthly BillingInterval = "monthly"
-	IntervalYearly  BillingInterval = "yearly"
+	IntervalMonthly    BillingInterval = "monthly"
+	IntervalSemiannual BillingInterval = "semiannual"
+	IntervalYearly     BillingInterval = "yearly"
 )
 
 func (i BillingInterval) String() string { return string(i) }
@@ -176,22 +177,44 @@ func (s *Subscription) ExpireTrialIfNeeded(now time.Time) bool {
 }
 
 const (
-	monthlyPeriodDays = 30
-	yearlyPeriodDays  = 365
-	GraceDurationDays = 7
+	monthlyPeriodDays    = 30
+	semiannualPeriodDays = 183
+	yearlyPeriodDays     = 365
+	GraceDurationDays    = 7
 )
 
+func (i BillingInterval) periodDays() (int, bool) {
+	switch i {
+	case IntervalMonthly:
+		return monthlyPeriodDays, true
+	case IntervalSemiannual:
+		return semiannualPeriodDays, true
+	case IntervalYearly:
+		return yearlyPeriodDays, true
+	default:
+		return 0, false
+	}
+}
+
+// ShorterThan reports whether this prepaid length is less than other.
+// Unknown intervals are not treated as shorter, so an unrecognized stored value cannot block checkout.
+func (i BillingInterval) ShorterThan(other BillingInterval) bool {
+	days, ok := i.periodDays()
+	otherDays, otherOK := other.periodDays()
+	if !ok || !otherOK {
+		return false
+	}
+	return days < otherDays
+}
+
 // ActivatePro unlocks paid Pro from a verified payment.paid webhook.
-// Period length is +30d (monthly) or +365d (yearly) from paidAt.
+// Period length is +30d (monthly), +183d (semiannual), or +365d (yearly) from paidAt.
 func (s *Subscription) ActivatePro(interval BillingInterval, paidAt time.Time) error {
-	if interval != IntervalMonthly && interval != IntervalYearly {
+	days, ok := interval.periodDays()
+	if !ok {
 		return fmt.Errorf("unsupported billing interval: %s", interval)
 	}
 	paidAt = paidAt.UTC()
-	days := monthlyPeriodDays
-	if interval == IntervalYearly {
-		days = yearlyPeriodDays
-	}
 	periodEnd := paidAt.AddDate(0, 0, days)
 
 	s.plan = PlanPro

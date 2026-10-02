@@ -370,7 +370,7 @@ type Subscription struct {
 	ID                 uint       `gorm:"primaryKey" json:"id"`
 	UserID             uint       `gorm:"uniqueIndex;not null" json:"user_id"`
 	Plan               string     `gorm:"type:varchar(20);not null;default:'free';check:plan IN ('free','pro')" json:"plan"`
-	BillingInterval    *string    `gorm:"type:varchar(20);check:billing_interval IS NULL OR billing_interval IN ('monthly','yearly')" json:"billing_interval,omitempty"`
+	BillingInterval    *string    `gorm:"type:varchar(20);check:billing_interval IS NULL OR billing_interval IN ('monthly','semiannual','yearly')" json:"billing_interval,omitempty"`
 	Status             string     `gorm:"type:varchar(20);not null;default:'expired';check:status IN ('trialing','active','past_due','canceled','expired')" json:"status"`
 	TrialEndsAt        *time.Time `json:"trial_ends_at,omitempty"`
 	CurrentPeriodEnd   *time.Time `json:"current_period_end,omitempty"`

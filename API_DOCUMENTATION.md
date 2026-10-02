@@ -1860,7 +1860,7 @@ Partial update. Accepts any of:
 
 ### GET /api/me/subscription
 
-Returns the authenticated user's current subscription. Creates a Free row (`plan=free`, `status=expired`, no trial) if missing. If `status=trialing` and `trial_ends_at` has passed without paid access, normalizes to `status=expired` (keeps `trial_ends_at` so trial cannot restart).
+Returns the authenticated user's current subscription. Creates a Free row (`plan=free`, `status=expired`, no trial) if missing. If `status=trialing` and `trial_ends_at` has passed without paid access, normalizes to `status=expired` (keeps `trial_ends_at` so trial cannot restart). `billing_interval` is `monthly`, `semiannual`, `yearly`, or `null`. Reading this endpoint does not change an existing paid row.
 
 **Example after register (active trial):**
 ```json
@@ -2084,7 +2084,7 @@ Requires env `DOIT_API_KEY` (and optionally `DOIT_RETURN_URL`).
 }
 ```
 
-`interval`: `monthly` (Rp19.000) or `yearly` (Rp149.000). Monthly→Yearly mid-cycle is allowed: pay full yearly (no prorate); new period starts from payment date (+365d).
+`interval`: `monthly` (Rp19.000, +30 days), `semiannual` (Rp99.000, +183 days), or `yearly` (Rp149.000, +365 days). Moving to an equal or longer interval mid-cycle is allowed: pay the full amount (no prorate); the new period starts from the payment date. A shorter interval is rejected with **400** while `current_period_end` is still in the future; the existing row is not changed. Existing `monthly` and `yearly` subscriptions are left as stored.
 
 **Response:**
 ```json
@@ -2648,6 +2648,12 @@ Keep this file in sync with the running API. When routes, request/response shape
 ---
 
 ## Version History
+
+- **v2.47.0**: **Pro 6-month checkout**
+  - `POST /api/billing/checkout` accepts `interval`: `monthly` (19000), `semiannual` (99000), or `yearly` (149000)
+  - `payment.paid` sets `current_period_end` to `paid_at` +30 / +183 / +365 days
+  - Shorter interval while the paid period is still open → **400**; no subscription write
+  - Stored `monthly` and `yearly` rows are unchanged
 
 - **v2.46.0**: **Transaction update keeps currency**
   - `PUT /api/expenses/:id` and `PUT /api/incomes/:id` no longer force currency ID `1`

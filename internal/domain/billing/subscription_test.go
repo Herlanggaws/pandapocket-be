@@ -185,6 +185,23 @@ func TestActivatePro(t *testing.T) {
 		}
 	})
 
+	t.Run("semiannual sets 183 day period", func(t *testing.T) {
+		sub, err := NewFreeSubscription(4)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := sub.ActivatePro(IntervalSemiannual, now); err != nil {
+			t.Fatal(err)
+		}
+		if sub.BillingInterval() == nil || *sub.BillingInterval() != IntervalSemiannual {
+			t.Fatal("expected semiannual interval")
+		}
+		wantEnd := now.AddDate(0, 0, 183)
+		if sub.CurrentPeriodEnd() == nil || !sub.CurrentPeriodEnd().Equal(wantEnd) {
+			t.Fatalf("period end want %v got %v", wantEnd, sub.CurrentPeriodEnd())
+		}
+	})
+
 	t.Run("yearly sets 365 day period", func(t *testing.T) {
 		sub, err := NewFreeSubscription(2)
 		if err != nil {
