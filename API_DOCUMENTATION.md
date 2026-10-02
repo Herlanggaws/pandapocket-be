@@ -549,7 +549,21 @@ Create a new category.
 
 ### PUT /api/categories/:id
 
-Update an existing category.
+Update an existing category. `type` is persisted (`expense` or `income`).
+
+Changing `type` from `expense` to `income` returns `400` when the category still has budgets. Delete those budgets first, then update again.
+
+```json
+{
+  "status": "error",
+  "error": {
+    "error_code": "UNKNOWN_ERROR",
+    "error_message": "cannot change category type while budgets exist"
+  }
+}
+```
+
+Default categories cannot be updated (`error_message`: `cannot update default category`). Create a custom category instead.
 
 **Request Body:**
 ```json
@@ -2634,6 +2648,10 @@ Keep this file in sync with the running API. When routes, request/response shape
 ---
 
 ## Version History
+
+- **v2.45.0**: **Category type update**
+  - `PUT /api/categories/:id` persists `type`
+  - `expense` → `income` is rejected with `cannot change category type while budgets exist` when budgets still use the category
 
 - **v2.44.0**: **Habit loop display**
   - `GET /api/activity-streak` adds `today`, `recent_days` (logged dates in the last 90 Jakarta days), and `freeze_gap_date`

@@ -320,14 +320,25 @@ func (s *CategoryService) UpdateCategory(
 		return errors.New("access denied")
 	}
 
-	// Update category
+	if category.Type() == CategoryTypeExpense && categoryType == CategoryTypeIncome {
+		existingBudgets, err := s.budgetRepo.FindByUserIDAndCategory(ctx, userID, categoryID)
+		if err != nil {
+			return err
+		}
+		if len(existingBudgets) > 0 {
+			return errors.New("cannot change category type while budgets exist")
+		}
+	}
+
 	if err := category.UpdateName(name); err != nil {
 		return err
 	}
 
 	category.UpdateColor(color)
+	if err := category.UpdateType(categoryType); err != nil {
+		return err
+	}
 
-	// Save updated category
 	return s.categoryRepo.Save(ctx, category)
 }
 

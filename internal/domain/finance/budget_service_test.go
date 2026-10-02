@@ -91,6 +91,10 @@ type stubCategoryRepo struct {
 }
 
 func (r *stubCategoryRepo) Save(ctx context.Context, category *Category) error {
+	if r.categories == nil {
+		r.categories = map[int]*Category{}
+	}
+	r.categories[category.ID().Value()] = category
 	return nil
 }
 
@@ -265,5 +269,86 @@ func TestCategoryServiceDeleteBlockedByBudgets(t *testing.T) {
 	err := service.DeleteCategory(context.Background(), NewCategoryID(5), userID)
 	if err == nil {
 		t.Fatal("expected delete to be blocked by existing budgets")
+	}
+}
+
+func TestCategoryServiceUpdateChangesType(t *testing.T) {
+	userID := NewUserID(1)
+	owned, _ := NewCategory(NewCategoryID(5), &userID, "Side", "#fff", false, CategoryTypeExpense)
+	categoryRepo := &stubCategoryRepo{categories: map[int]*Category{5: owned}}
+	service := NewCategoryService(categoryRepo, &stubBudgetRepo{})
+
+	err := service.UpdateCategory(
+		context.Background(),
+		NewCategoryID(5),
+		userID,
+		"Side gig",
+		"#111",
+		CategoryTypeIncome,
+	)
+	if err != nil {
+		t.Fatalf("expected type change to succeed, got %v", err)
+	}
+
+	updated, err := categoryRepo.FindByID(context.Background(), NewCategoryID(5))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Type() != CategoryTypeIncome {
+		t.Fatalf("expected income, got %s", updated.Type())
+	}
+	if updated.Name() != "Side gig" || updated.Color() != "#111" {
+		t.Fatalf("expected name and color to update, got %s %s", updated.Name(), updated.Color())
+	}
+}
+
+func TestCategoryServiceUpdateRejectsDefaultCategory(t *testing.T) {
+	userID := NewUserID(1)
+	categoryRepo := &stubCategoryRepo{categories: map[int]*Category{1: newExpenseCategory(1)}}
+	service := NewCategoryService(categoryRepo, &stubBudgetRepo{})
+
+	err := service.UpdateCategory(
+		context.Background(),
+		NewCategoryID(1),
+		userID,
+		"Food",
+		"#fff",
+		CategoryTypeIncome,
+	)
+	if err == nil || err.Error() != "cannot update default category" {
+		t.Fatalf("expected default category rejection, got %v", err)
+	}
+}
+
+func TestCategoryServiceUpdateTypeBlockedByBudgets(t *testing.T) {
+	userID := NewUserID(1)
+	amount, _ := NewMoney(100, NewCurrencyID(1))
+	existing, _ := NewBudget(
+		NewBudgetID(1),
+		userID,
+		NewCategoryID(5),
+		amount,
+		BudgetLimitFixed,
+		nil,
+		BudgetPeriodMonthly,
+		time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+	)
+	owned, _ := NewCategory(NewCategoryID(5), &userID, "Food", "#fff", false, CategoryTypeExpense)
+	categoryRepo := &stubCategoryRepo{categories: map[int]*Category{5: owned}}
+	service := NewCategoryService(categoryRepo, &stubBudgetRepo{budgets: []*Budget{existing}})
+
+	err := service.UpdateCategory(
+		context.Background(),
+		NewCategoryID(5),
+		userID,
+		"Food",
+		"#fff",
+		CategoryTypeIncome,
+	)
+	if err == nil || err.Error() != "cannot change category type while budgets exist" {
+		t.Fatalf("expected type change to be blocked by budgets, got %v", err)
+	}
+	if owned.Type() != CategoryTypeExpense {
+		t.Fatalf("expected type to stay expense, got %s", owned.Type())
 	}
 }

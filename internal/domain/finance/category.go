@@ -36,11 +36,11 @@ func NewCategory(
 	if name == "" {
 		return nil, errors.New("category name cannot be empty")
 	}
-	
+
 	if color == "" {
 		color = "#3B82F6" // Default color
 	}
-	
+
 	return &Category{
 		id:           id,
 		userID:       userID,
@@ -96,6 +96,16 @@ func (c *Category) UpdateColor(color string) {
 		color = "#3B82F6"
 	}
 	c.color = color
+}
+
+func (c *Category) UpdateType(categoryType CategoryType) error {
+	switch categoryType {
+	case CategoryTypeExpense, CategoryTypeIncome:
+		c.categoryType = categoryType
+		return nil
+	default:
+		return errors.New("invalid category type")
+	}
 }
 
 // CanBeDeleted checks if the category can be deleted
