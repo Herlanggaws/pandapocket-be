@@ -65,15 +65,22 @@ type FinanceHandlers struct {
 	updateAssetUseCase              *finance.UpdateAssetUseCase
 	archiveAssetUseCase             *finance.ArchiveAssetUseCase
 	unarchiveAssetUseCase           *finance.UnarchiveAssetUseCase
-	createLiabilityUseCase          *finance.CreateLiabilityUseCase
-	getLiabilitiesUseCase           *finance.GetLiabilitiesUseCase
-	updateLiabilityUseCase          *finance.UpdateLiabilityUseCase
-	archiveLiabilityUseCase         *finance.ArchiveLiabilityUseCase
-	unarchiveLiabilityUseCase       *finance.UnarchiveLiabilityUseCase
-	listLiabilityPaymentsUseCase    *finance.ListLiabilityPaymentsUseCase
-	recordLiabilityPaymentUseCase   *finance.RecordLiabilityPaymentUseCase
-	completeOnboardingUseCase       *finance.CompleteOnboardingUseCase
-	getNetWorthSummaryUseCase       *finance.GetNetWorthSummaryUseCase
+	createLiabilityUseCase           *finance.CreateLiabilityUseCase
+	getLiabilitiesUseCase            *finance.GetLiabilitiesUseCase
+	updateLiabilityUseCase           *finance.UpdateLiabilityUseCase
+	archiveLiabilityUseCase          *finance.ArchiveLiabilityUseCase
+	unarchiveLiabilityUseCase        *finance.UnarchiveLiabilityUseCase
+	listLiabilityPaymentsUseCase     *finance.ListLiabilityPaymentsUseCase
+	recordLiabilityPaymentUseCase    *finance.RecordLiabilityPaymentUseCase
+	createReceivableUseCase          *finance.CreateReceivableUseCase
+	getReceivablesUseCase            *finance.GetReceivablesUseCase
+	updateReceivableUseCase          *finance.UpdateReceivableUseCase
+	archiveReceivableUseCase         *finance.ArchiveReceivableUseCase
+	unarchiveReceivableUseCase       *finance.UnarchiveReceivableUseCase
+	listReceivableCollectionsUseCase *finance.ListReceivableCollectionsUseCase
+	recordReceivableCollectionUseCase *finance.RecordReceivableCollectionUseCase
+	completeOnboardingUseCase        *finance.CompleteOnboardingUseCase
+	getNetWorthSummaryUseCase        *finance.GetNetWorthSummaryUseCase
 	createTransferUseCase           *finance.CreateTransferUseCase
 	getTransfersUseCase             *finance.GetTransfersUseCase
 	deleteTransferUseCase           *finance.DeleteTransferUseCase
@@ -141,6 +148,13 @@ func NewFinanceHandlers(
 	unarchiveLiabilityUseCase *finance.UnarchiveLiabilityUseCase,
 	listLiabilityPaymentsUseCase *finance.ListLiabilityPaymentsUseCase,
 	recordLiabilityPaymentUseCase *finance.RecordLiabilityPaymentUseCase,
+	createReceivableUseCase *finance.CreateReceivableUseCase,
+	getReceivablesUseCase *finance.GetReceivablesUseCase,
+	updateReceivableUseCase *finance.UpdateReceivableUseCase,
+	archiveReceivableUseCase *finance.ArchiveReceivableUseCase,
+	unarchiveReceivableUseCase *finance.UnarchiveReceivableUseCase,
+	listReceivableCollectionsUseCase *finance.ListReceivableCollectionsUseCase,
+	recordReceivableCollectionUseCase *finance.RecordReceivableCollectionUseCase,
 	completeOnboardingUseCase *finance.CompleteOnboardingUseCase,
 	getNetWorthSummaryUseCase *finance.GetNetWorthSummaryUseCase,
 	createTransferUseCase *finance.CreateTransferUseCase,
@@ -198,18 +212,25 @@ func NewFinanceHandlers(
 		updateAssetUseCase:            updateAssetUseCase,
 		archiveAssetUseCase:           archiveAssetUseCase,
 		unarchiveAssetUseCase:         unarchiveAssetUseCase,
-		createLiabilityUseCase:        createLiabilityUseCase,
-		getLiabilitiesUseCase:         getLiabilitiesUseCase,
-		updateLiabilityUseCase:        updateLiabilityUseCase,
-		archiveLiabilityUseCase:       archiveLiabilityUseCase,
-		unarchiveLiabilityUseCase:     unarchiveLiabilityUseCase,
-		listLiabilityPaymentsUseCase:  listLiabilityPaymentsUseCase,
-		recordLiabilityPaymentUseCase: recordLiabilityPaymentUseCase,
-		completeOnboardingUseCase:     completeOnboardingUseCase,
-		getNetWorthSummaryUseCase:     getNetWorthSummaryUseCase,
-		createTransferUseCase:         createTransferUseCase,
-		getTransfersUseCase:           getTransfersUseCase,
-		deleteTransferUseCase:         deleteTransferUseCase,
+		createLiabilityUseCase:            createLiabilityUseCase,
+		getLiabilitiesUseCase:             getLiabilitiesUseCase,
+		updateLiabilityUseCase:            updateLiabilityUseCase,
+		archiveLiabilityUseCase:           archiveLiabilityUseCase,
+		unarchiveLiabilityUseCase:         unarchiveLiabilityUseCase,
+		listLiabilityPaymentsUseCase:      listLiabilityPaymentsUseCase,
+		recordLiabilityPaymentUseCase:     recordLiabilityPaymentUseCase,
+		createReceivableUseCase:           createReceivableUseCase,
+		getReceivablesUseCase:             getReceivablesUseCase,
+		updateReceivableUseCase:           updateReceivableUseCase,
+		archiveReceivableUseCase:          archiveReceivableUseCase,
+		unarchiveReceivableUseCase:        unarchiveReceivableUseCase,
+		listReceivableCollectionsUseCase:  listReceivableCollectionsUseCase,
+		recordReceivableCollectionUseCase: recordReceivableCollectionUseCase,
+		completeOnboardingUseCase:         completeOnboardingUseCase,
+		getNetWorthSummaryUseCase:         getNetWorthSummaryUseCase,
+		createTransferUseCase:             createTransferUseCase,
+		getTransfersUseCase:               getTransfersUseCase,
+		deleteTransferUseCase:             deleteTransferUseCase,
 	}
 }
 

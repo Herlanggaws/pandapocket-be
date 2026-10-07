@@ -75,6 +75,8 @@ func NewApp(db *gorm.DB) *App {
 	assetRepo := database.NewGormAssetRepository(db)
 	liabilityRepo := database.NewGormLiabilityRepository(db)
 	liabilityPaymentRepo := database.NewGormLiabilityPaymentRepository(db)
+	receivableRepo := database.NewGormReceivableRepository(db)
+	receivableCollectionRepo := database.NewGormReceivableCollectionRepository(db)
 	healthSnapshotRepo := database.NewGormHealthScoreSnapshotRepository(db)
 	recurringRepo := database.NewGormRecurringTransactionRepository(db)
 	pendingRepo := database.NewGormPendingTransactionRepository(db)
@@ -91,6 +93,7 @@ func NewApp(db *gorm.DB) *App {
 	walletService.SetLinkedGoalsChecker(&walletLinkedGoalsAdapter{goalService: goalService})
 	assetService := domainFinance.NewAssetService(assetRepo)
 	liabilityService := domainFinance.NewLiabilityService(liabilityRepo, liabilityPaymentRepo)
+	receivableService := domainFinance.NewReceivableService(receivableRepo, receivableCollectionRepo)
 
 	// Application layer - use cases
 	tokenService := appIdentity.NewTokenService(authTokenRepo)
@@ -143,7 +146,7 @@ func NewApp(db *gorm.DB) *App {
 	getAllTransactionsUseCase := appFinance.NewGetAllTransactionsUseCase(transactionService, categoryService, currencyService)
 	exportTransactionsUseCase := appFinance.NewExportTransactionsUseCase(transactionService, categoryService, entitlementChecker)
 	updateTransactionUseCase := appFinance.NewUpdateTransactionUseCase(transactionService)
-	deleteTransactionUseCase := appFinance.NewDeleteTransactionUseCase(transactionService, liabilityService, goalService)
+	deleteTransactionUseCase := appFinance.NewDeleteTransactionUseCase(transactionService, liabilityService, receivableService, goalService)
 	createCategoryUseCase := appFinance.NewCreateCategoryUseCase(categoryService, entitlementChecker)
 	updateCategoryUseCase := appFinance.NewUpdateCategoryUseCase(categoryService)
 	deleteCategoryUseCase := appFinance.NewDeleteCategoryUseCase(categoryService)
@@ -248,6 +251,13 @@ func NewApp(db *gorm.DB) *App {
 	unarchiveLiabilityUseCase := appFinance.NewUnarchiveLiabilityUseCase(liabilityService)
 	listLiabilityPaymentsUseCase := appFinance.NewListLiabilityPaymentsUseCase(liabilityService)
 	recordLiabilityPaymentUseCase := appFinance.NewRecordLiabilityPaymentUseCase(liabilityService, createTransactionUseCase, categoryService)
+	createReceivableUseCase := appFinance.NewCreateReceivableUseCase(receivableService, createTransactionUseCase, categoryService, entitlementChecker)
+	getReceivablesUseCase := appFinance.NewGetReceivablesUseCase(receivableService)
+	updateReceivableUseCase := appFinance.NewUpdateReceivableUseCase(receivableService)
+	archiveReceivableUseCase := appFinance.NewArchiveReceivableUseCase(receivableService)
+	unarchiveReceivableUseCase := appFinance.NewUnarchiveReceivableUseCase(receivableService)
+	listReceivableCollectionsUseCase := appFinance.NewListReceivableCollectionsUseCase(receivableService)
+	recordReceivableCollectionUseCase := appFinance.NewRecordReceivableCollectionUseCase(receivableService, createTransactionUseCase, categoryService)
 	completeOnboardingUseCase := appFinance.NewCompleteOnboardingUseCase(
 		prefsRepo,
 		walletService,
@@ -265,6 +275,7 @@ func NewApp(db *gorm.DB) *App {
 		getWalletSummaryUseCase,
 		walletService,
 		assetService,
+		receivableService,
 		liabilityService,
 		currencyService,
 		fxRateRepo,
@@ -287,6 +298,7 @@ func NewApp(db *gorm.DB) *App {
 		&appAI.AdvisorContextDeps{
 			Analytics:       getAnalyticsUseCase,
 			Liabilities:     getLiabilitiesUseCase,
+			Receivables:     getReceivablesUseCase,
 			Assets:          getAssetsUseCase,
 			Goals:           getGoalsUseCase,
 			Budgets:         getBudgetsUseCase,
@@ -413,6 +425,13 @@ func NewApp(db *gorm.DB) *App {
 		unarchiveLiabilityUseCase,
 		listLiabilityPaymentsUseCase,
 		recordLiabilityPaymentUseCase,
+		createReceivableUseCase,
+		getReceivablesUseCase,
+		updateReceivableUseCase,
+		archiveReceivableUseCase,
+		unarchiveReceivableUseCase,
+		listReceivableCollectionsUseCase,
+		recordReceivableCollectionUseCase,
 		completeOnboardingUseCase,
 		getNetWorthSummaryUseCase,
 		createTransferUseCase,
@@ -591,6 +610,14 @@ func (app *App) SetupRoutes() *gin.Engine {
 			protected.POST("/liabilities/:id/unarchive", app.FinanceHandlers.UnarchiveLiability)
 			protected.GET("/liabilities/:id/payments", app.FinanceHandlers.GetLiabilityPayments)
 			protected.POST("/liabilities/:id/payments", app.FinanceHandlers.RecordLiabilityPayment)
+
+			protected.GET("/receivables", app.FinanceHandlers.GetReceivables)
+			protected.POST("/receivables", app.FinanceHandlers.CreateReceivable)
+			protected.PUT("/receivables/:id", app.FinanceHandlers.UpdateReceivable)
+			protected.POST("/receivables/:id/archive", app.FinanceHandlers.ArchiveReceivable)
+			protected.POST("/receivables/:id/unarchive", app.FinanceHandlers.UnarchiveReceivable)
+			protected.GET("/receivables/:id/collections", app.FinanceHandlers.GetReceivableCollections)
+			protected.POST("/receivables/:id/collections", app.FinanceHandlers.RecordReceivableCollection)
 
 			protected.GET("/net-worth/summary", app.FinanceHandlers.GetNetWorthSummary)
 

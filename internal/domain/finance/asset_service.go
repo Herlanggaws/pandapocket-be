@@ -276,3 +276,215 @@ func (s *LiabilityService) ReversePaymentByExpenseID(ctx context.Context, userID
 	}
 	return s.paymentRepo.Delete(ctx, payment.ID())
 }
+
+type ReceivableRepository interface {
+	Save(ctx context.Context, receivable *Receivable) error
+	FindByID(ctx context.Context, id ReceivableID) (*Receivable, error)
+	FindByUserID(ctx context.Context, userID UserID, includeArchived bool) ([]*Receivable, error)
+	FindByCreateExpenseID(ctx context.Context, expenseID int) (*Receivable, error)
+}
+
+type ReceivableCollectionRepository interface {
+	Save(ctx context.Context, collection *ReceivableCollection) error
+	FindByReceivableID(ctx context.Context, receivableID ReceivableID) ([]*ReceivableCollection, error)
+	FindByIncomeID(ctx context.Context, incomeID int) (*ReceivableCollection, error)
+	Delete(ctx context.Context, id ReceivableCollectionID) error
+}
+
+type ReceivableService struct {
+	receivableRepo ReceivableRepository
+	collectionRepo ReceivableCollectionRepository
+}
+
+func NewReceivableService(
+	receivableRepo ReceivableRepository,
+	collectionRepo ReceivableCollectionRepository,
+) *ReceivableService {
+	return &ReceivableService{receivableRepo: receivableRepo, collectionRepo: collectionRepo}
+}
+
+func (s *ReceivableService) Create(
+	ctx context.Context,
+	userID UserID,
+	name string,
+	receivableType ReceivableType,
+	currencyID CurrencyID,
+	currentBalance float64,
+	notes string,
+	asOfDate *time.Time,
+	details ReceivableDetails,
+) (*Receivable, error) {
+	receivable, err := NewReceivable(userID, name, receivableType, currencyID, currentBalance, notes, asOfDate, details)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.receivableRepo.Save(ctx, receivable); err != nil {
+		return nil, err
+	}
+	return receivable, nil
+}
+
+func (s *ReceivableService) List(ctx context.Context, userID UserID, includeArchived bool) ([]*Receivable, error) {
+	return s.receivableRepo.FindByUserID(ctx, userID, includeArchived)
+}
+
+func (s *ReceivableService) GetForUser(ctx context.Context, userID UserID, id ReceivableID) (*Receivable, error) {
+	receivable, err := s.receivableRepo.FindByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if receivable.UserID().Value() != userID.Value() {
+		return nil, errors.New("receivable not found")
+	}
+	return receivable, nil
+}
+
+func (s *ReceivableService) Update(
+	ctx context.Context,
+	userID UserID,
+	id ReceivableID,
+	name string,
+	receivableType ReceivableType,
+	currentBalance float64,
+	notes string,
+	asOfDate *time.Time,
+	details ReceivableDetails,
+) (*Receivable, error) {
+	receivable, err := s.GetForUser(ctx, userID, id)
+	if err != nil {
+		return nil, err
+	}
+	if err := receivable.Update(name, receivableType, currentBalance, notes, asOfDate, details); err != nil {
+		return nil, err
+	}
+	if err := s.receivableRepo.Save(ctx, receivable); err != nil {
+		return nil, err
+	}
+	return receivable, nil
+}
+
+func (s *ReceivableService) Archive(ctx context.Context, userID UserID, id ReceivableID) (*Receivable, error) {
+	receivable, err := s.GetForUser(ctx, userID, id)
+	if err != nil {
+		return nil, err
+	}
+	receivable.Archive()
+	if err := s.receivableRepo.Save(ctx, receivable); err != nil {
+		return nil, err
+	}
+	return receivable, nil
+}
+
+func (s *ReceivableService) Unarchive(ctx context.Context, userID UserID, id ReceivableID) (*Receivable, error) {
+	receivable, err := s.GetForUser(ctx, userID, id)
+	if err != nil {
+		return nil, err
+	}
+	receivable.Unarchive()
+	if err := s.receivableRepo.Save(ctx, receivable); err != nil {
+		return nil, err
+	}
+	return receivable, nil
+}
+
+func (s *ReceivableService) AttachCreateExpenseID(
+	ctx context.Context,
+	userID UserID,
+	id ReceivableID,
+	expenseID int,
+) (*Receivable, error) {
+	receivable, err := s.GetForUser(ctx, userID, id)
+	if err != nil {
+		return nil, err
+	}
+	receivable.SetCreateExpenseID(&expenseID)
+	if err := s.receivableRepo.Save(ctx, receivable); err != nil {
+		return nil, err
+	}
+	return receivable, nil
+}
+
+func (s *ReceivableService) RecordCollection(
+	ctx context.Context,
+	userID UserID,
+	id ReceivableID,
+	amount float64,
+	collectedAt time.Time,
+	incomeID *int,
+	note string,
+) (*Receivable, *ReceivableCollection, error) {
+	receivable, err := s.GetForUser(ctx, userID, id)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := receivable.ApplyCollection(amount); err != nil {
+		return nil, nil, err
+	}
+	collection, err := NewReceivableCollection(id, userID, amount, collectedAt, incomeID, note)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := s.receivableRepo.Save(ctx, receivable); err != nil {
+		return nil, nil, err
+	}
+	if s.collectionRepo != nil {
+		if err := s.collectionRepo.Save(ctx, collection); err != nil {
+			return nil, nil, err
+		}
+	}
+	return receivable, collection, nil
+}
+
+func (s *ReceivableService) ListCollections(ctx context.Context, userID UserID, id ReceivableID) ([]*ReceivableCollection, error) {
+	if _, err := s.GetForUser(ctx, userID, id); err != nil {
+		return nil, err
+	}
+	if s.collectionRepo == nil {
+		return []*ReceivableCollection{}, nil
+	}
+	return s.collectionRepo.FindByReceivableID(ctx, id)
+}
+
+func (s *ReceivableService) ReverseCollectionByIncomeID(ctx context.Context, userID UserID, incomeID int) error {
+	if s.collectionRepo == nil {
+		return nil
+	}
+	collection, err := s.collectionRepo.FindByIncomeID(ctx, incomeID)
+	if err != nil {
+		return err
+	}
+	if collection == nil {
+		return nil
+	}
+	if collection.UserID().Value() != userID.Value() {
+		return errors.New("receivable collection not found")
+	}
+
+	receivable, err := s.GetForUser(ctx, userID, collection.ReceivableID())
+	if err != nil {
+		return err
+	}
+	if err := receivable.ReverseCollection(collection.Amount()); err != nil {
+		return err
+	}
+	if err := s.receivableRepo.Save(ctx, receivable); err != nil {
+		return err
+	}
+	return s.collectionRepo.Delete(ctx, collection.ID())
+}
+
+func (s *ReceivableService) ReverseCreateExpenseByExpenseID(ctx context.Context, userID UserID, expenseID int) error {
+	receivable, err := s.receivableRepo.FindByCreateExpenseID(ctx, expenseID)
+	if err != nil {
+		return err
+	}
+	if receivable == nil {
+		return nil
+	}
+	if receivable.UserID().Value() != userID.Value() {
+		return errors.New("receivable not found")
+	}
+	receivable.Archive()
+	receivable.SetCreateExpenseID(nil)
+	return s.receivableRepo.Save(ctx, receivable)
+}

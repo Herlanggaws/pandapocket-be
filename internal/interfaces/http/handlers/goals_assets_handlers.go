@@ -361,6 +361,117 @@ func (h *FinanceHandlers) RecordLiabilityPayment(c *gin.Context) {
 	SuccessResponse(c, http.StatusCreated, response)
 }
 
+func (h *FinanceHandlers) CreateReceivable(c *gin.Context) {
+	userID := c.GetInt("user_id")
+	var req finance.CreateReceivableRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		ValidationErrorResponse(c, err.Error())
+		return
+	}
+	response, err := h.createReceivableUseCase.Execute(c.Request.Context(), userID, req)
+	if err != nil {
+		HandleError(c, err, http.StatusBadRequest)
+		return
+	}
+	SuccessResponse(c, http.StatusCreated, gin.H{"receivable": response})
+}
+
+func (h *FinanceHandlers) GetReceivables(c *gin.Context) {
+	userID := c.GetInt("user_id")
+	includeArchived := c.Query("include_archived") == "true" || c.Query("include_archived") == "1"
+	response, err := h.getReceivablesUseCase.Execute(c.Request.Context(), userID, includeArchived)
+	if err != nil {
+		HandleError(c, err, http.StatusBadRequest)
+		return
+	}
+	SuccessResponse(c, http.StatusOK, gin.H{"receivables": response})
+}
+
+func (h *FinanceHandlers) UpdateReceivable(c *gin.Context) {
+	userID := c.GetInt("user_id")
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		ValidationErrorResponse(c, "invalid receivable id")
+		return
+	}
+	var req finance.UpdateReceivableRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		ValidationErrorResponse(c, err.Error())
+		return
+	}
+	response, err := h.updateReceivableUseCase.Execute(c.Request.Context(), userID, id, req)
+	if err != nil {
+		HandleError(c, err, http.StatusBadRequest)
+		return
+	}
+	SuccessResponse(c, http.StatusOK, gin.H{"receivable": response})
+}
+
+func (h *FinanceHandlers) ArchiveReceivable(c *gin.Context) {
+	userID := c.GetInt("user_id")
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		ValidationErrorResponse(c, "invalid receivable id")
+		return
+	}
+	response, err := h.archiveReceivableUseCase.Execute(c.Request.Context(), userID, id)
+	if err != nil {
+		HandleError(c, err, http.StatusBadRequest)
+		return
+	}
+	SuccessResponse(c, http.StatusOK, gin.H{"receivable": response})
+}
+
+func (h *FinanceHandlers) UnarchiveReceivable(c *gin.Context) {
+	userID := c.GetInt("user_id")
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		ValidationErrorResponse(c, "invalid receivable id")
+		return
+	}
+	response, err := h.unarchiveReceivableUseCase.Execute(c.Request.Context(), userID, id)
+	if err != nil {
+		HandleError(c, err, http.StatusBadRequest)
+		return
+	}
+	SuccessResponse(c, http.StatusOK, gin.H{"receivable": response})
+}
+
+func (h *FinanceHandlers) GetReceivableCollections(c *gin.Context) {
+	userID := c.GetInt("user_id")
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		ValidationErrorResponse(c, "invalid receivable id")
+		return
+	}
+	response, err := h.listReceivableCollectionsUseCase.Execute(c.Request.Context(), userID, id)
+	if err != nil {
+		HandleError(c, err, http.StatusBadRequest)
+		return
+	}
+	SuccessResponse(c, http.StatusOK, gin.H{"collections": response})
+}
+
+func (h *FinanceHandlers) RecordReceivableCollection(c *gin.Context) {
+	userID := c.GetInt("user_id")
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		ValidationErrorResponse(c, "invalid receivable id")
+		return
+	}
+	var req finance.RecordReceivableCollectionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		ValidationErrorResponse(c, err.Error())
+		return
+	}
+	response, err := h.recordReceivableCollectionUseCase.Execute(c.Request.Context(), userID, id, req)
+	if err != nil {
+		HandleError(c, err, http.StatusBadRequest)
+		return
+	}
+	SuccessResponse(c, http.StatusCreated, response)
+}
+
 func (h *FinanceHandlers) CompleteOnboarding(c *gin.Context) {
 	userID := c.GetInt("user_id")
 	var req finance.CompleteOnboardingRequest

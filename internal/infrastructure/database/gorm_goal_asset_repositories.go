@@ -402,6 +402,199 @@ func toDomainLiabilityPayment(m LiabilityPayment) *finance.LiabilityPayment {
 	)
 }
 
+type GormReceivableRepository struct {
+	db *gorm.DB
+}
+
+func NewGormReceivableRepository(db *gorm.DB) *GormReceivableRepository {
+	return &GormReceivableRepository{db: db}
+}
+
+func (r *GormReceivableRepository) toDomain(model Receivable) *finance.Receivable {
+	var createExpenseID *int
+	if model.CreateExpenseID != nil {
+		v := int(*model.CreateExpenseID)
+		createExpenseID = &v
+	}
+	return finance.ReconstituteReceivable(
+		finance.NewReceivableID(int(model.ID)),
+		finance.NewUserID(int(model.UserID)),
+		model.Name,
+		finance.ReceivableType(model.Type),
+		finance.NewCurrencyID(int(model.CurrencyID)),
+		model.CurrentBalance,
+		model.Notes,
+		model.IsArchived,
+		model.AsOfDate,
+		model.CreatedAt,
+		finance.ReceivableDetails{
+			OriginalPrincipal: model.OriginalPrincipal,
+			NextDueDate:       model.NextDueDate,
+			CreateExpenseID:   createExpenseID,
+		},
+	)
+}
+
+func (r *GormReceivableRepository) Save(ctx context.Context, receivable *finance.Receivable) error {
+	model := &Receivable{
+		UserID:            uint(receivable.UserID().Value()),
+		Name:              receivable.Name(),
+		Type:              string(receivable.Type()),
+		CurrencyID:        uint(receivable.CurrencyID().Value()),
+		CurrentBalance:    receivable.CurrentBalance(),
+		OriginalPrincipal: receivable.OriginalPrincipal(),
+		NextDueDate:       receivable.NextDueDate(),
+		Notes:             receivable.Notes(),
+		IsArchived:        receivable.IsArchived(),
+		AsOfDate:          receivable.AsOfDate(),
+	}
+	if receivable.CreateExpenseID() != nil {
+		id := uint(*receivable.CreateExpenseID())
+		model.CreateExpenseID = &id
+	}
+	if receivable.ID().Value() != 0 {
+		model.ID = uint(receivable.ID().Value())
+		return r.db.WithContext(ctx).Model(&Receivable{}).Where("id = ?", model.ID).Updates(map[string]interface{}{
+			"name":               model.Name,
+			"type":               model.Type,
+			"current_balance":    model.CurrentBalance,
+			"original_principal": model.OriginalPrincipal,
+			"next_due_date":      model.NextDueDate,
+			"notes":              model.Notes,
+			"is_archived":        model.IsArchived,
+			"as_of_date":         model.AsOfDate,
+			"create_expense_id":  model.CreateExpenseID,
+			"updated_at":         time.Now(),
+		}).Error
+	}
+	if err := r.db.WithContext(ctx).Create(model).Error; err != nil {
+		return err
+	}
+	receivable.AssignID(finance.NewReceivableID(int(model.ID)))
+	return nil
+}
+
+func (r *GormReceivableRepository) FindByID(ctx context.Context, id finance.ReceivableID) (*finance.Receivable, error) {
+	var model Receivable
+	if err := r.db.WithContext(ctx).First(&model, id.Value()).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, errors.New("receivable not found")
+		}
+		return nil, err
+	}
+	return r.toDomain(model), nil
+}
+
+func (r *GormReceivableRepository) FindByUserID(ctx context.Context, userID finance.UserID, includeArchived bool) ([]*finance.Receivable, error) {
+	query := r.db.WithContext(ctx).Where("user_id = ?", userID.Value())
+	if !includeArchived {
+		query = query.Where("is_archived = ?", false)
+	}
+	var models []Receivable
+	if err := query.Order("name ASC").Find(&models).Error; err != nil {
+		return nil, err
+	}
+	result := make([]*finance.Receivable, 0, len(models))
+	for _, m := range models {
+		result = append(result, r.toDomain(m))
+	}
+	return result, nil
+}
+
+func (r *GormReceivableRepository) FindByCreateExpenseID(ctx context.Context, expenseID int) (*finance.Receivable, error) {
+	var model Receivable
+	err := r.db.WithContext(ctx).Where("create_expense_id = ?", expenseID).First(&model).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return r.toDomain(model), nil
+}
+
+type GormReceivableCollectionRepository struct {
+	db *gorm.DB
+}
+
+func NewGormReceivableCollectionRepository(db *gorm.DB) *GormReceivableCollectionRepository {
+	return &GormReceivableCollectionRepository{db: db}
+}
+
+func (r *GormReceivableCollectionRepository) Save(ctx context.Context, collection *finance.ReceivableCollection) error {
+	model := &ReceivableCollection{
+		ReceivableID: uint(collection.ReceivableID().Value()),
+		UserID:       uint(collection.UserID().Value()),
+		Amount:       collection.Amount(),
+		CollectedAt:  collection.CollectedAt(),
+		Note:         collection.Note(),
+	}
+	if collection.IncomeID() != nil {
+		id := uint(*collection.IncomeID())
+		model.IncomeID = &id
+	}
+	if collection.ID().Value() != 0 {
+		model.ID = uint(collection.ID().Value())
+	}
+	if err := r.db.WithContext(ctx).Create(model).Error; err != nil {
+		return err
+	}
+	collection.AssignID(finance.NewReceivableCollectionID(int(model.ID)))
+	return nil
+}
+
+func (r *GormReceivableCollectionRepository) FindByReceivableID(
+	ctx context.Context,
+	receivableID finance.ReceivableID,
+) ([]*finance.ReceivableCollection, error) {
+	var models []ReceivableCollection
+	if err := r.db.WithContext(ctx).
+		Where("receivable_id = ?", receivableID.Value()).
+		Order("collected_at DESC, id DESC").
+		Find(&models).Error; err != nil {
+		return nil, err
+	}
+	result := make([]*finance.ReceivableCollection, 0, len(models))
+	for _, m := range models {
+		result = append(result, toDomainReceivableCollection(m))
+	}
+	return result, nil
+}
+
+func (r *GormReceivableCollectionRepository) FindByIncomeID(ctx context.Context, incomeID int) (*finance.ReceivableCollection, error) {
+	var model ReceivableCollection
+	err := r.db.WithContext(ctx).Where("income_id = ?", incomeID).First(&model).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return toDomainReceivableCollection(model), nil
+}
+
+func (r *GormReceivableCollectionRepository) Delete(ctx context.Context, id finance.ReceivableCollectionID) error {
+	return r.db.WithContext(ctx).Delete(&ReceivableCollection{}, id.Value()).Error
+}
+
+func toDomainReceivableCollection(m ReceivableCollection) *finance.ReceivableCollection {
+	var incomeID *int
+	if m.IncomeID != nil {
+		v := int(*m.IncomeID)
+		incomeID = &v
+	}
+	return finance.ReconstituteReceivableCollection(
+		finance.NewReceivableCollectionID(int(m.ID)),
+		finance.NewReceivableID(int(m.ReceivableID)),
+		finance.NewUserID(int(m.UserID)),
+		m.Amount,
+		m.CollectedAt,
+		incomeID,
+		m.Note,
+		m.CreatedAt,
+	)
+}
+
 type GormGoalContributionRepository struct {
 	db *gorm.DB
 }

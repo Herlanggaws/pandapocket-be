@@ -102,18 +102,21 @@ type RecordLiabilityPaymentRequest struct {
 }
 
 type NetWorthSummaryResponse struct {
-	CurrencyID              int     `json:"currency_id"`
-	LiquidNetWorth          float64 `json:"liquid_net_worth"`
-	AssetsTotal             float64 `json:"assets_total"`
-	LiabilitiesTotal        float64 `json:"liabilities_total"`
-	NetWorth                float64 `json:"net_worth"`
-	FxAsOf                  *string `json:"fx_as_of"`
-	ConvertedWalletCount    int     `json:"converted_wallet_count"`
-	ConvertedAssetCount     int     `json:"converted_asset_count"`
-	ConvertedLiabilityCount int     `json:"converted_liability_count"`
-	ExcludedAssetCount      int     `json:"excluded_asset_count"`
-	ExcludedLiabilityCount  int     `json:"excluded_liability_count"`
-	ExcludedWalletCount     int     `json:"excluded_wallet_count"`
+	CurrencyID               int     `json:"currency_id"`
+	LiquidNetWorth           float64 `json:"liquid_net_worth"`
+	AssetsTotal              float64 `json:"assets_total"`
+	ReceivablesTotal         float64 `json:"receivables_total"`
+	LiabilitiesTotal         float64 `json:"liabilities_total"`
+	NetWorth                 float64 `json:"net_worth"`
+	FxAsOf                   *string `json:"fx_as_of"`
+	ConvertedWalletCount     int     `json:"converted_wallet_count"`
+	ConvertedAssetCount      int     `json:"converted_asset_count"`
+	ConvertedReceivableCount int     `json:"converted_receivable_count"`
+	ConvertedLiabilityCount  int     `json:"converted_liability_count"`
+	ExcludedAssetCount       int     `json:"excluded_asset_count"`
+	ExcludedReceivableCount  int     `json:"excluded_receivable_count"`
+	ExcludedLiabilityCount   int     `json:"excluded_liability_count"`
+	ExcludedWalletCount      int     `json:"excluded_wallet_count"`
 }
 
 func parseOptionalDate(value *string) (*time.Time, error) {
@@ -464,6 +467,7 @@ type GetNetWorthSummaryUseCase struct {
 	walletSummaryUseCase *GetWalletSummaryUseCase
 	walletService        *finance.WalletService
 	assetService         *finance.AssetService
+	receivableService    *finance.ReceivableService
 	liabilityService     *finance.LiabilityService
 	currencyService      *finance.CurrencyService
 	fxRates              finance.FxRateRepository
@@ -473,6 +477,7 @@ func NewGetNetWorthSummaryUseCase(
 	walletSummaryUseCase *GetWalletSummaryUseCase,
 	walletService *finance.WalletService,
 	assetService *finance.AssetService,
+	receivableService *finance.ReceivableService,
 	liabilityService *finance.LiabilityService,
 	currencyService *finance.CurrencyService,
 	fxRates finance.FxRateRepository,
@@ -481,6 +486,7 @@ func NewGetNetWorthSummaryUseCase(
 		walletSummaryUseCase: walletSummaryUseCase,
 		walletService:        walletService,
 		assetService:         assetService,
+		receivableService:    receivableService,
 		liabilityService:     liabilityService,
 		currencyService:      currencyService,
 		fxRates:              fxRates,
@@ -513,6 +519,13 @@ func (uc *GetNetWorthSummaryUseCase) Execute(ctx context.Context, userID int) (*
 	if err != nil {
 		return nil, err
 	}
+	var receivables []*finance.Receivable
+	if uc.receivableService != nil {
+		receivables, err = uc.receivableService.List(ctx, owner, false)
+		if err != nil {
+			return nil, err
+		}
+	}
 	liabilities, err := uc.liabilityService.List(ctx, owner, false)
 	if err != nil {
 		return nil, err
@@ -528,6 +541,9 @@ func (uc *GetNetWorthSummaryUseCase) Execute(ctx context.Context, userID int) (*
 	assetsTotal, convertedAssets, excludedAssets := sumConverted(assets, catalog, book, primaryID, primaryCode, func(asset *finance.Asset) (int, float64) {
 		return asset.CurrencyID().Value(), asset.CurrentValue()
 	})
+	receivablesTotal, convertedReceivables, excludedReceivables := sumConverted(receivables, catalog, book, primaryID, primaryCode, func(receivable *finance.Receivable) (int, float64) {
+		return receivable.CurrencyID().Value(), receivable.CurrentBalance()
+	})
 	liabilitiesTotal, convertedLiabilities, excludedLiabilities := sumConverted(liabilities, catalog, book, primaryID, primaryCode, func(liability *finance.Liability) (int, float64) {
 		return liability.CurrencyID().Value(), liability.CurrentBalance()
 	})
@@ -539,18 +555,21 @@ func (uc *GetNetWorthSummaryUseCase) Execute(ctx context.Context, userID int) (*
 	}
 
 	return &NetWorthSummaryResponse{
-		CurrencyID:              primaryID,
-		LiquidNetWorth:          liquid,
-		AssetsTotal:             assetsTotal,
-		LiabilitiesTotal:        liabilitiesTotal,
-		NetWorth:                liquid + assetsTotal - liabilitiesTotal,
-		FxAsOf:                  fxAsOf,
-		ConvertedWalletCount:    convertedWallets,
-		ConvertedAssetCount:     convertedAssets,
-		ConvertedLiabilityCount: convertedLiabilities,
-		ExcludedAssetCount:      excludedAssets,
-		ExcludedLiabilityCount:  excludedLiabilities,
-		ExcludedWalletCount:     excludedWallets,
+		CurrencyID:               primaryID,
+		LiquidNetWorth:           liquid,
+		AssetsTotal:              assetsTotal,
+		ReceivablesTotal:         receivablesTotal,
+		LiabilitiesTotal:         liabilitiesTotal,
+		NetWorth:                 liquid + assetsTotal + receivablesTotal - liabilitiesTotal,
+		FxAsOf:                   fxAsOf,
+		ConvertedWalletCount:     convertedWallets,
+		ConvertedAssetCount:      convertedAssets,
+		ConvertedReceivableCount: convertedReceivables,
+		ConvertedLiabilityCount:  convertedLiabilities,
+		ExcludedAssetCount:       excludedAssets,
+		ExcludedReceivableCount:  excludedReceivables,
+		ExcludedLiabilityCount:   excludedLiabilities,
+		ExcludedWalletCount:      excludedWallets,
 	}, nil
 }
 

@@ -16,18 +16,19 @@ const (
 
 // AdvisorContextDeps gathers read-only finance use cases for Tanya AI context.
 type AdvisorContextDeps struct {
-	Analytics      *appFinance.GetAnalyticsUseCase
-	Liabilities    *appFinance.GetLiabilitiesUseCase
-	Assets         *appFinance.GetAssetsUseCase
-	Goals          *appFinance.GetGoalsUseCase
-	Budgets        *appFinance.GetBudgetsUseCase
-	NetWorth       *appFinance.GetNetWorthSummaryUseCase
-	Health         *appFinance.GetHealthScoreUseCase
-	Wallets        *appFinance.GetWalletsUseCase
-	WalletSummary  *appFinance.GetWalletSummaryUseCase
-	Recurring      *appFinance.GetRecurringTransactionsUseCase
-	Transactions   *appFinance.GetAllTransactionsUseCase
-	Transfers      *appFinance.GetTransfersUseCase
+	Analytics       *appFinance.GetAnalyticsUseCase
+	Liabilities     *appFinance.GetLiabilitiesUseCase
+	Receivables     *appFinance.GetReceivablesUseCase
+	Assets          *appFinance.GetAssetsUseCase
+	Goals           *appFinance.GetGoalsUseCase
+	Budgets         *appFinance.GetBudgetsUseCase
+	NetWorth        *appFinance.GetNetWorthSummaryUseCase
+	Health          *appFinance.GetHealthScoreUseCase
+	Wallets         *appFinance.GetWalletsUseCase
+	WalletSummary   *appFinance.GetWalletSummaryUseCase
+	Recurring       *appFinance.GetRecurringTransactionsUseCase
+	Transactions    *appFinance.GetAllTransactionsUseCase
+	Transfers       *appFinance.GetTransfersUseCase
 	PrimaryCurrency *appFinance.GetDefaultCurrencyUseCase
 }
 
@@ -51,6 +52,17 @@ type compactAsset struct {
 	CurrencyID   int     `json:"currency_id"`
 	CurrentValue float64 `json:"current_value"`
 	Notes        string  `json:"notes,omitempty"`
+}
+
+type compactReceivable struct {
+	Name                      string   `json:"name"`
+	Type                      string   `json:"type"`
+	CurrencyID                int      `json:"currency_id"`
+	CurrentBalance            float64  `json:"current_balance"`
+	OriginalPrincipal         *float64 `json:"original_principal,omitempty"`
+	NextDueDate               *string  `json:"next_due_date,omitempty"`
+	CollectionProgressPercent *float64 `json:"collection_progress_percent,omitempty"`
+	Notes                     string   `json:"notes,omitempty"`
 }
 
 type compactGoal struct {
@@ -128,8 +140,10 @@ func buildAdvisorContextJSON(ctx context.Context, userID int, credits *CreditsVi
 		"generated_at": time.Now().UTC().Format(time.RFC3339),
 		"credits":      credits,
 		"notes": "Full Berbudget snapshot for this user. Amounts use each row's currency_id; prefer primary_currency. " +
-			"liabilities = debts (mortgage/loan/credit_card/other). recent_transactions are the latest " +
-			"~45 days (capped). Use only this JSON — do not invent missing accounts.",
+			"liabilities = debts you owe (mortgage/loan/credit_card/other). " +
+			"receivables = money others owe you (personal_loan/invoice/other). " +
+			"net_worth = liquid + assets + receivables − liabilities. " +
+			"recent_transactions are the latest ~45 days (capped). Use only this JSON — do not invent missing accounts.",
 	}
 	if deps == nil {
 		raw, _ := json.Marshal(payload)
@@ -232,6 +246,26 @@ func buildAdvisorContextJSON(ctx context.Context, userID int, credits *CreditsVi
 				})
 			}
 			payload["liabilities"] = out
+		}
+	}
+
+	if deps.Receivables != nil {
+		rows, err := deps.Receivables.Execute(ctx, userID, false)
+		if err == nil {
+			out := make([]compactReceivable, 0, len(rows))
+			for _, row := range rows {
+				out = append(out, compactReceivable{
+					Name:                      row.Name,
+					Type:                      row.Type,
+					CurrencyID:                row.CurrencyID,
+					CurrentBalance:            row.CurrentBalance,
+					OriginalPrincipal:         row.OriginalPrincipal,
+					NextDueDate:               row.NextDueDate,
+					CollectionProgressPercent: row.CollectionProgressPercent,
+					Notes:                     row.Notes,
+				})
+			}
+			payload["receivables"] = out
 		}
 	}
 

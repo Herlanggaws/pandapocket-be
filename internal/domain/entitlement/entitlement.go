@@ -18,6 +18,7 @@ const (
 	FreeWallets              = 1
 	FreeAssets               = 1
 	FreeDebts                = 1
+	FreeReceivables          = 1
 )
 
 const (
@@ -31,6 +32,7 @@ const (
 	FeatureInsights     = "insights"
 	FeatureAssets       = "assets"
 	FeatureDebts        = "debts"
+	FeatureReceivables  = "receivables"
 	FeatureAIAdvisor    = "ai_advisor"
 	FeatureMCP          = "mcp"
 )

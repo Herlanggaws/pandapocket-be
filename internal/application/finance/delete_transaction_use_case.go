@@ -10,6 +10,7 @@ import (
 type DeleteTransactionUseCase struct {
 	transactionService *finance.TransactionService
 	liabilityService   *finance.LiabilityService
+	receivableService  *finance.ReceivableService
 	goalService        *finance.GoalService
 }
 
@@ -17,11 +18,13 @@ type DeleteTransactionUseCase struct {
 func NewDeleteTransactionUseCase(
 	transactionService *finance.TransactionService,
 	liabilityService *finance.LiabilityService,
+	receivableService *finance.ReceivableService,
 	goalService *finance.GoalService,
 ) *DeleteTransactionUseCase {
 	return &DeleteTransactionUseCase{
 		transactionService: transactionService,
 		liabilityService:   liabilityService,
+		receivableService:  receivableService,
 		goalService:        goalService,
 	}
 }
@@ -43,15 +46,27 @@ func (uc *DeleteTransactionUseCase) Execute(ctx context.Context, transactionIDSt
 				return err
 			}
 		}
+		if uc.receivableService != nil {
+			if err := uc.receivableService.ReverseCreateExpenseByExpenseID(ctx, userIDDomain, transactionIDInt); err != nil {
+				return err
+			}
+		}
 		if uc.goalService != nil {
 			if err := uc.goalService.ReverseContributionByExpenseID(ctx, userIDDomain, transactionIDInt); err != nil {
 				return err
 			}
 		}
 	}
-	if expectedType == finance.TransactionTypeIncome && uc.goalService != nil {
-		if err := uc.goalService.ReverseContributionByIncomeID(ctx, userIDDomain, transactionIDInt); err != nil {
-			return err
+	if expectedType == finance.TransactionTypeIncome {
+		if uc.receivableService != nil {
+			if err := uc.receivableService.ReverseCollectionByIncomeID(ctx, userIDDomain, transactionIDInt); err != nil {
+				return err
+			}
+		}
+		if uc.goalService != nil {
+			if err := uc.goalService.ReverseContributionByIncomeID(ctx, userIDDomain, transactionIDInt); err != nil {
+				return err
+			}
 		}
 	}
 

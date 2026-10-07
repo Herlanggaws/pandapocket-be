@@ -103,7 +103,12 @@ CORS currently allows all origins (`*`). Allowed request headers: `Origin`, `Con
 | POST | `/api/liabilities/:id/archive` | Yes | |
 | POST | `/api/liabilities/:id/unarchive` | Yes | |
 | GET/POST | `/api/liabilities/:id/payments` | Yes | Payment history / record payment |
-| GET | `/api/net-worth/summary` | Yes | Liquid + assets − liabilities in primary currency; system currencies converted (C4) |
+| GET/POST | `/api/receivables` | Yes | Receivables / piutang |
+| PUT | `/api/receivables/:id` | Yes | |
+| POST | `/api/receivables/:id/archive` | Yes | |
+| POST | `/api/receivables/:id/unarchive` | Yes | |
+| GET/POST | `/api/receivables/:id/collections` | Yes | Collection history / record collection |
+| GET | `/api/net-worth/summary` | Yes | Liquid + assets + receivables − liabilities in primary currency; system currencies converted (C4) |
 | GET/PUT | `/api/preferences` | Yes | User preferences & onboarding |
 | GET | `/api/me/subscription` | Yes | Current billing subscription + `is_pro` |
 | GET | `/api/me/mcp-token` | Yes (Pro) | MCP token status (prefix only, no secret) |
@@ -1697,11 +1702,11 @@ Deleting the linked expense / income / transfer rolls back the contribution (man
 
 ---
 
-## Assets & Liabilities
+## Assets, Liabilities & Receivables
 
 Manual balance-sheet positions (no market price feeds). Wallets remain liquid assets. `GET /api/net-worth/summary` converts system currencies into the primary currency using a cached daily ECB rate.
 
-**Free limits:** max **1** non-archived asset and **1** non-archived liability. Extra creates → **403** `PREMIUM_REQUIRED` (`feature`: `assets` / `debts`). GET list + net-worth summary stay open.
+**Free limits:** max **1** non-archived asset, **1** liability, and **1** receivable. Extra creates → **403** `PREMIUM_REQUIRED` (`feature`: `assets` / `debts` / `receivables`). GET list + net-worth summary stay open.
 
 ### Assets
 
@@ -1761,9 +1766,62 @@ Records a payment and reduces `current_balance`. Optionally creates an expense o
 }
 ```
 
+### Receivables / Piutang
+
+Money others owe the user. Not Debts (you owe) and not Bills (schedule).
+
+`type`: `personal_loan` | `invoice` | `other`
+
+Create body fields:
+- `name`, `type`, `currency_id`, `current_balance`
+- `original_principal` (optional; defaults to `current_balance` on create when omitted)
+- `next_due_date` (`YYYY-MM-DD`, optional)
+- `notes`, `as_of_date`
+- `create_expense` (optional): when true and balance > 0, logs an expense (Receivable category) and stores `create_expense_id`
+- `category_id`, `wallet_id` (optional, with `create_expense`)
+
+Response extras:
+- `collection_progress_percent` when `original_principal` is set
+- `create_expense_id` when create logged an expense
+
+Deleting the linked create expense archives the receivable and clears `create_expense_id`.
+
+- `GET/POST /api/receivables`
+- `PUT /api/receivables/:id`
+- `POST /api/receivables/:id/archive`
+- `POST /api/receivables/:id/unarchive`
+- `GET /api/receivables/:id/collections`
+- `POST /api/receivables/:id/collections`
+
+#### POST /api/receivables/:id/collections
+
+Records a collection and reduces `current_balance`. Optionally creates an income (Receivable category). Deleting that income reverses the collection.
+
+```json
+{
+  "amount": 250000,
+  "collected_at": "2026-10-07",
+  "note": "Partial repayment",
+  "create_income": true,
+  "category_id": null,
+  "wallet_id": null
+}
+```
+
+```json
+{
+  "status": "success",
+  "data": {
+    "receivable": { "id": 1, "current_balance": 750000 },
+    "collection": { "id": 1, "amount": 250000, "collected_at": "2026-10-07", "income_id": 55 }
+  },
+  "error": null
+}
+```
+
 ### GET /api/net-worth/summary
 
-Totals are in the user's **primary** currency. Wallets, assets, and liabilities in another **system** currency are converted with the cached Frankfurter (ECB) rate (`amount * rate[primary] / rate[source]`, pivot EUR). Custom currencies and codes with no rate stay out of the sums and increment `excluded_*`. A missing rate does not fail the request. Insights and `GET /api/wallets/summary` stay primary-only.
+Totals are in the user's **primary** currency. Wallets, assets, receivables, and liabilities in another **system** currency are converted with the cached Frankfurter (ECB) rate (`amount * rate[primary] / rate[source]`, pivot EUR). Custom currencies and codes with no rate stay out of the sums and increment `excluded_*`. A missing rate does not fail the request. Insights and `GET /api/wallets/summary` stay primary-only.
 
 ```json
 {
@@ -1772,13 +1830,16 @@ Totals are in the user's **primary** currency. Wallets, assets, and liabilities 
     "currency_id": 1,
     "liquid_net_worth": 1250000,
     "assets_total": 500000000,
+    "receivables_total": 1000000,
     "liabilities_total": 200000000,
-    "net_worth": 301250000,
+    "net_worth": 302250000,
     "fx_as_of": "2026-09-26",
     "converted_wallet_count": 1,
     "converted_asset_count": 0,
+    "converted_receivable_count": 0,
     "converted_liability_count": 0,
     "excluded_asset_count": 0,
+    "excluded_receivable_count": 0,
     "excluded_liability_count": 0,
     "excluded_wallet_count": 0
   },
@@ -1786,7 +1847,7 @@ Totals are in the user's **primary** currency. Wallets, assets, and liabilities 
 }
 ```
 
-`net_worth = liquid_net_worth + assets_total − liabilities_total`
+`net_worth = liquid_net_worth + assets_total + receivables_total − liabilities_total`
 
 `fx_as_of` is `YYYY-MM-DD` or `null` when no rate book is cached. `converted_*` counts items included via FX. `excluded_*` counts items that could not be converted.
 
@@ -2147,6 +2208,7 @@ Free users are limited on **create** writes. GET list/read stays open (including
 | Create wallet (non-archived) | max **1** | Unlimited |
 | Create asset (non-archived) | max **1** | Unlimited |
 | Create liability / debt (non-archived) | max **1** | Unlimited |
+| Create receivable / piutang (non-archived) | max **1** | Unlimited |
 
 Over limit / Pro-only → **403** with:
 
@@ -2192,7 +2254,7 @@ Authenticated. Issues a random confirmation string (TTL ~5 minutes). Previous ch
 
 ### POST /api/account/reset
 
-Authenticated. Requires exact match of `confirmation_text` from the active challenge (case-sensitive). On success, hard-deletes user-owned rows: pending transactions, liability payments, recurring, transfers, expenses, incomes, budgets, logging streak freezes, goal milestones, goals, assets, liabilities, wallets, health snapshots, notifications, user-owned categories/currencies, preferences, password-reset tokens, and the challenge itself.
+Authenticated. Requires exact match of `confirmation_text` from the active challenge (case-sensitive). On success, hard-deletes user-owned rows: pending transactions, liability payments, receivable collections, recurring, transfers, expenses, incomes, budgets, logging streak freezes, goal milestones, goals, assets, liabilities, receivables, wallets, health snapshots, notifications, user-owned categories/currencies, preferences, password-reset tokens, and the challenge itself.
 
 **Body:**
 ```json
@@ -2648,6 +2710,14 @@ Keep this file in sync with the running API. When routes, request/response shape
 ---
 
 ## Version History
+
+- **v2.48.0**: **Receivables / piutang (C11)**
+  - `GET/POST /api/receivables`, `PUT /api/receivables/:id`, archive/unarchive, `GET/POST /api/receivables/:id/collections`
+  - Optional expense on create (`create_expense`); optional income on collection (`create_income`); reverse on tx delete
+  - Free max 1 non-archived (`feature`: `receivables`); Pro unlimited
+  - `GET /api/net-worth/summary`: `receivables_total`, converted/excluded receivable counts; formula includes receivables
+  - Account wipe deletes receivable collections then receivables
+  - Tanya AI snapshot includes `receivables`
 
 - **v2.47.0**: **Pro 6-month checkout**
   - `POST /api/billing/checkout` accepts `interval`: `monthly` (19000), `semiannual` (99000), or `yearly` (149000)

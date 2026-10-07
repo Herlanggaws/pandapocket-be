@@ -164,6 +164,8 @@ func autoMigrate(db *gorm.DB) error {
 		&Asset{},
 		&Liability{},
 		&LiabilityPayment{},
+		&Receivable{},
+		&ReceivableCollection{},
 		&GoalContribution{},
 		&HealthScoreSnapshot{},
 		&LoggingStreakFreeze{},
@@ -215,6 +217,9 @@ func createDefaultData(db *gorm.DB) error {
 	if err := ensureDebtCategory(db); err != nil {
 		return err
 	}
+	if err := ensureReceivableCategories(db); err != nil {
+		return err
+	}
 
 	// Create default currencies
 	err = createDefaultCurrenciesGorm(db)
@@ -235,6 +240,25 @@ func ensureDebtCategory(db *gorm.DB) error {
 		return err
 	}
 	return db.Create(&Category{Name: "Debt", Color: "#DC2626", IsDefault: true, CategoryType: "expense"}).Error
+}
+
+func ensureReceivableCategories(db *gorm.DB) error {
+	if err := ensureNamedDefaultCategory(db, "Receivable", "expense", "#0D9488"); err != nil {
+		return err
+	}
+	return ensureNamedDefaultCategory(db, "Receivable", "income", "#0D9488")
+}
+
+func ensureNamedDefaultCategory(db *gorm.DB, name, categoryType, color string) error {
+	var existing Category
+	err := db.Where("name = ? AND is_default = ? AND category_type = ?", name, true, categoryType).First(&existing).Error
+	if err == nil {
+		return nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return err
+	}
+	return db.Create(&Category{Name: name, Color: color, IsDefault: true, CategoryType: categoryType}).Error
 }
 
 // createDefaultCategoriesGorm creates default categories using GORM
