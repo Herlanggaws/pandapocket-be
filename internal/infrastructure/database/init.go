@@ -99,9 +99,12 @@ func initGormDB() (*gorm.DB, error) {
 			host, port, user, dbname)
 	}
 
-	// Configure GORM
+	logMode := logger.Info
+	if os.Getenv("GIN_MODE") == "release" {
+		logMode = logger.Warn
+	}
 	config := &gorm.Config{
-		Logger:                                   logger.Default.LogMode(logger.Info),
+		Logger:                                   logger.Default.LogMode(logMode),
 		DisableForeignKeyConstraintWhenMigrating: true,
 		SkipDefaultTransaction:                   true,
 	}

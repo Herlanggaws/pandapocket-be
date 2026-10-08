@@ -254,6 +254,8 @@ Register a new user account. Also creates a billing subscription with a **14-day
 
 The access token expires in 15 minutes. The response still includes `refresh_token` for mobile clients. Browsers also receive `Set-Cookie: bb_refresh` (`HttpOnly`, `SameSite=Lax`, `Path=/`, `Secure` only on HTTPS).
 
+`password` must be at least 8 characters and must not equal the email. This route, login, forgot, and reset return **429** `RATE_LIMITED` with `Retry-After` when the IP or email exceeds the 15-minute limit (register and forgot: 5; login and reset: 10). The error message does not say whether the email is registered.
+
 **Request Body:**
 ```json
 {
@@ -280,7 +282,7 @@ The access token expires in 15 minutes. The response still includes `refresh_tok
 
 ### POST /api/auth/login
 
-Login to get access and refresh tokens. The access token expires in 15 minutes. `JWT_EXPIRATION_HOURS` does not change that. The response includes `refresh_token` for mobile clients and sets the `bb_refresh` cookie described on register.
+Login to get access and refresh tokens. The access token expires in 15 minutes. `JWT_EXPIRATION_HOURS` does not change that. The response includes `refresh_token` for mobile clients and sets the `bb_refresh` cookie described on register. Over the limit, the response is **429** `RATE_LIMITED` (10 attempts per IP and per email in 15 minutes).
 
 **Request Body:**
 ```json
@@ -310,7 +312,7 @@ Login to get access and refresh tokens. The access token expires in 15 minutes. 
 
 Exchange a refresh token for a new access token and refresh token pair. The previous refresh token is revoked.
 
-Send `refresh_token` in the JSON body (mobile). When the body is empty, the server reads cookie `bb_refresh`. A non-empty body is used even if a cookie is also present. Success sets a new `bb_refresh` cookie and still returns `refresh_token` in JSON. The database stores SHA-256 of both tokens, not the JWT itself.
+Send `refresh_token` in the JSON body (mobile). When the body is empty, the server reads cookie `bb_refresh`. A non-empty body is used even if a cookie is also present. Success sets a new `bb_refresh` cookie and still returns `refresh_token` in JSON. The database stores SHA-256 of both tokens, not the JWT itself. More than 60 refreshes from one IP in 15 minutes returns **429** `RATE_LIMITED`.
 
 **Request Body:**
 ```json
@@ -359,7 +361,7 @@ Access tokens whose row is missing or `revoked` are rejected with **401** on lat
 
 ### POST /api/auth/forgot
 
-Request a password reset email/link for the given address.
+Request a password reset email/link for the given address. More than 5 requests per IP or per email in 15 minutes returns **429** `RATE_LIMITED`. The error message does not say whether the email is registered.
 
 **Request Body:**
 ```json
@@ -382,7 +384,7 @@ Request a password reset email/link for the given address.
 
 ### POST /api/auth/reset-password
 
-Reset password using the token from the forgot-password flow. Every session for that user is revoked.
+Reset password using the token from the forgot-password flow. Every session for that user is revoked. `new_password` must be at least 8 characters and must not equal the account email. More than 10 requests per IP or per email in 15 minutes returns **429** `RATE_LIMITED`.
 
 **Request Body:**
 ```json
@@ -406,7 +408,7 @@ Reset password using the token from the forgot-password flow. Every session for 
 
 ### POST /api/auth/change-password
 
-Change password for the authenticated user. Requires `Authorization: Bearer <token>`. Every session for that user is revoked, including the token used for this request.
+Change password for the authenticated user. Requires `Authorization: Bearer <token>`. Every session for that user is revoked, including the token used for this request. `new_password` must be at least 8 characters and must not equal the account email.
 
 **Request Body:**
 ```json
@@ -2741,7 +2743,7 @@ Keep this file in sync with the running API. When routes, request/response shape
 
 - The API uses Domain-Driven Design (DDD) architecture
 - Built with Go and Gin framework for HTTP routing
-- Authentication uses a 15-minute bearer access token plus a rotating refresh token. Browsers keep the refresh token in cookie `bb_refresh`. The `tokens` table stores SHA-256 hashes, not the JWTs
+- Authentication uses a 15-minute bearer access token plus a rotating refresh token. Browsers keep the refresh token in cookie `bb_refresh`. The `tokens` table stores SHA-256 hashes, not the JWTs. Admin routes load the role from the database. Access and refresh tokens must be HS256
 - CORS allows the Berbudget web origins listed above, with credentials
 - All timestamps are in UTC format
 - Date formats should be in `YYYY-MM-DD` format for input
@@ -2752,6 +2754,13 @@ Keep this file in sync with the running API. When routes, request/response shape
 ---
 
 ## Version History
+
+- **v2.55.0**: **Auth limits, database admin role, and stricter JWT**
+  - Login and reset: 10 attempts per IP and per email in 15 minutes. Register and forgot: 5. Refresh: 60 per IP
+  - Over the limit: **429** `RATE_LIMITED` and `Retry-After`. The message does not reveal whether the email exists
+  - Register `password` is at least 8 characters. Register, change, and reset reject a password equal to the email
+  - Admin routes load `role` from the database. Access and refresh tokens must use HS256
+  - The process exits before serving if `JWT_SECRET` or `REFRESH_TOKEN_SECRET` is empty or still a built-in default
 
 - **v2.54.0**: **Doit webhook bound to recorded payments**
   - Checkout and AI top-up store `pending_payments` (`payment_id`, user, kind, interval or pack, amount)

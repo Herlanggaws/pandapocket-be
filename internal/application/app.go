@@ -512,6 +512,10 @@ func NewApp(db *gorm.DB) *App {
 // SetupRoutes sets up all the HTTP routes
 func (app *App) SetupRoutes() *gin.Engine {
 	r := gin.Default()
+	if err := r.SetTrustedProxies([]string{"127.0.0.1", "::1"}); err != nil {
+		log.Printf("trusted proxies: %v", err)
+	}
+	authLimits := middleware.NewAuthAttemptLimiter(15 * time.Minute)
 
 	// CORS configuration
 	config := cors.DefaultConfig()
@@ -527,12 +531,12 @@ func (app *App) SetupRoutes() *gin.Engine {
 	{
 		auth := api.Group("/auth")
 		{
-			auth.POST("/register", app.IdentityHandlers.Register)
-			auth.POST("/login", app.IdentityHandlers.Login)
-			auth.POST("/refresh", app.IdentityHandlers.RefreshToken)
+			auth.POST("/register", authLimits.Limit("register", 5, true), app.IdentityHandlers.Register)
+			auth.POST("/login", authLimits.Limit("login", 10, true), app.IdentityHandlers.Login)
+			auth.POST("/refresh", authLimits.Limit("refresh", 60, false), app.IdentityHandlers.RefreshToken)
 			auth.POST("/logout", app.AuthMiddleware.RequireAuth(), app.IdentityHandlers.Logout)
-			auth.POST("/forgot", app.IdentityHandlers.ForgotPassword)
-			auth.POST("/reset-password", app.IdentityHandlers.ResetPassword)
+			auth.POST("/forgot", authLimits.Limit("forgot", 5, true), app.IdentityHandlers.ForgotPassword)
+			auth.POST("/reset-password", authLimits.Limit("reset", 10, true), app.IdentityHandlers.ResetPassword)
 
 			auth.POST("/change-password", app.AuthMiddleware.RequireAuth(), app.IdentityHandlers.ChangePassword)
 			auth.DELETE("/account", app.AuthMiddleware.RequireAuth(), app.IdentityHandlers.DeleteAccount)

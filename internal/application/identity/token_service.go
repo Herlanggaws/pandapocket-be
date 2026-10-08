@@ -73,6 +73,25 @@ func NewTokenService(repo identity.TokenRepository) TokenService {
 	}
 }
 
+func hs256Key(secret string) jwt.Keyfunc {
+	return func(token *jwt.Token) (interface{}, error) {
+		if token.Method != jwt.SigningMethodHS256 {
+			return nil, errors.New("unexpected signing method")
+		}
+		return []byte(secret), nil
+	}
+}
+
+// RefuseDefaultTokenSecrets stops startup when token secrets are missing or still the built-in defaults.
+func RefuseDefaultTokenSecrets() error {
+	jwtSecret := os.Getenv("JWT_SECRET")
+	refreshSecret := os.Getenv("REFRESH_TOKEN_SECRET")
+	if jwtSecret == "" || jwtSecret == DefaultJWTSecret || refreshSecret == "" || refreshSecret == DefaultRefreshTokenSecret {
+		return errors.New("JWT_SECRET and REFRESH_TOKEN_SECRET must be set to non-default values")
+	}
+	return nil
+}
+
 func getEnv(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" {
 		return value
@@ -138,9 +157,7 @@ func (s *tokenService) GenerateAccessTokenResult(userID int, email string, role 
 
 // ValidateToken validates a JWT token and returns the claims
 func (s *tokenService) ValidateToken(tokenString string) (*Claims, error) {
-	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
-		return []byte(s.jwtSecret), nil
-	})
+	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, hs256Key(s.jwtSecret))
 
 	if err != nil {
 		return nil, err
@@ -180,9 +197,7 @@ func (s *tokenService) RefreshTokenOwner(ctx context.Context, refreshToken strin
 
 // ValidateRefreshToken validates a refresh token and returns the claims
 func (s *tokenService) ValidateRefreshToken(ctx context.Context, tokenString string) (*RefreshTokenClaims, error) {
-	token, err := jwt.ParseWithClaims(tokenString, &RefreshTokenClaims{}, func(token *jwt.Token) (interface{}, error) {
-		return []byte(s.refreshTokenSecret), nil
-	})
+	token, err := jwt.ParseWithClaims(tokenString, &RefreshTokenClaims{}, hs256Key(s.refreshTokenSecret))
 
 	if err != nil {
 		return nil, err

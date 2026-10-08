@@ -40,6 +40,9 @@ func (uc *ChangePasswordUseCase) Execute(ctx context.Context, req ChangePassword
 	if user == nil {
 		return errors.New("user not found")
 	}
+	if passwordRepeatsEmail(req.NewPassword, user.Email().Value()) {
+		return errors.New("password cannot be the same as your email")
+	}
 
 	// 3. Verify old password
 	if !user.CheckPassword(req.OldPassword) {

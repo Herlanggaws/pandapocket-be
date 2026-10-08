@@ -2,15 +2,18 @@ package middleware
 
 import (
 	"context"
+	"errors"
 	"panda-pocket/internal/application/identity"
 	domainIdentity "panda-pocket/internal/domain/identity"
 	"panda-pocket/internal/interfaces/http/handlers"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 type activeUserChecker interface {
 	ExistsActive(ctx context.Context, id domainIdentity.UserID) (bool, error)
+	FindByID(ctx context.Context, id domainIdentity.UserID) (*domainIdentity.User, error)
 }
 
 // AuthMiddleware handles JWT authentication
@@ -129,29 +132,46 @@ func (m *AuthMiddleware) authenticate(c *gin.Context, requireAuth bool) bool {
 	return true
 }
 
-// RequireRole is a middleware that checks if the user has the required role
+// RequireRole loads the role from the database. JWT role claims are not trusted.
 func (m *AuthMiddleware) RequireRole(requiredRole string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		userRole, exists := c.Get("role")
-		if !exists {
+		rawID, exists := c.Get("user_id")
+		if !exists || m.userChecker == nil {
+			handlers.UnauthorizedResponse(c, "USER_ROLE_NOT_FOUND", "User role not found")
+			c.Abort()
+			return
+		}
+		userID, ok := rawID.(int)
+		if !ok || userID <= 0 {
 			handlers.UnauthorizedResponse(c, "USER_ROLE_NOT_FOUND", "User role not found")
 			c.Abort()
 			return
 		}
 
-		role, ok := userRole.(string)
-		if !ok {
-			handlers.InternalServerErrorResponse(c, "INVALID_ROLE_TYPE", "Invalid role type")
+		user, err := m.userChecker.FindByID(c.Request.Context(), domainIdentity.NewUserID(userID))
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				handlers.UnauthorizedResponse(c, "INVALID_TOKEN", "Invalid token")
+				c.Abort()
+				return
+			}
+			handlers.InternalServerErrorResponse(c, "USER_LOOKUP_FAILED", "Failed to verify user")
+			c.Abort()
+			return
+		}
+		if user == nil {
+			handlers.UnauthorizedResponse(c, "INVALID_TOKEN", "Invalid token")
 			c.Abort()
 			return
 		}
 
+		role := user.Role().Value()
+		c.Set("role", role)
 		if !hasRequiredRole(role, requiredRole) {
 			handlers.ForbiddenResponse(c, "INSUFFICIENT_PERMISSIONS", "Insufficient permissions")
 			c.Abort()
 			return
 		}
-
 		c.Next()
 	}
 }

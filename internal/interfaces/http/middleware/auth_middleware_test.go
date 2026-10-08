@@ -7,8 +7,10 @@ import (
 	"testing"
 
 	"panda-pocket/internal/application/identity"
+	domainIdentity "panda-pocket/internal/domain/identity"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 type stubTokenService struct {
@@ -34,9 +36,9 @@ func (s *stubTokenService) ValidateRefreshToken(context.Context, string) (*ident
 func (s *stubTokenService) GenerateAccessTokenResult(int, string, string) (string, error) {
 	return "", nil
 }
-func (s *stubTokenService) RevokeToken(context.Context, string) error { return nil }
-func (s *stubTokenService) RevokeAllForUser(context.Context, int) error { return nil }
-func (s *stubTokenService) RefreshCookieMaxAge() int                 { return 0 }
+func (s *stubTokenService) RevokeToken(context.Context, string) error         { return nil }
+func (s *stubTokenService) RevokeAllForUser(context.Context, int) error       { return nil }
+func (s *stubTokenService) RefreshCookieMaxAge() int                          { return 0 }
 func (s *stubTokenService) CleanupExpiredToken(context.Context, string) error { return nil }
 
 func TestRevokedAccessTokenIsRejected(t *testing.T) {
@@ -58,6 +60,76 @@ func TestSessionLookupErrorIsServerError(t *testing.T) {
 	if status != http.StatusInternalServerError {
 		t.Fatalf("status=%d", status)
 	}
+}
+
+func TestRequireRoleUsesDatabaseRole(t *testing.T) {
+	users := &roleLookup{user: testUser(t, "user")}
+	status := serveRole(users, "admin")
+	if status != http.StatusForbidden {
+		t.Fatalf("status=%d", status)
+	}
+}
+
+func TestRequireRoleAllowsDatabaseAdmin(t *testing.T) {
+	users := &roleLookup{user: testUser(t, "admin")}
+	status := serveRole(users, "admin")
+	if status != http.StatusNoContent {
+		t.Fatalf("status=%d", status)
+	}
+}
+
+func TestRequireRoleMissingUserIsUnauthorized(t *testing.T) {
+	status := serveRole(&roleLookup{err: gorm.ErrRecordNotFound}, "admin")
+	if status != http.StatusUnauthorized {
+		t.Fatalf("status=%d", status)
+	}
+}
+
+func TestRequireRoleDatabaseErrorIsServerError(t *testing.T) {
+	status := serveRole(&roleLookup{err: context.DeadlineExceeded}, "admin")
+	if status != http.StatusInternalServerError {
+		t.Fatalf("status=%d", status)
+	}
+}
+
+type roleLookup struct {
+	user *domainIdentity.User
+	err  error
+}
+
+func (r *roleLookup) ExistsActive(context.Context, domainIdentity.UserID) (bool, error) {
+	return true, nil
+}
+
+func (r *roleLookup) FindByID(context.Context, domainIdentity.UserID) (*domainIdentity.User, error) {
+	return r.user, r.err
+}
+
+func testUser(t *testing.T, role string) *domainIdentity.User {
+	t.Helper()
+	email, err := domainIdentity.NewEmail("ada@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	parsedRole, err := domainIdentity.NewRole(role)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return domainIdentity.NewUser(domainIdentity.NewUserID(1), email, domainIdentity.NewPasswordHash("hash"), parsedRole)
+}
+
+func serveRole(users *roleLookup, required string) int {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	auth := NewAuthMiddleware(&stubTokenService{active: true}, users)
+	router.GET("/admin", auth.RequireAuth(), auth.RequireRole(required), func(c *gin.Context) {
+		c.Status(http.StatusNoContent)
+	})
+	request := httptest.NewRequest(http.MethodGet, "/admin", nil)
+	request.Header.Set("Authorization", "Bearer access-token")
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, request)
+	return recorder.Code
 }
 
 func serveAuthed(tokens identity.TokenService) int {

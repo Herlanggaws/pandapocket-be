@@ -12,7 +12,7 @@ import (
 // RegisterUserRequest represents the request to register a new user
 type RegisterUserRequest struct {
 	Email    string `json:"email" binding:"required,email"`
-	Password string `json:"password" binding:"required,min=6"`
+	Password string `json:"password" binding:"required,min=8"`
 }
 
 // RegisterUserResponse represents the response after registering a user
@@ -48,6 +48,9 @@ func (uc *RegisterUserUseCase) Execute(ctx context.Context, req RegisterUserRequ
 	email, err := identity.NewEmail(req.Email)
 	if err != nil {
 		return nil, errors.New("invalid email format")
+	}
+	if passwordRepeatsEmail(req.Password, email.Value()) {
+		return nil, errors.New("password cannot be the same as your email")
 	}
 
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)

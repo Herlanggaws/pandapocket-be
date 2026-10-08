@@ -6,11 +6,16 @@ import (
 	"os"
 	"os/signal"
 	"panda-pocket/internal/application"
+	appIdentity "panda-pocket/internal/application/identity"
 	"panda-pocket/internal/infrastructure/database"
 	"syscall"
 )
 
 func main() {
+	if err := appIdentity.RefuseDefaultTokenSecrets(); err != nil {
+		log.Fatal(err)
+	}
+
 	// Initialize database with GORM
 	db, err := database.InitDB()
 	if err != nil {

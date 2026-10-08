@@ -70,6 +70,9 @@ func (uc *ResetPasswordUseCase) Execute(ctx context.Context, req *ResetPasswordR
 	if user == nil {
 		return nil, errors.New("user not found")
 	}
+	if passwordRepeatsEmail(req.NewPassword, user.Email().Value()) {
+		return nil, errors.New("password cannot be the same as your email")
+	}
 
 	// 5. Update user password
 	// We need to hash the password. Since hashing logic is usually in TokenService or User entity interaction.
