@@ -23,16 +23,19 @@ type ResetPasswordResponse struct {
 type ResetPasswordUseCase struct {
 	userRepository  identity.UserRepository
 	tokenRepository identity.PasswordResetTokenRepository
+	tokens          tokenRevoker
 }
 
 // NewResetPasswordUseCase creates a new reset password use case
 func NewResetPasswordUseCase(
 	userRepository identity.UserRepository,
 	tokenRepository identity.PasswordResetTokenRepository,
+	tokens tokenRevoker,
 ) *ResetPasswordUseCase {
 	return &ResetPasswordUseCase{
 		userRepository:  userRepository,
 		tokenRepository: tokenRepository,
+		tokens:          tokens,
 	}
 }
 
@@ -95,7 +98,10 @@ func (uc *ResetPasswordUseCase) Execute(ctx context.Context, req *ResetPasswordR
 		return nil, errors.New("failed to update password")
 	}
 
-	// 7. Delete token
+	if err := uc.tokens.RevokeAllForUser(ctx, user.ID().Value()); err != nil {
+		return nil, errors.New("failed to revoke sessions")
+	}
+
 	_ = uc.tokenRepository.Delete(ctx, token.ID())
 
 	return &ResetPasswordResponse{

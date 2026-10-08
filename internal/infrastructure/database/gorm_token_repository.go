@@ -47,6 +47,19 @@ func (r *GormTokenRepository) FindByRefreshToken(ctx context.Context, refreshTok
 	return int(token.UserID), token.Revoked, nil
 }
 
+// FindByAccessToken reports whether the access token row exists and if it was revoked.
+func (r *GormTokenRepository) FindByAccessToken(ctx context.Context, accessToken string) (bool, bool, error) {
+	var token Token
+	err := r.db.WithContext(ctx).Where("access_token = ?", accessToken).First(&token).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return false, false, nil
+		}
+		return false, false, err
+	}
+	return true, token.Revoked, nil
+}
+
 // Revoke revokes a token by refresh token string
 func (r *GormTokenRepository) Revoke(ctx context.Context, refreshToken string) error {
 	return r.db.WithContext(ctx).Model(&Token{}).Where("refresh_token = ?", refreshToken).Update("revoked", true).Error

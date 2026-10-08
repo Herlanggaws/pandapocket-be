@@ -36,6 +36,8 @@ type RefreshTokenClaims struct {
 type TokenService interface {
 	GenerateToken(ctx context.Context, userID int, email string, role string) (string, string, error)
 	ValidateToken(tokenString string) (*Claims, error)
+	AccessTokenActive(ctx context.Context, tokenString string) (bool, error)
+	RefreshTokenOwner(ctx context.Context, refreshToken string) (userID int, found bool, err error)
 	ValidateRefreshToken(ctx context.Context, tokenString string) (*RefreshTokenClaims, error)
 	GenerateAccessTokenResult(userID int, email string, role string) (string, error)
 	RevokeToken(ctx context.Context, tokenString string) error
@@ -159,6 +161,28 @@ func (s *tokenService) ValidateToken(tokenString string) (*Claims, error) {
 	}
 
 	return nil, errors.New("invalid token")
+}
+
+// AccessTokenActive reports whether this access token still has a live session row.
+// A missing or revoked row is inactive. Database failures are returned as errors.
+func (s *tokenService) AccessTokenActive(ctx context.Context, tokenString string) (bool, error) {
+	found, revoked, err := s.repo.FindByAccessToken(ctx, tokenString)
+	if err != nil {
+		return false, err
+	}
+	return found && !revoked, nil
+}
+
+// RefreshTokenOwner returns the user that owns the refresh token row.
+func (s *tokenService) RefreshTokenOwner(ctx context.Context, refreshToken string) (int, bool, error) {
+	userID, _, err := s.repo.FindByRefreshToken(ctx, refreshToken)
+	if err != nil {
+		return 0, false, err
+	}
+	if userID <= 0 {
+		return 0, false, nil
+	}
+	return userID, true, nil
 }
 
 // ValidateRefreshToken validates a refresh token and returns the claims

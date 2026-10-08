@@ -19,6 +19,9 @@ func (r *memAuthTokenRepo) Save(context.Context, int, string, string, int64) err
 func (r *memAuthTokenRepo) FindByRefreshToken(context.Context, string) (int, bool, error) {
 	return 0, false, nil
 }
+func (r *memAuthTokenRepo) FindByAccessToken(context.Context, string) (bool, bool, error) {
+	return false, false, nil
+}
 func (r *memAuthTokenRepo) DeleteByAccessToken(context.Context, string) error { return nil }
 func (r *memAuthTokenRepo) Revoke(context.Context, string) error              { return nil }
 func (r *memAuthTokenRepo) RevokeAllForUser(context.Context, int) error       { return nil }

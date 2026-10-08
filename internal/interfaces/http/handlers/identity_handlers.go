@@ -141,21 +141,40 @@ func (h *IdentityHandlers) GetUsers(c *gin.Context) {
 	SuccessResponse(c, http.StatusOK, response)
 }
 
-// Logout handles user logout
+// Logout revokes every session for the authenticated user.
+// An optional refresh_token must belong to that user; a mismatch revokes nobody.
 func (h *IdentityHandlers) Logout(c *gin.Context) {
-	var req struct {
-		RefreshToken string `json:"refresh_token" binding:"required"`
-	}
-
-	if err := c.ShouldBindJSON(&req); err != nil {
-		ValidationErrorResponse(c, formatValidationError(err))
+	callerID := c.GetInt("user_id")
+	if callerID <= 0 {
+		UnauthorizedResponse(c, "USER_ID_NOT_FOUND", "User ID not found in context")
 		return
 	}
 
-	err := h.tokenService.RevokeToken(c.Request.Context(), req.RefreshToken)
-	if err != nil {
-		// Even if revocation fails (e.g. token not found), we don't want to block logout
-		// But in strict mode we might want to log it
+	var req struct {
+		RefreshToken string `json:"refresh_token"`
+	}
+	if c.Request.ContentLength > 0 {
+		if err := c.ShouldBindJSON(&req); err != nil {
+			ValidationErrorResponse(c, formatValidationError(err))
+			return
+		}
+	}
+
+	if req.RefreshToken != "" {
+		ownerID, found, err := h.tokenService.RefreshTokenOwner(c.Request.Context(), req.RefreshToken)
+		if err != nil {
+			InternalServerErrorResponse(c, "SESSION_LOOKUP_FAILED", "Failed to verify session")
+			return
+		}
+		if !found || ownerID != callerID {
+			ForbiddenResponse(c, "REFRESH_TOKEN_MISMATCH", "Refresh token does not belong to the current user")
+			return
+		}
+	}
+
+	if err := h.tokenService.RevokeAllForUser(c.Request.Context(), callerID); err != nil {
+		InternalServerErrorResponse(c, "SESSION_REVOKE_FAILED", "Failed to revoke sessions")
+		return
 	}
 
 	SuccessResponse(c, http.StatusOK, gin.H{

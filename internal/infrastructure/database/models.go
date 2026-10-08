@@ -495,7 +495,7 @@ type SupportTicket struct {
 type Token struct {
 	ID           uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
 	UserID       uint      `gorm:"not null;index" json:"user_id"`
-	AccessToken  string    `gorm:"not null" json:"-"` // Storing for potential reference, though we assume stateless access tokens usually
+	AccessToken  string    `gorm:"not null;uniqueIndex" json:"-"`
 	RefreshToken string    `gorm:"uniqueIndex;not null" json:"-"`
 	ExpiresAt    time.Time `gorm:"not null;index" json:"expires_at"`
 	Revoked      bool      `gorm:"default:false;index" json:"revoked"`

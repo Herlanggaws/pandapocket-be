@@ -103,9 +103,9 @@ func NewApp(db *gorm.DB) *App {
 	loginUserUseCase := appIdentity.NewLoginUserUseCase(userService, tokenService)
 	getUsersUseCase := appIdentity.NewGetUsersUseCase(userService)
 	forgotPasswordUseCase := appIdentity.NewForgotPasswordUseCase(userRepo, tokenRepo, emailService)
-	resetPasswordUseCase := appIdentity.NewResetPasswordUseCase(userRepo, tokenRepo)
+	resetPasswordUseCase := appIdentity.NewResetPasswordUseCase(userRepo, tokenRepo, tokenService)
 	refreshTokenUseCase := appIdentity.NewRefreshTokenUseCase(userService, tokenService)
-	changePasswordUseCase := appIdentity.NewChangePasswordUseCase(userRepo)
+	changePasswordUseCase := appIdentity.NewChangePasswordUseCase(userRepo, tokenService)
 	getPreferencesUseCase := appIdentity.NewGetPreferencesUseCase(prefsRepo, prefsRepo)
 	updatePreferencesUseCase := appIdentity.NewUpdatePreferencesUseCase(
 		prefsRepo,
@@ -529,7 +529,7 @@ func (app *App) SetupRoutes() *gin.Engine {
 			auth.POST("/register", app.IdentityHandlers.Register)
 			auth.POST("/login", app.IdentityHandlers.Login)
 			auth.POST("/refresh", app.IdentityHandlers.RefreshToken)
-			auth.POST("/logout", app.IdentityHandlers.Logout)
+			auth.POST("/logout", app.AuthMiddleware.RequireAuth(), app.IdentityHandlers.Logout)
 			auth.POST("/forgot", app.IdentityHandlers.ForgotPassword)
 			auth.POST("/reset-password", app.IdentityHandlers.ResetPassword)
 

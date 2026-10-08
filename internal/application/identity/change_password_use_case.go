@@ -15,11 +15,13 @@ type ChangePasswordRequest struct {
 
 type ChangePasswordUseCase struct {
 	userRepo domainIdentity.UserRepository
+	tokens   tokenRevoker
 }
 
-func NewChangePasswordUseCase(userRepo domainIdentity.UserRepository) *ChangePasswordUseCase {
+func NewChangePasswordUseCase(userRepo domainIdentity.UserRepository, tokens tokenRevoker) *ChangePasswordUseCase {
 	return &ChangePasswordUseCase{
 		userRepo: userRepo,
+		tokens:   tokens,
 	}
 }
 
@@ -56,5 +58,8 @@ func (uc *ChangePasswordUseCase) Execute(ctx context.Context, req ChangePassword
 	}
 
 	// 6. Save user
-	return uc.userRepo.Update(ctx, user)
+	if err := uc.userRepo.Update(ctx, user); err != nil {
+		return err
+	}
+	return uc.tokens.RevokeAllForUser(ctx, req.UserID)
 }

@@ -89,6 +89,22 @@ func (m *AuthMiddleware) authenticate(c *gin.Context, requireAuth bool) bool {
 		return false
 	}
 
+	sessionActive, err := m.tokenService.AccessTokenActive(c.Request.Context(), tokenString)
+	if err != nil {
+		if requireAuth {
+			handlers.InternalServerErrorResponse(c, "SESSION_LOOKUP_FAILED", "Failed to verify session")
+			c.Abort()
+		}
+		return false
+	}
+	if !sessionActive {
+		if requireAuth {
+			handlers.UnauthorizedResponse(c, "INVALID_TOKEN", "Invalid token")
+			c.Abort()
+		}
+		return false
+	}
+
 	if m.userChecker != nil {
 		active, err := m.userChecker.ExistsActive(c.Request.Context(), domainIdentity.NewUserID(claims.UserID))
 		if err != nil {

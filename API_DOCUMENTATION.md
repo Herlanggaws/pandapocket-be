@@ -63,7 +63,7 @@ CORS currently allows all origins (`*`). Allowed request headers: `Origin`, `Con
 | POST | `/api/auth/register` | No | |
 | POST | `/api/auth/login` | No | |
 | POST | `/api/auth/refresh` | No | Refresh access token |
-| POST | `/api/auth/logout` | No | Requires `refresh_token` body |
+| POST | `/api/auth/logout` | Yes | Revokes every session. Optional `refresh_token` must belong to the caller |
 | POST | `/api/auth/forgot` | No | Forgot password |
 | POST | `/api/auth/reset-password` | No | Reset with token from email |
 | POST | `/api/auth/change-password` | Yes | Authenticated password change |
@@ -329,9 +329,13 @@ Exchange a refresh token for a new access token and refresh token pair.
 
 ### POST /api/auth/logout
 
-Revoke a refresh token.
+Authenticated. Revokes every session for the caller (`RevokeAllForUser`).
 
-**Request Body:**
+`refresh_token` in the body is optional. When present it must belong to the authenticated user. A missing or foreign refresh token returns **403** `REFRESH_TOKEN_MISMATCH` and revokes nobody. An empty body still revokes the caller's sessions.
+
+Access tokens whose row is missing or `revoked` are rejected with **401** on later requests.
+
+**Request Body (optional):**
 ```json
 {
   "refresh_token": "..."
@@ -374,7 +378,7 @@ Request a password reset email/link for the given address.
 
 ### POST /api/auth/reset-password
 
-Reset password using the token from the forgot-password flow.
+Reset password using the token from the forgot-password flow. Every session for that user is revoked.
 
 **Request Body:**
 ```json
@@ -398,7 +402,7 @@ Reset password using the token from the forgot-password flow.
 
 ### POST /api/auth/change-password
 
-Change password for the authenticated user. Requires `Authorization: Bearer <token>`.
+Change password for the authenticated user. Requires `Authorization: Bearer <token>`. Every session for that user is revoked, including the token used for this request.
 
 **Request Body:**
 ```json
@@ -2744,6 +2748,10 @@ Keep this file in sync with the running API. When routes, request/response shape
 ---
 
 ## Version History
+
+- **v2.51.0**: **Session revoke on logout and password change**
+  - `POST /api/auth/logout` requires a session Bearer. Optional `refresh_token` must belong to the caller (otherwise **403**, nobody is revoked). Success revokes every session for that user
+  - Change password and reset password revoke every session. Access tokens with a missing or `revoked` row return **401**
 
 - **v2.50.0**: **MCP request body limit**
   - `POST /mcp` rejects a body larger than 1 MB with **413** `MCP_BODY_TOO_LARGE`
