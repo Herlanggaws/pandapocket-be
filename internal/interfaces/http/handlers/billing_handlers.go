@@ -103,6 +103,14 @@ func (h *BillingHandlers) HandleDoitWebhook(c *gin.Context) {
 			UnauthorizedResponse(c, "INVALID_SIGNATURE", "Invalid webhook signature")
 			return
 		}
+		if errors.Is(err, appBilling.ErrWebhookSignatureExpired) {
+			UnauthorizedResponse(c, "SIGNATURE_EXPIRED", "Webhook signature expired")
+			return
+		}
+		if errors.Is(err, appBilling.ErrWebhookPaymentMismatch) {
+			BadRequestResponse(c, "PAYMENT_MISMATCH", "Payment does not match a recorded checkout")
+			return
+		}
 		if errors.Is(err, appBilling.ErrWebhookSecretMissing) {
 			InternalServerErrorResponse(c, "WEBHOOK_NOT_CONFIGURED", "Webhook secret is not configured")
 			return

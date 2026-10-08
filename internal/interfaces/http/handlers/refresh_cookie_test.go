@@ -117,10 +117,10 @@ func TestRefreshBodyRotatesAndIgnoresForeignCookie(t *testing.T) {
 	if newRefresh == "" {
 		t.Fatal("missing refresh token")
 	}
-	if !containsToken(tokens.revokedTokens, ownerToken) {
+	if !containsToken(tokens.revokedTokens, domainIdentity.SessionTokenHash(ownerToken)) {
 		t.Fatal("body refresh token was not revoked")
 	}
-	if containsToken(tokens.revokedTokens, otherToken) {
+	if containsToken(tokens.revokedTokens, domainIdentity.SessionTokenHash(otherToken)) {
 		t.Fatal("cookie refresh token was revoked")
 	}
 	cookie := refreshCookie(t, recorder)
@@ -146,7 +146,7 @@ func TestRefreshCookieIssuesNewPair(t *testing.T) {
 	if newRefresh == "" || access == "" {
 		t.Fatalf("pair was not issued: access=%q refresh=%q", access, newRefresh)
 	}
-	if !containsToken(tokens.revokedTokens, cookieToken) {
+	if !containsToken(tokens.revokedTokens, domainIdentity.SessionTokenHash(cookieToken)) {
 		t.Fatal("cookie refresh token was not revoked")
 	}
 	cookie := refreshCookie(t, recorder)

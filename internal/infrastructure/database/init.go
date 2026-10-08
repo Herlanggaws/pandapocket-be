@@ -11,6 +11,8 @@ import (
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
+
+	domainIdentity "panda-pocket/internal/domain/identity"
 )
 
 // loadEnvFile loads environment variables from .env file if it exists
@@ -176,6 +178,7 @@ func autoMigrate(db *gorm.DB) error {
 		&UserPreferences{},
 		&Subscription{},
 		&BillingWebhookEvent{},
+		&PendingPayment{},
 		&AICreditBalance{},
 		&AICreditLedgerEntry{},
 		&AIAdvisorThread{},
@@ -191,6 +194,9 @@ func autoMigrate(db *gorm.DB) error {
 	); err != nil {
 		return err
 	}
+	if err := hashStoredSessionTokens(db); err != nil {
+		return err
+	}
 	return widenBillingIntervalCheck(db)
 }
 
@@ -204,6 +210,39 @@ func widenBillingIntervalCheck(db *gorm.DB) error {
 		return err
 	}
 	return db.Exec(`ALTER TABLE subscriptions ADD CONSTRAINT chk_subscriptions_billing_interval CHECK (billing_interval IS NULL OR billing_interval IN ('monthly','semiannual','yearly'))`).Error
+}
+
+// hashStoredSessionTokens replaces raw session JWTs with SHA-256 so a database dump is not a usable session.
+// Rows that are already hashes are left unchanged.
+func hashStoredSessionTokens(db *gorm.DB) error {
+	if !db.Migrator().HasTable("tokens") {
+		return nil
+	}
+	var rows []Token
+	if err := db.Find(&rows).Error; err != nil {
+		return err
+	}
+	for _, row := range rows {
+		if domainIdentity.IsSessionTokenHash(row.AccessToken) && domainIdentity.IsSessionTokenHash(row.RefreshToken) {
+			continue
+		}
+		accessToken := row.AccessToken
+		refreshToken := row.RefreshToken
+		if !domainIdentity.IsSessionTokenHash(accessToken) {
+			accessToken = domainIdentity.SessionTokenHash(accessToken)
+		}
+		if !domainIdentity.IsSessionTokenHash(refreshToken) {
+			refreshToken = domainIdentity.SessionTokenHash(refreshToken)
+		}
+		err := db.Model(&Token{}).Where("id = ?", row.ID).Updates(map[string]any{
+			"access_token":  accessToken,
+			"refresh_token": refreshToken,
+		}).Error
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // createDefaultData creates default categories and currencies using GORM

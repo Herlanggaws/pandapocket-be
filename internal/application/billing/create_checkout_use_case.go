@@ -10,12 +10,6 @@ import (
 	"panda-pocket/internal/infrastructure/doit"
 )
 
-const (
-	amountMonthly    = 19000
-	amountSemiannual = 99000
-	amountYearly     = 149000
-)
-
 // ErrShorterIntervalBlocked means a shorter prepaid interval was requested while a longer paid period is still open.
 var ErrShorterIntervalBlocked = errors.New("shorter billing interval applies at the end of the current period")
 
@@ -39,10 +33,11 @@ type CreateCheckoutResponse struct {
 type CreateCheckoutUseCase struct {
 	payments PaymentCreator
 	subs     domainBilling.SubscriptionRepository
+	pending  domainBilling.PendingPaymentRepository
 }
 
-func NewCreateCheckoutUseCase(payments PaymentCreator, subs domainBilling.SubscriptionRepository) *CreateCheckoutUseCase {
-	return &CreateCheckoutUseCase{payments: payments, subs: subs}
+func NewCreateCheckoutUseCase(payments PaymentCreator, subs domainBilling.SubscriptionRepository, pending domainBilling.PendingPaymentRepository) *CreateCheckoutUseCase {
+	return &CreateCheckoutUseCase{payments: payments, subs: subs, pending: pending}
 }
 
 func (uc *CreateCheckoutUseCase) Execute(ctx context.Context, userID int, req CreateCheckoutRequest) (*CreateCheckoutResponse, error) {
@@ -77,6 +72,18 @@ func (uc *CreateCheckoutUseCase) Execute(ctx context.Context, userID int, req Cr
 
 	payment, err := uc.payments.CreatePayment(ctx, idempotencyKey, paymentReq)
 	if err != nil {
+		return nil, err
+	}
+	if payment.ID == "" {
+		return nil, fmt.Errorf("payment id missing")
+	}
+	if err := uc.pending.Save(ctx, domainBilling.PendingPayment{
+		PaymentID: payment.ID,
+		UserID:    userID,
+		Kind:      domainBilling.KindPro,
+		Interval:  string(interval),
+		Amount:    recordedAmount(payment.Amount, amount),
+	}); err != nil {
 		return nil, err
 	}
 
@@ -114,14 +121,17 @@ func blocksShorterInterval(sub *domainBilling.Subscription, requested domainBill
 }
 
 func resolveCheckoutInterval(raw string) (domainBilling.BillingInterval, int, error) {
-	switch domainBilling.BillingInterval(raw) {
-	case domainBilling.IntervalMonthly:
-		return domainBilling.IntervalMonthly, amountMonthly, nil
-	case domainBilling.IntervalSemiannual:
-		return domainBilling.IntervalSemiannual, amountSemiannual, nil
-	case domainBilling.IntervalYearly:
-		return domainBilling.IntervalYearly, amountYearly, nil
-	default:
+	interval := domainBilling.BillingInterval(raw)
+	amount, ok := domainBilling.PriceForInterval(interval)
+	if !ok {
 		return "", 0, fmt.Errorf("interval must be monthly, semiannual, or yearly")
 	}
+	return interval, amount, nil
+}
+
+func recordedAmount(responseAmount, requestedAmount int) int {
+	if responseAmount > 0 {
+		return responseAmount
+	}
+	return requestedAmount
 }

@@ -5,12 +5,15 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"strconv"
 	"strings"
+	"time"
 )
 
 var (
 	ErrInvalidSignatureHeader = errors.New("invalid PayBridge-Signature header")
 	ErrSignatureMismatch      = errors.New("PayBridge-Signature mismatch")
+	ErrSignatureExpired       = errors.New("PayBridge-Signature timestamp expired")
 )
 
 // VerifyPayBridgeSignature checks HMAC-SHA256(secret, t+"."+rawBody) against header v1.
@@ -31,6 +34,14 @@ func VerifyPayBridgeSignature(secret string, header string, rawBody []byte) erro
 
 	if !hmac.Equal([]byte(expected), []byte(provided)) {
 		return ErrSignatureMismatch
+	}
+	unixSeconds, err := strconv.ParseInt(timestamp, 10, 64)
+	if err != nil {
+		return ErrInvalidSignatureHeader
+	}
+	skew := time.Since(time.Unix(unixSeconds, 0))
+	if skew > 5*time.Minute || skew < -5*time.Minute {
+		return ErrSignatureExpired
 	}
 	return nil
 }

@@ -6,7 +6,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"strconv"
 	"testing"
 	"time"
 
@@ -64,7 +66,7 @@ func (m *memorySubs) ListAll(_ context.Context) ([]*domainBilling.Subscription, 
 }
 
 func signBody(secret string, body []byte) string {
-	ts := "1755612912"
+	ts := strconv.FormatInt(time.Now().Unix(), 10)
 	mac := hmac.New(sha256.New, []byte(secret))
 	mac.Write([]byte(ts + "."))
 	mac.Write(body)
@@ -78,7 +80,7 @@ func TestHandleDoitWebhookPaymentPaid(t *testing.T) {
 
 	events := &memoryWebhookEvents{}
 	subs := &memorySubs{}
-	uc := NewHandleDoitWebhookUseCase(events, subs, nil)
+	uc := NewHandleDoitWebhookUseCase(events, subs, nil, &memoryPending{})
 
 	payload := map[string]interface{}{
 		"id":   "evt_paid_1",
@@ -86,6 +88,7 @@ func TestHandleDoitWebhookPaymentPaid(t *testing.T) {
 		"data": map[string]interface{}{
 			"id":        "pay_1",
 			"reference": "user:42:monthly",
+			"amount":    19000,
 			"paid_at":   "2026-09-21T12:00:00Z",
 			"metadata": map[string]interface{}{
 				"user_id":  42,
@@ -121,7 +124,7 @@ func TestHandleDoitWebhookPaymentPaid(t *testing.T) {
 
 func TestHandleDoitWebhookRejectsBadSignature(t *testing.T) {
 	t.Setenv("DOIT_WEBHOOK_SECRET", "whsec_test")
-	uc := NewHandleDoitWebhookUseCase(&memoryWebhookEvents{}, &memorySubs{}, nil)
+	uc := NewHandleDoitWebhookUseCase(&memoryWebhookEvents{}, &memorySubs{}, nil, &memoryPending{})
 	body := []byte(`{"id":"evt_x","type":"webhook.test"}`)
 	err := uc.Execute(context.Background(), "t=1,v1=deadbeef", body)
 	if err != ErrWebhookSignatureInvalid {
@@ -150,7 +153,7 @@ func TestHandleDoitWebhookSkipsStagingBoundOnProd(t *testing.T) {
 
 	ai := &recordingAICredits{}
 	events := &memoryWebhookEvents{}
-	uc := NewHandleDoitWebhookUseCase(events, &memorySubs{}, ai)
+	uc := NewHandleDoitWebhookUseCase(events, &memorySubs{}, ai, &memoryPending{})
 	uc.appURL = "https://berbudget.com"
 
 	payload := map[string]interface{}{
@@ -186,7 +189,7 @@ func TestHandleDoitWebhookAppliesStagingBoundOnStaging(t *testing.T) {
 	t.Setenv("DOIT_WEBHOOK_SECRET", secret)
 
 	ai := &recordingAICredits{}
-	uc := NewHandleDoitWebhookUseCase(&memoryWebhookEvents{}, &memorySubs{}, ai)
+	uc := NewHandleDoitWebhookUseCase(&memoryWebhookEvents{}, &memorySubs{}, ai, &memoryPending{})
 	uc.appURL = "https://stg.berbudget.com"
 
 	payload := map[string]interface{}{
@@ -195,6 +198,7 @@ func TestHandleDoitWebhookAppliesStagingBoundOnStaging(t *testing.T) {
 		"data": map[string]interface{}{
 			"id":         "pay_stg_s",
 			"reference":  "user:32:ai:ai_credits_s:2",
+			"amount":     9900,
 			"return_url": "https://stg.berbudget.com/advisor",
 			"metadata": map[string]interface{}{
 				"user_id": 32,
@@ -230,20 +234,22 @@ func TestLegacyPaidPayloadsKeepOriginalPeriods(t *testing.T) {
 		interval  string
 		userID    int
 		days      int
+		amount    int
 	}{
-		{name: "monthly reference", eventID: "evt_legacy_m", reference: "user:8:monthly", interval: "monthly", userID: 8, days: 30},
-		{name: "yearly metadata", eventID: "evt_legacy_y", reference: "user:7:yearly", interval: "yearly", userID: 7, days: 365},
+		{name: "monthly reference", eventID: "evt_legacy_m", reference: "user:8:monthly", interval: "monthly", userID: 8, days: 30, amount: 19000},
+		{name: "yearly metadata", eventID: "evt_legacy_y", reference: "user:7:yearly", interval: "yearly", userID: 7, days: 365, amount: 149000},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			subs := &memorySubs{}
-			uc := NewHandleDoitWebhookUseCase(&memoryWebhookEvents{}, subs, nil)
+			uc := NewHandleDoitWebhookUseCase(&memoryWebhookEvents{}, subs, nil, &memoryPending{})
 			payload := map[string]interface{}{
 				"id":   tc.eventID,
 				"type": "payment.paid",
 				"data": map[string]interface{}{
 					"id":        "pay_" + tc.eventID,
 					"reference": tc.reference,
+					"amount":    tc.amount,
 					"paid_at":   paidAt.Format(time.RFC3339),
 					"metadata": map[string]interface{}{
 						"user_id":  tc.userID,
@@ -277,13 +283,14 @@ func TestSemiannualPaymentActivates183Days(t *testing.T) {
 	paidAt := time.Date(2026, 10, 2, 8, 0, 0, 0, time.UTC)
 
 	subs := &memorySubs{}
-	uc := NewHandleDoitWebhookUseCase(&memoryWebhookEvents{}, subs, nil)
+	uc := NewHandleDoitWebhookUseCase(&memoryWebhookEvents{}, subs, nil, &memoryPending{})
 	payload := map[string]interface{}{
 		"id":   "evt_semi",
 		"type": "payment.paid",
 		"data": map[string]interface{}{
 			"id":        "pay_semi",
 			"reference": "user:11:semiannual",
+			"amount":    99000,
 			"paid_at":   paidAt.Format(time.RFC3339),
 			"metadata": map[string]interface{}{
 				"user_id":  11,
@@ -312,7 +319,7 @@ func TestHandleDoitWebhookSubscriptionUnlocksIncludedOnce(t *testing.T) {
 
 	ai := &recordingAICredits{}
 	events := &memoryWebhookEvents{}
-	uc := NewHandleDoitWebhookUseCase(events, &memorySubs{}, ai)
+	uc := NewHandleDoitWebhookUseCase(events, &memorySubs{}, ai, &memoryPending{})
 
 	payload := map[string]interface{}{
 		"id":   "evt_pro_unlock",
@@ -320,6 +327,7 @@ func TestHandleDoitWebhookSubscriptionUnlocksIncludedOnce(t *testing.T) {
 		"data": map[string]interface{}{
 			"id":        "pay_pro_1",
 			"reference": "user:42:monthly",
+			"amount":    19000,
 			"paid_at":   "2026-09-21T12:00:00Z",
 			"metadata": map[string]interface{}{
 				"user_id":  42,
@@ -342,4 +350,111 @@ func TestHandleDoitWebhookSubscriptionUnlocksIncludedOnce(t *testing.T) {
 	if len(ai.purchases) != 0 {
 		t.Fatalf("subscription payment must not purchase credits, got %v", ai.purchases)
 	}
+}
+
+type memoryPending struct {
+	byID map[string]domainBilling.PendingPayment
+}
+
+func (m *memoryPending) Save(_ context.Context, payment domainBilling.PendingPayment) error {
+	if m.byID == nil {
+		m.byID = map[string]domainBilling.PendingPayment{}
+	}
+	m.byID[payment.PaymentID] = payment
+	return nil
+}
+
+func (m *memoryPending) FindByPaymentID(_ context.Context, paymentID string) (domainBilling.PendingPayment, bool, error) {
+	payment, ok := m.byID[paymentID]
+	return payment, ok, nil
+}
+
+func TestRecordedPaymentActivatesProAndIgnoresMetadataInterval(t *testing.T) {
+	secret := "whsec_test"
+	t.Setenv("DOIT_WEBHOOK_SECRET", secret)
+	pending := &memoryPending{}
+	if err := pending.Save(context.Background(), domainBilling.PendingPayment{
+		PaymentID: "pay_recorded",
+		UserID:    42,
+		Kind:      domainBilling.KindPro,
+		Interval:  "yearly",
+		Amount:    149000,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	subs := &memorySubs{}
+	uc := NewHandleDoitWebhookUseCase(&memoryWebhookEvents{}, subs, nil, pending)
+	payload := map[string]interface{}{
+		"id":   "evt_recorded",
+		"type": "payment.paid",
+		"data": map[string]interface{}{
+			"id":        "pay_recorded",
+			"amount":    149000,
+			"reference": "user:42:monthly",
+			"metadata":  map[string]interface{}{"user_id": 42, "interval": "monthly"},
+		},
+	}
+	body, _ := json.Marshal(payload)
+	if err := uc.Execute(context.Background(), signBody(secret, body), body); err != nil {
+		t.Fatal(err)
+	}
+	sub, err := subs.FindByUserID(context.Background(), 42)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sub.BillingInterval() == nil || *sub.BillingInterval() != domainBilling.IntervalYearly {
+		t.Fatalf("interval=%v", sub.BillingInterval())
+	}
+}
+
+func TestPaymentMismatchDoesNotActivate(t *testing.T) {
+	secret := "whsec_test"
+	t.Setenv("DOIT_WEBHOOK_SECRET", secret)
+	pending := &memoryPending{}
+	_ = pending.Save(context.Background(), domainBilling.PendingPayment{
+		PaymentID: "pay_recorded",
+		UserID:    42,
+		Kind:      domainBilling.KindPro,
+		Interval:  "monthly",
+		Amount:    19000,
+	})
+	subs := &memorySubs{}
+	uc := NewHandleDoitWebhookUseCase(&memoryWebhookEvents{}, subs, nil, pending)
+
+	cases := []map[string]interface{}{
+		{"id": "pay_recorded", "amount": 1, "reference": "user:42:monthly", "metadata": map[string]interface{}{"user_id": 42}},
+		{"id": "pay_recorded", "amount": 19000, "reference": "user:9:monthly", "metadata": map[string]interface{}{"user_id": 9}},
+		{"id": "pay_unknown", "amount": 1, "reference": "user:42:monthly"},
+	}
+	for i, data := range cases {
+		payload := map[string]interface{}{"id": fmt.Sprintf("evt_bad_%d", i), "type": "payment.paid", "data": data}
+		body, _ := json.Marshal(payload)
+		err := uc.Execute(context.Background(), signBody(secret, body), body)
+		if !errors.Is(err, ErrWebhookPaymentMismatch) {
+			t.Fatalf("case %d err=%v", i, err)
+		}
+	}
+	if _, err := subs.FindByUserID(context.Background(), 42); !errors.Is(err, domainBilling.ErrNotFound) {
+		t.Fatal("mismatched payment activated Pro")
+	}
+}
+
+func TestStaleSignatureIsRejected(t *testing.T) {
+	secret := "whsec_test"
+	t.Setenv("DOIT_WEBHOOK_SECRET", secret)
+	body := []byte(`{"id":"evt_old","type":"webhook.test"}`)
+	header := signBodyAt(secret, body, time.Now().Add(-6*time.Minute).Unix())
+	uc := NewHandleDoitWebhookUseCase(&memoryWebhookEvents{}, &memorySubs{}, nil, &memoryPending{})
+	err := uc.Execute(context.Background(), header, body)
+	if !errors.Is(err, ErrWebhookSignatureExpired) {
+		t.Fatalf("err=%v", err)
+	}
+}
+
+func signBodyAt(secret string, body []byte, unixSeconds int64) string {
+	ts := strconv.FormatInt(unixSeconds, 10)
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte(ts + "."))
+	mac.Write(body)
+	return "t=" + ts + ",v1=" + hex.EncodeToString(mac.Sum(nil))
 }

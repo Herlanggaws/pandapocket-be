@@ -430,6 +430,18 @@ type BillingWebhookEvent struct {
 	ReceivedAt time.Time `gorm:"not null" json:"received_at"`
 }
 
+// PendingPayment is a checkout or credit top-up created by this API.
+type PendingPayment struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	PaymentID string    `gorm:"uniqueIndex;size:128;not null" json:"payment_id"`
+	UserID    uint      `gorm:"not null;index" json:"user_id"`
+	Kind      string    `gorm:"size:32;not null" json:"kind"`
+	Interval  string    `gorm:"size:32" json:"interval"`
+	Pack      string    `gorm:"size:64" json:"pack"`
+	Amount    int       `gorm:"not null" json:"amount"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 // UserPreferences represents user preferences in the database
 type UserPreferences struct {
 	ID                 uint      `gorm:"primaryKey" json:"id"`
@@ -553,6 +565,10 @@ func (Subscription) TableName() string {
 
 func (BillingWebhookEvent) TableName() string {
 	return "billing_webhook_events"
+}
+
+func (PendingPayment) TableName() string {
+	return "pending_payments"
 }
 
 func (UserPreferences) TableName() string {

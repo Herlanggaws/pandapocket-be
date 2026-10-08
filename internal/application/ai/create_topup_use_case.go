@@ -8,6 +8,7 @@ import (
 	"time"
 
 	domainAI "panda-pocket/internal/domain/ai"
+	domainBilling "panda-pocket/internal/domain/billing"
 	"panda-pocket/internal/domain/entitlement"
 	"panda-pocket/internal/infrastructure/doit"
 )
@@ -33,13 +34,15 @@ type CreateTopupResponse struct {
 type CreateTopupUseCase struct {
 	payments     AIPaymentCreator
 	entitlements entitlement.Checker
+	pending      domainBilling.PendingPaymentRepository
 	now          func() time.Time
 }
 
-func NewCreateTopupUseCase(payments AIPaymentCreator, entitlements entitlement.Checker) *CreateTopupUseCase {
+func NewCreateTopupUseCase(payments AIPaymentCreator, entitlements entitlement.Checker, pending domainBilling.PendingPaymentRepository) *CreateTopupUseCase {
 	return &CreateTopupUseCase{
 		payments:     payments,
 		entitlements: entitlements,
+		pending:      pending,
 		now:          time.Now,
 	}
 }
@@ -69,7 +72,7 @@ func (uc *CreateTopupUseCase) Execute(ctx context.Context, userID int, req Creat
 		paymentReq.ReturnURL = returnURL
 	}
 
-	payment, err := uc.createUnpaidPayment(ctx, userID, req.Pack, paymentReq)
+	payment, err := uc.createUnpaidPayment(ctx, userID, req.Pack, amount, paymentReq)
 	if err != nil {
 		return nil, err
 	}
@@ -87,6 +90,7 @@ func (uc *CreateTopupUseCase) createUnpaidPayment(
 	ctx context.Context,
 	userID int,
 	pack string,
+	amount int,
 	paymentReq doit.CreatePaymentRequest,
 ) (*doit.CreatePaymentResponse, error) {
 	nowFn := uc.now
@@ -104,10 +108,30 @@ func (uc *CreateTopupUseCase) createUnpaidPayment(
 			return nil, err
 		}
 		if !isPaidPayment(payment) {
+			if err := uc.recordPending(ctx, userID, pack, amount, payment); err != nil {
+				return nil, err
+			}
 			return payment, nil
 		}
 	}
 	return nil, fmt.Errorf("doit returned paid payment for new top-up attempt")
+}
+
+func (uc *CreateTopupUseCase) recordPending(ctx context.Context, userID int, pack string, amount int, payment *doit.CreatePaymentResponse) error {
+	if payment == nil || payment.ID == "" {
+		return fmt.Errorf("payment id missing")
+	}
+	recorded := payment.Amount
+	if recorded <= 0 {
+		recorded = amount
+	}
+	return uc.pending.Save(ctx, domainBilling.PendingPayment{
+		PaymentID: payment.ID,
+		UserID:    userID,
+		Kind:      domainBilling.KindAICredits,
+		Pack:      pack,
+		Amount:    recorded,
+	})
 }
 
 func isPaidPayment(payment *doit.CreatePaymentResponse) bool {

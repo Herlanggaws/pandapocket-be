@@ -112,7 +112,7 @@ func (s *tokenService) GenerateToken(ctx context.Context, userID int, email stri
 	}
 
 	// Save token to database
-	err = s.repo.Save(ctx, userID, accessToken, refreshToken, expiresAt.Unix())
+	err = s.repo.Save(ctx, userID, identity.SessionTokenHash(accessToken), identity.SessionTokenHash(refreshToken), expiresAt.Unix())
 	if err != nil {
 		return "", "", err
 	}
@@ -159,7 +159,7 @@ func (s *tokenService) ValidateToken(tokenString string) (*Claims, error) {
 // AccessTokenActive reports whether this access token still has a live session row.
 // A missing or revoked row is inactive. Database failures are returned as errors.
 func (s *tokenService) AccessTokenActive(ctx context.Context, tokenString string) (bool, error) {
-	found, revoked, err := s.repo.FindByAccessToken(ctx, tokenString)
+	found, revoked, err := s.repo.FindByAccessToken(ctx, identity.SessionTokenHash(tokenString))
 	if err != nil {
 		return false, err
 	}
@@ -168,7 +168,7 @@ func (s *tokenService) AccessTokenActive(ctx context.Context, tokenString string
 
 // RefreshTokenOwner returns the user that owns the refresh token row.
 func (s *tokenService) RefreshTokenOwner(ctx context.Context, refreshToken string) (int, bool, error) {
-	userID, _, err := s.repo.FindByRefreshToken(ctx, refreshToken)
+	userID, _, err := s.repo.FindByRefreshToken(ctx, identity.SessionTokenHash(refreshToken))
 	if err != nil {
 		return 0, false, err
 	}
@@ -197,7 +197,7 @@ func (s *tokenService) ValidateRefreshToken(ctx context.Context, tokenString str
 	}
 
 	// Check against database
-	_, revoked, err := s.repo.FindByRefreshToken(ctx, tokenString)
+	_, revoked, err := s.repo.FindByRefreshToken(ctx, identity.SessionTokenHash(tokenString))
 	if err != nil {
 		return nil, err // Database error
 	}
@@ -211,7 +211,7 @@ func (s *tokenService) ValidateRefreshToken(ctx context.Context, tokenString str
 
 // RevokeToken revokes a refresh token
 func (s *tokenService) RevokeToken(ctx context.Context, tokenString string) error {
-	return s.repo.Revoke(ctx, tokenString)
+	return s.repo.Revoke(ctx, identity.SessionTokenHash(tokenString))
 }
 
 // RevokeAllForUser revokes all tokens for a user
@@ -227,6 +227,6 @@ func (s *tokenService) RefreshCookieMaxAge() int {
 func (s *tokenService) CleanupExpiredToken(ctx context.Context, tokenString string) error {
 	// We swallow the error here as this is a best-effort cleanup
 	// and we don't want to disrupt the flow if the DB is down or record missing
-	_ = s.repo.DeleteByAccessToken(ctx, tokenString)
+	_ = s.repo.DeleteByAccessToken(ctx, identity.SessionTokenHash(tokenString))
 	return nil
 }

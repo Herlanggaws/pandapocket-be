@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	domainBilling "panda-pocket/internal/domain/billing"
 	"panda-pocket/internal/domain/entitlement"
 	"panda-pocket/internal/infrastructure/doit"
 )
@@ -33,7 +34,7 @@ func (s *stubPayments) CreatePayment(_ context.Context, idempotencyKey string, _
 
 func TestCreateTopupDistinctIdempotencyKeys(t *testing.T) {
 	payments := &stubPayments{configured: true}
-	uc := NewCreateTopupUseCase(payments, entitlement.StaticChecker{Pro: true})
+	uc := NewCreateTopupUseCase(payments, entitlement.StaticChecker{Pro: true}, &memoryPending{})
 	base := time.Date(2026, 9, 24, 8, 0, 0, 0, time.UTC)
 	n := 0
 	uc.now = func() time.Time {
@@ -69,7 +70,8 @@ func TestCreateTopupRetriesWhenDoitReturnsPaid(t *testing.T) {
 			{ID: "pay_new", Status: "pending", Reference: "new", HostedURL: "https://pay.doit.id/p/pay_new"},
 		},
 	}
-	uc := NewCreateTopupUseCase(payments, entitlement.StaticChecker{Pro: true})
+	pending := &memoryPending{}
+	uc := NewCreateTopupUseCase(payments, entitlement.StaticChecker{Pro: true}, pending)
 	uc.now = func() time.Time { return time.Date(2026, 9, 24, 8, 30, 0, 0, time.UTC) }
 
 	resp, err := uc.Execute(context.Background(), 7, CreateTopupRequest{Pack: "ai_credits_m"})
@@ -85,4 +87,20 @@ func TestCreateTopupRetriesWhenDoitReturnsPaid(t *testing.T) {
 	if resp.Credits != 150 {
 		t.Fatalf("expected 150 credits, got %d", resp.Credits)
 	}
+	if len(pending.saved) != 1 || pending.saved[0].PaymentID != "pay_new" || pending.saved[0].Amount != 24900 {
+		t.Fatalf("recorded=%+v", pending.saved)
+	}
+}
+
+type memoryPending struct {
+	saved []domainBilling.PendingPayment
+}
+
+func (m *memoryPending) Save(_ context.Context, payment domainBilling.PendingPayment) error {
+	m.saved = append(m.saved, payment)
+	return nil
+}
+
+func (m *memoryPending) FindByPaymentID(context.Context, string) (domainBilling.PendingPayment, bool, error) {
+	return domainBilling.PendingPayment{}, false, nil
 }

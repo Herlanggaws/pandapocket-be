@@ -310,7 +310,7 @@ Login to get access and refresh tokens. The access token expires in 15 minutes. 
 
 Exchange a refresh token for a new access token and refresh token pair. The previous refresh token is revoked.
 
-Send `refresh_token` in the JSON body (mobile). When the body is empty, the server reads cookie `bb_refresh`. A non-empty body is used even if a cookie is also present. Success sets a new `bb_refresh` cookie and still returns `refresh_token` in JSON.
+Send `refresh_token` in the JSON body (mobile). When the body is empty, the server reads cookie `bb_refresh`. A non-empty body is used even if a cookie is also present. Success sets a new `bb_refresh` cookie and still returns `refresh_token` in JSON. The database stores SHA-256 of both tokens, not the JWT itself.
 
 **Request Body:**
 ```json
@@ -2064,7 +2064,7 @@ Same as chat on newest/create thread.
 
 Body: `{ "pack": "ai_credits_s" | "ai_credits_m" }`.
 
-Returns `{ hosted_url, payment_id, reference, pack, credits, amount }`. **Does not** add credits — webhook `payment.paid` with `metadata.product=ai_credits` credits the ledger (skips `ActivatePro`).
+Returns `{ hosted_url, payment_id, reference, pack, credits, amount }`. **Does not** add credits. The webhook credits the ledger only when `payment_id`, user, and amount match the stored top-up (skips `ActivatePro`).
 
 Each call creates a **new** Doit payment (Idempotency-Key + reference include unix nano). Re-clicking top-up after a paid attempt must not reuse the paid hosted page. If Doit returns `status=paid` for a new key, the API retries once with a fresh key.
 
@@ -2224,12 +2224,12 @@ Public (no JWT). Doit sends signed events. Read **raw body** for signature verif
 
 | Event | Behavior |
 | --- | --- |
-| `payment.paid` | Activate Pro (`plan=pro`, `status=active`, period +30d/+365d from metadata interval) |
+| `payment.paid` | Activate Pro or add AI credits only when `payment_id`, user, and `amount` match `pending_payments`. Interval or pack comes from that row. Already-issued `user:{id}:…` references still resolve when `amount` matches the catalog. Otherwise **400** `PAYMENT_MISMATCH` |
 | `payment.expired` | 200, no entitlement change |
 | `webhook.test` | 200, ignore |
 | Other | 200, ignore |
 
-Dedup by event `id` in `billing_webhook_events`. Duplicate deliveries return **200**. Invalid signature → **401**.
+Dedup by event `id` in `billing_webhook_events`. Duplicate deliveries return **200**. Invalid signature → **401** `INVALID_SIGNATURE`. A signature timestamp more than 5 minutes from the server clock → **401** `SIGNATURE_EXPIRED`. A paid event that does not match a recorded payment → **400** `PAYMENT_MISMATCH` (the event is not stored as success).
 
 **Response:** empty body with status `200` on success.
 
@@ -2741,7 +2741,7 @@ Keep this file in sync with the running API. When routes, request/response shape
 
 - The API uses Domain-Driven Design (DDD) architecture
 - Built with Go and Gin framework for HTTP routing
-- Authentication uses a 15-minute bearer access token plus a rotating refresh token. Browsers keep the refresh token in cookie `bb_refresh`
+- Authentication uses a 15-minute bearer access token plus a rotating refresh token. Browsers keep the refresh token in cookie `bb_refresh`. The `tokens` table stores SHA-256 hashes, not the JWTs
 - CORS allows the Berbudget web origins listed above, with credentials
 - All timestamps are in UTC format
 - Date formats should be in `YYYY-MM-DD` format for input
@@ -2752,6 +2752,17 @@ Keep this file in sync with the running API. When routes, request/response shape
 ---
 
 ## Version History
+
+- **v2.54.0**: **Doit webhook bound to recorded payments**
+  - Checkout and AI top-up store `pending_payments` (`payment_id`, user, kind, interval or pack, amount)
+  - `payment.paid` grants Pro or credits only when the user and amount match that row. Kind and interval come from the row
+  - Already-issued `user:{id}:…` references still resolve when `amount` matches the catalog price
+  - Other paid payloads return **400** `PAYMENT_MISMATCH`. Signature timestamps more than 5 minutes off return **401** `SIGNATURE_EXPIRED`
+
+- **v2.53.0**: **Session tokens stored as SHA-256**
+  - `tokens.access_token` and `tokens.refresh_token` store a hex SHA-256, not the JWT
+  - Login, register, refresh, and logout JSON stay the same. Lookup hashes the token the client sends
+  - On startup, rows that still contain a raw JWT are hashed in place so existing sessions keep working
 
 - **v2.52.0**: **15-minute access token and refresh cookie**
   - New access tokens expire in 15 minutes. `JWT_EXPIRATION_HOURS` is ignored

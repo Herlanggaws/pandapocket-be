@@ -70,7 +70,7 @@ func paidSubscription(userID int, interval domainBilling.BillingInterval, period
 
 func TestCheckoutAmountsKeepExistingPrices(t *testing.T) {
 	payments := &stubPayments{}
-	uc := NewCreateCheckoutUseCase(payments, &checkoutSubs{})
+	uc := NewCreateCheckoutUseCase(payments, &checkoutSubs{}, &memoryPending{})
 
 	monthly, err := uc.Execute(context.Background(), 1, CreateCheckoutRequest{Interval: "monthly"})
 	if err != nil {
@@ -102,7 +102,7 @@ func TestCheckoutRejectsShorterIntervalWithoutSaving(t *testing.T) {
 	originalEnd := periodEnd
 	subs := &checkoutSubs{sub: paidSubscription(9, domainBilling.IntervalYearly, periodEnd)}
 	payments := &stubPayments{}
-	uc := NewCreateCheckoutUseCase(payments, subs)
+	uc := NewCreateCheckoutUseCase(payments, subs, &memoryPending{})
 
 	_, err := uc.Execute(context.Background(), 9, CreateCheckoutRequest{Interval: "monthly"})
 	if !errors.Is(err, ErrShorterIntervalBlocked) {
@@ -138,7 +138,7 @@ func TestCheckoutAllowsShorterIntervalAfterPeriodEnds(t *testing.T) {
 	periodEnd := time.Now().UTC().AddDate(0, 0, -1)
 	subs := &checkoutSubs{sub: paidSubscription(9, domainBilling.IntervalYearly, periodEnd)}
 	payments := &stubPayments{}
-	uc := NewCreateCheckoutUseCase(payments, subs)
+	uc := NewCreateCheckoutUseCase(payments, subs, &memoryPending{})
 
 	res, err := uc.Execute(context.Background(), 9, CreateCheckoutRequest{Interval: "monthly"})
 	if err != nil {

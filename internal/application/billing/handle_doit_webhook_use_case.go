@@ -18,7 +18,9 @@ import (
 
 var (
 	ErrWebhookSignatureInvalid = errors.New("invalid webhook signature")
+	ErrWebhookSignatureExpired = errors.New("webhook signature expired")
 	ErrWebhookSecretMissing    = errors.New("DOIT_WEBHOOK_SECRET is not configured")
+	ErrWebhookPaymentMismatch  = errors.New("payment does not match a recorded checkout")
 )
 
 // AICreditApplier credits purchased AI packs after doit payment.paid.
@@ -31,6 +33,7 @@ type HandleDoitWebhookUseCase struct {
 	secret    string
 	events    domainBilling.WebhookEventRepository
 	subs      domainBilling.SubscriptionRepository
+	pending   domainBilling.PendingPaymentRepository
 	aiCredits AICreditApplier
 	appURL    string
 }
@@ -39,11 +42,13 @@ func NewHandleDoitWebhookUseCase(
 	events domainBilling.WebhookEventRepository,
 	subs domainBilling.SubscriptionRepository,
 	aiCredits AICreditApplier,
+	pending domainBilling.PendingPaymentRepository,
 ) *HandleDoitWebhookUseCase {
 	return &HandleDoitWebhookUseCase{
 		secret:    os.Getenv("DOIT_WEBHOOK_SECRET"),
 		events:    events,
 		subs:      subs,
+		pending:   pending,
 		aiCredits: aiCredits,
 		appURL:    os.Getenv("APP_URL"),
 	}
@@ -59,6 +64,7 @@ type webhookEnvelope struct {
 type paymentData struct {
 	ID        string                 `json:"id"`
 	Reference string                 `json:"reference"`
+	Amount    *float64               `json:"amount"`
 	PaidAt    *string                `json:"paid_at"`
 	ReturnURL string                 `json:"return_url"`
 	Metadata  map[string]interface{} `json:"metadata"`
@@ -69,6 +75,9 @@ func (uc *HandleDoitWebhookUseCase) Execute(ctx context.Context, signatureHeader
 		return ErrWebhookSecretMissing
 	}
 	if err := doit.VerifyPayBridgeSignature(uc.secret, signatureHeader, rawBody); err != nil {
+		if errors.Is(err, doit.ErrSignatureExpired) {
+			return ErrWebhookSignatureExpired
+		}
 		return ErrWebhookSignatureInvalid
 	}
 
@@ -110,29 +119,79 @@ func (uc *HandleDoitWebhookUseCase) handlePaymentPaid(ctx context.Context, data 
 	if err := json.Unmarshal(data, &payment); err != nil {
 		return fmt.Errorf("invalid payment.paid data: %w", err)
 	}
-
 	if uc.shouldSkipStagingBoundPayment(payment) {
 		log.Printf("doit webhook: skipping staging-bound payment on non-stg host payment_id=%s return_url=%s app_url=%s",
 			payment.ID, payment.ReturnURL, uc.appURL)
 		return nil
 	}
-
-	if isAICreditPayment(payment) {
-		return uc.handleAICreditPurchase(ctx, payment)
-	}
-
-	userID, interval, err := resolvePaidUser(payment)
+	amount, amountOK := wholeRupiah(payment.Amount)
+	recorded, found, err := uc.findPending(ctx, payment.ID)
 	if err != nil {
-		return nil
+		return err
 	}
+	if found {
+		return uc.applyRecordedPayment(ctx, payment, recorded, amount, amountOK)
+	}
+	return uc.applyLegacyPayment(ctx, payment, amount, amountOK)
+}
 
-	paidAt := time.Now().UTC()
-	if payment.PaidAt != nil && *payment.PaidAt != "" {
-		if parsed, parseErr := time.Parse(time.RFC3339, *payment.PaidAt); parseErr == nil {
-			paidAt = parsed.UTC()
+func (uc *HandleDoitWebhookUseCase) findPending(ctx context.Context, paymentID string) (domainBilling.PendingPayment, bool, error) {
+	if uc.pending == nil || paymentID == "" {
+		return domainBilling.PendingPayment{}, false, nil
+	}
+	return uc.pending.FindByPaymentID(ctx, paymentID)
+}
+
+func (uc *HandleDoitWebhookUseCase) applyRecordedPayment(ctx context.Context, payment paymentData, recorded domainBilling.PendingPayment, amount int, amountOK bool) error {
+	claimed, ok := claimedUser(payment)
+	if !ok || claimed != recorded.UserID || !amountOK || amount != recorded.Amount {
+		return ErrWebhookPaymentMismatch
+	}
+	switch recorded.Kind {
+	case domainBilling.KindPro:
+		interval := domainBilling.BillingInterval(recorded.Interval)
+		if _, priceOK := domainBilling.PriceForInterval(interval); !priceOK {
+			return ErrWebhookPaymentMismatch
 		}
+		return uc.activatePro(ctx, recorded.UserID, interval, paidAt(payment))
+	case domainBilling.KindAICredits:
+		if _, _, err := domainAI.PackCredits(recorded.Pack); err != nil {
+			return ErrWebhookPaymentMismatch
+		}
+		if uc.aiCredits == nil {
+			return nil
+		}
+		return uc.aiCredits.ApplyPurchase(ctx, recorded.UserID, recorded.Pack, recorded.PaymentID)
+	default:
+		return ErrWebhookPaymentMismatch
 	}
+}
 
+func (uc *HandleDoitWebhookUseCase) applyLegacyPayment(ctx context.Context, payment paymentData, amount int, amountOK bool) error {
+	if !amountOK {
+		return ErrWebhookPaymentMismatch
+	}
+	if userID, interval, ok := legacyProReference(payment.Reference); ok {
+		price, priceOK := domainBilling.PriceForInterval(interval)
+		if !priceOK || amount != price {
+			return ErrWebhookPaymentMismatch
+		}
+		return uc.activatePro(ctx, userID, interval, paidAt(payment))
+	}
+	if userID, pack, ok := legacyCreditReference(payment.Reference); ok {
+		_, price, err := domainAI.PackCredits(pack)
+		if err != nil || amount != price {
+			return ErrWebhookPaymentMismatch
+		}
+		if uc.aiCredits == nil {
+			return nil
+		}
+		return uc.aiCredits.ApplyPurchase(ctx, userID, pack, payment.ID)
+	}
+	return ErrWebhookPaymentMismatch
+}
+
+func (uc *HandleDoitWebhookUseCase) activatePro(ctx context.Context, userID int, interval domainBilling.BillingInterval, paidAt time.Time) error {
 	sub, err := uc.subs.FindByUserID(ctx, userID)
 	if err != nil {
 		if !errors.Is(err, domainBilling.ErrNotFound) {
@@ -143,7 +202,6 @@ func (uc *HandleDoitWebhookUseCase) handlePaymentPaid(ctx context.Context, data 
 			return err
 		}
 	}
-
 	if err := sub.ActivatePro(interval, paidAt); err != nil {
 		return err
 	}
@@ -154,21 +212,6 @@ func (uc *HandleDoitWebhookUseCase) handlePaymentPaid(ctx context.Context, data 
 		_ = uc.aiCredits.UnlockFullIncluded(ctx, userID)
 	}
 	return nil
-}
-
-func (uc *HandleDoitWebhookUseCase) handleAICreditPurchase(ctx context.Context, payment paymentData) error {
-	if uc.aiCredits == nil {
-		return nil
-	}
-	userID, pack, err := resolveAICreditPurchase(payment)
-	if err != nil {
-		return nil
-	}
-	paymentID := payment.ID
-	if paymentID == "" {
-		return nil
-	}
-	return uc.aiCredits.ApplyPurchase(ctx, userID, pack, paymentID)
 }
 
 // shouldSkipStagingBoundPayment avoids writing staging Doit payments into the prod DB
@@ -191,103 +234,90 @@ func isStagingBoundReturnURL(returnURL string) bool {
 	return strings.Contains(strings.ToLower(returnURL), "stg.berbudget.com")
 }
 
-func isAICreditPayment(payment paymentData) bool {
-	if payment.Metadata != nil {
-		if raw, ok := payment.Metadata["product"]; ok {
-			if s, ok := raw.(string); ok && s == domainAI.ProductAICredits {
-				return true
-			}
-		}
-		if raw, ok := payment.Metadata["pack"]; ok {
-			if s, ok := raw.(string); ok && (s == domainAI.PackS || s == domainAI.PackM) {
-				return true
-			}
+func paidAt(payment paymentData) time.Time {
+	if payment.PaidAt != nil && *payment.PaidAt != "" {
+		if parsed, err := time.Parse(time.RFC3339, *payment.PaidAt); err == nil {
+			return parsed.UTC()
 		}
 	}
-	if strings.Contains(payment.Reference, ":ai:") {
-		return true
-	}
-	return false
+	return time.Now().UTC()
 }
 
-func resolveAICreditPurchase(payment paymentData) (int, string, error) {
-	var userID int
-	pack := ""
-
-	if payment.Metadata != nil {
-		if raw, ok := payment.Metadata["user_id"]; ok {
-			if parsed, err := coerceInt(raw); err == nil {
-				userID = parsed
-			}
-		}
-		if raw, ok := payment.Metadata["pack"]; ok {
-			if s, ok := raw.(string); ok {
-				pack = s
-			}
-		}
+func wholeRupiah(amount *float64) (int, bool) {
+	if amount == nil || *amount <= 0 || *amount != float64(int(*amount)) {
+		return 0, false
 	}
-
-	if userID == 0 || pack == "" {
-		parts := strings.Split(payment.Reference, ":")
-		if len(parts) >= 4 && parts[0] == "user" && parts[2] == "ai" {
-			if parsed, err := strconv.Atoi(parts[1]); err == nil {
-				userID = parsed
-			}
-			if pack == "" {
-				pack = parts[3]
-			}
-		}
-	}
-
-	if userID <= 0 {
-		return 0, "", fmt.Errorf("user_id not found")
-	}
-	if _, _, err := domainAI.PackCredits(pack); err != nil {
-		return 0, "", err
-	}
-	return userID, pack, nil
+	return int(*amount), true
 }
 
-func resolvePaidUser(payment paymentData) (int, domainBilling.BillingInterval, error) {
-	var userID int
-	var interval domainBilling.BillingInterval
+func claimedUser(payment paymentData) (int, bool) {
+	refUser, refOK := userIDFromReference(payment.Reference)
+	metaUser, metaOK := userIDFromMetadata(payment.Metadata)
+	if refOK && metaOK && refUser != metaUser {
+		return 0, false
+	}
+	if refOK {
+		return refUser, true
+	}
+	return metaUser, metaOK
+}
 
-	if payment.Metadata != nil {
-		if raw, ok := payment.Metadata["user_id"]; ok {
-			parsed, err := coerceInt(raw)
-			if err == nil {
-				userID = parsed
-			}
-		}
-		if raw, ok := payment.Metadata["interval"]; ok {
-			if s, ok := raw.(string); ok {
-				interval = domainBilling.BillingInterval(s)
-			}
-		}
+func userIDFromMetadata(metadata map[string]interface{}) (int, bool) {
+	if metadata == nil {
+		return 0, false
 	}
+	raw, ok := metadata["user_id"]
+	if !ok {
+		return 0, false
+	}
+	userID, err := coerceInt(raw)
+	if err != nil || userID <= 0 {
+		return 0, false
+	}
+	return userID, true
+}
 
-	if userID == 0 && payment.Reference != "" {
-		parts := strings.Split(payment.Reference, ":")
-		if len(parts) >= 2 && parts[0] == "user" {
-			parsed, err := strconv.Atoi(parts[1])
-			if err == nil {
-				userID = parsed
-			}
-		}
-		if interval == "" && len(parts) >= 3 {
-			interval = domainBilling.BillingInterval(parts[2])
-		}
+func userIDFromReference(reference string) (int, bool) {
+	parts := strings.Split(reference, ":")
+	if len(parts) < 2 || parts[0] != "user" {
+		return 0, false
 	}
+	userID, err := strconv.Atoi(parts[1])
+	if err != nil || userID <= 0 {
+		return 0, false
+	}
+	return userID, true
+}
 
-	if userID <= 0 {
-		return 0, "", fmt.Errorf("user_id not found in payment")
+func legacyProReference(reference string) (int, domainBilling.BillingInterval, bool) {
+	parts := strings.Split(reference, ":")
+	if len(parts) < 3 || parts[0] != "user" || parts[2] == "ai" {
+		return 0, "", false
 	}
-	switch interval {
-	case domainBilling.IntervalMonthly, domainBilling.IntervalSemiannual, domainBilling.IntervalYearly:
-	default:
-		return 0, "", fmt.Errorf("billing interval not found in payment")
+	userID, err := strconv.Atoi(parts[1])
+	if err != nil || userID <= 0 {
+		return 0, "", false
 	}
-	return userID, interval, nil
+	interval := domainBilling.BillingInterval(parts[2])
+	if _, ok := domainBilling.PriceForInterval(interval); !ok {
+		return 0, "", false
+	}
+	return userID, interval, true
+}
+
+func legacyCreditReference(reference string) (int, string, bool) {
+	parts := strings.Split(reference, ":")
+	if len(parts) < 4 || parts[0] != "user" || parts[2] != "ai" {
+		return 0, "", false
+	}
+	userID, err := strconv.Atoi(parts[1])
+	if err != nil || userID <= 0 {
+		return 0, "", false
+	}
+	if _, _, err := domainAI.PackCredits(parts[3]); err != nil {
+		return 0, "", false
+	}
+	return userID, parts[3], true
 }
 
 func coerceInt(raw interface{}) (int, error) {
