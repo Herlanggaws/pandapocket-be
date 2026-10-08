@@ -12,14 +12,14 @@ import (
 )
 
 func main() {
-	if err := appIdentity.RefuseDefaultTokenSecrets(); err != nil {
-		log.Fatal(err)
-	}
-
-	// Initialize database with GORM
+	// Initialize database with GORM. InitDB loads .env before any connection.
 	db, err := database.InitDB()
 	if err != nil {
 		log.Fatal("Failed to initialize database:", err)
+	}
+
+	if err := appIdentity.RefuseDefaultTokenSecrets(); err != nil {
+		log.Fatal(err)
 	}
 
 	// Get underlying sql.DB for connection management
