@@ -1965,7 +1965,7 @@ Pro-only remote MCP. Spec: `doc/mcp.md`. Session JWTs are not accepted on `POST 
 
 **DELETE** sets the token revoked. Missing token is still success (`active: false`).
 
-**POST /mcp** is JSON-RPC 2.0 (`initialize`, `tools/list`, `tools/call`, `ping`). A message without `id` gets HTTP 202 and an empty body. `tools/call` checks `IsPro()` again. A valid token after Pro ends returns a tool result with `isError: true` and text starting `PREMIUM_REQUIRED`. Tools: `list_wallets`, `list_transactions` (default last 30 days, max 50), `list_budgets`, `list_goals`, `net_worth`. No write tools. No AI credit debit.
+**POST /mcp** is JSON-RPC 2.0 (`initialize`, `tools/list`, `tools/call`, `ping`). A message without `id` gets HTTP 202 and an empty body. The body is limited to 1 MB; a larger body returns **413** `MCP_BODY_TOO_LARGE`. `tools/call` checks `IsPro()` again. A valid token after Pro ends returns a tool result with `isError: true` and text starting `PREMIUM_REQUIRED`. Tools: `list_wallets`, `list_transactions` (default last 30 days, max 50), `list_budgets`, `list_goals`, `net_worth`. No write tools. No AI credit debit.
 
 Account data reset deletes the `mcp_tokens` row.
 
@@ -2744,6 +2744,9 @@ Keep this file in sync with the running API. When routes, request/response shape
 ---
 
 ## Version History
+
+- **v2.50.0**: **MCP request body limit**
+  - `POST /mcp` rejects a body larger than 1 MB with **413** `MCP_BODY_TOO_LARGE`
 
 - **v2.49.0**: **AI credit usage log**
   - `GET /api/ai/advisor/credits/ledger`: newest spends and top-ups (`before`, `limit`)

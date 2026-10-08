@@ -11,6 +11,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const mcpMaxBodyBytes = 1 << 20
+
 type MCPHandlers struct {
 	tokens *appMCP.TokenService
 	server *appMCP.Server
@@ -53,8 +55,14 @@ func (h *MCPHandlers) Serve(c *gin.Context) {
 		UnauthorizedResponse(c, "INVALID_TOKEN", "Invalid token")
 		return
 	}
+	c.Request.Body = http.MaxBytesReader(nil, c.Request.Body, mcpMaxBodyBytes)
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			SendErrorResponse(c, http.StatusRequestEntityTooLarge, "MCP_BODY_TOO_LARGE", "MCP request body exceeds 1 MB")
+			return
+		}
 		BadRequestResponse(c, "MCP_BAD_REQUEST", "Could not read the MCP request")
 		return
 	}
