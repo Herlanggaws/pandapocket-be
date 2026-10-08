@@ -4,6 +4,8 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"os"
+	"strings"
 	"time"
 
 	appAI "panda-pocket/internal/application/ai"
@@ -512,12 +514,10 @@ func (app *App) SetupRoutes() *gin.Engine {
 
 	// CORS configuration
 	config := cors.DefaultConfig()
-	config.AllowOrigins = []string{
-		"*",
-	}
+	config.AllowOrigins = corsAllowedOrigins()
 	config.AllowMethods = []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}
 	config.AllowHeaders = []string{"Origin", "Content-Type", "Accept", "Authorization"}
-	config.AllowCredentials = false
+	config.AllowCredentials = true
 	r.Use(cors.New(config))
 
 	r.POST("/mcp", app.MCPHandlers.Serve)
@@ -691,6 +691,28 @@ func (app *App) SetupRoutes() *gin.Engine {
 	r.POST("/webhooks/doit", app.BillingHandlers.HandleDoitWebhook)
 
 	return r
+}
+
+func corsAllowedOrigins() []string {
+	if raw := strings.TrimSpace(os.Getenv("CORS_ALLOWED_ORIGINS")); raw != "" {
+		parts := strings.Split(raw, ",")
+		origins := make([]string, 0, len(parts))
+		for _, part := range parts {
+			origin := strings.TrimSpace(part)
+			if origin != "" {
+				origins = append(origins, origin)
+			}
+		}
+		if len(origins) > 0 {
+			return origins
+		}
+	}
+	return []string{
+		"https://berbudget.com",
+		"https://www.berbudget.com",
+		"https://stg.berbudget.com",
+		"http://localhost:3000",
+	}
 }
 
 // StartBackgroundJobs starts periodic maintenance such as account purge and token hygiene.

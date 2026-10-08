@@ -40,6 +40,7 @@ func (s *sessionTokenService) RevokeAllForUser(_ context.Context, userID int) er
 	s.revokedUsers = append(s.revokedUsers, userID)
 	return nil
 }
+func (s *sessionTokenService) RefreshCookieMaxAge() int                 { return 3600 }
 func (s *sessionTokenService) CleanupExpiredToken(context.Context, string) error { return nil }
 
 func TestLogoutWithoutRefreshRevokesCaller(t *testing.T) {

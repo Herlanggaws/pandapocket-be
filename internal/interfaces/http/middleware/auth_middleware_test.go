@@ -36,6 +36,7 @@ func (s *stubTokenService) GenerateAccessTokenResult(int, string, string) (strin
 }
 func (s *stubTokenService) RevokeToken(context.Context, string) error { return nil }
 func (s *stubTokenService) RevokeAllForUser(context.Context, int) error { return nil }
+func (s *stubTokenService) RefreshCookieMaxAge() int                 { return 0 }
 func (s *stubTokenService) CleanupExpiredToken(context.Context, string) error { return nil }
 
 func TestRevokedAccessTokenIsRejected(t *testing.T) {

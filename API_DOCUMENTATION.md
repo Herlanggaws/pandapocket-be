@@ -52,7 +52,7 @@ Authorization: Bearer <your-token>
 
 ## CORS Configuration
 
-CORS currently allows all origins (`*`). Allowed request headers: `Origin`, `Content-Type`, `Accept`, `Authorization`.
+Allowed origins: `https://berbudget.com`, `https://www.berbudget.com`, `https://stg.berbudget.com`, and `http://localhost:3000`. Override with a comma-separated `CORS_ALLOWED_ORIGINS`. Credentials are allowed so the `bb_refresh` cookie is sent on browser `fetch`. Allowed request headers: `Origin`, `Content-Type`, `Accept`, `Authorization`.
 
 ## Endpoint Index
 
@@ -62,7 +62,7 @@ CORS currently allows all origins (`*`). Allowed request headers: `Origin`, `Con
 | POST | `/webhooks/doit` | No | Doit payment webhooks (`PayBridge-Signature`) |
 | POST | `/api/auth/register` | No | |
 | POST | `/api/auth/login` | No | |
-| POST | `/api/auth/refresh` | No | Refresh access token |
+| POST | `/api/auth/refresh` | No | Rotates refresh token. Body `refresh_token`, or cookie `bb_refresh` when the body is empty |
 | POST | `/api/auth/logout` | Yes | Revokes every session. Optional `refresh_token` must belong to the caller |
 | POST | `/api/auth/forgot` | No | Forgot password |
 | POST | `/api/auth/reset-password` | No | Reset with token from email |
@@ -252,6 +252,8 @@ All API endpoints follow a standardized response structure:
 
 Register a new user account. Also creates a billing subscription with a **14-day Pro trial** (`status=trialing`, `plan=free`, `trial_ends_at=now+14d`). Existing backfilled accounts do not receive a trial.
 
+The access token expires in 15 minutes. The response still includes `refresh_token` for mobile clients. Browsers also receive `Set-Cookie: bb_refresh` (`HttpOnly`, `SameSite=Lax`, `Path=/`, `Secure` only on HTTPS).
+
 **Request Body:**
 ```json
 {
@@ -278,7 +280,7 @@ Register a new user account. Also creates a billing subscription with a **14-day
 
 ### POST /api/auth/login
 
-Login to get access and refresh tokens.
+Login to get access and refresh tokens. The access token expires in 15 minutes. `JWT_EXPIRATION_HOURS` does not change that. The response includes `refresh_token` for mobile clients and sets the `bb_refresh` cookie described on register.
 
 **Request Body:**
 ```json
@@ -306,7 +308,9 @@ Login to get access and refresh tokens.
 
 ### POST /api/auth/refresh
 
-Exchange a refresh token for a new access token and refresh token pair.
+Exchange a refresh token for a new access token and refresh token pair. The previous refresh token is revoked.
+
+Send `refresh_token` in the JSON body (mobile). When the body is empty, the server reads cookie `bb_refresh`. A non-empty body is used even if a cookie is also present. Success sets a new `bb_refresh` cookie and still returns `refresh_token` in JSON.
 
 **Request Body:**
 ```json
@@ -329,7 +333,7 @@ Exchange a refresh token for a new access token and refresh token pair.
 
 ### POST /api/auth/logout
 
-Authenticated. Revokes every session for the caller (`RevokeAllForUser`).
+Authenticated. Revokes every session for the caller (`RevokeAllForUser`) and clears cookie `bb_refresh`.
 
 `refresh_token` in the body is optional. When present it must belong to the authenticated user. A missing or foreign refresh token returns **403** `REFRESH_TOKEN_MISMATCH` and revokes nobody. An empty body still revokes the caller's sessions.
 
@@ -2737,8 +2741,8 @@ Keep this file in sync with the running API. When routes, request/response shape
 
 - The API uses Domain-Driven Design (DDD) architecture
 - Built with Go and Gin framework for HTTP routing
-- Authentication uses bearer access tokens plus refresh tokens
-- CORS allows all origins (`*`)
+- Authentication uses a 15-minute bearer access token plus a rotating refresh token. Browsers keep the refresh token in cookie `bb_refresh`
+- CORS allows the Berbudget web origins listed above, with credentials
 - All timestamps are in UTC format
 - Date formats should be in `YYYY-MM-DD` format for input
 - Amounts are stored as floating-point numbers
@@ -2748,6 +2752,12 @@ Keep this file in sync with the running API. When routes, request/response shape
 ---
 
 ## Version History
+
+- **v2.52.0**: **15-minute access token and refresh cookie**
+  - New access tokens expire in 15 minutes. `JWT_EXPIRATION_HOURS` is ignored
+  - Login, register, and refresh set cookie `bb_refresh` (`HttpOnly`, `SameSite=Lax`, `Secure` on HTTPS). Logout clears it
+  - `POST /api/auth/refresh` uses the JSON body when present, otherwise the cookie. The JSON response still includes `refresh_token`
+  - CORS uses an explicit origin list and `AllowCredentials`. Override with `CORS_ALLOWED_ORIGINS`
 
 - **v2.51.0**: **Session revoke on logout and password change**
   - `POST /api/auth/logout` requires a session Bearer. Optional `refresh_token` must belong to the caller (otherwise **403**, nobody is revoked). Success revokes every session for that user

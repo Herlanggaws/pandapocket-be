@@ -14,7 +14,7 @@ import (
 const (
 	DefaultJWTSecret                   = "panda-pocket-secret-key-change-in-production"
 	DefaultRefreshTokenSecret          = "panda-pocket-refresh-token-secret-change-in-production"
-	DefaultJWTExpirationHours          = 24
+	AccessTokenTTL                     = 15 * time.Minute
 	DefaultRefreshTokenExpirationHours = 168
 )
 
@@ -42,6 +42,7 @@ type TokenService interface {
 	GenerateAccessTokenResult(userID int, email string, role string) (string, error)
 	RevokeToken(ctx context.Context, tokenString string) error
 	RevokeAllForUser(ctx context.Context, userID int) error
+	RefreshCookieMaxAge() int
 	CleanupExpiredToken(ctx context.Context, tokenString string) error
 }
 
@@ -50,7 +51,6 @@ type tokenService struct {
 	repo                        identity.TokenRepository
 	jwtSecret                   string
 	refreshTokenSecret          string
-	jwtExpirationHours          int
 	refreshTokenExpirationHours int
 }
 
@@ -58,12 +58,6 @@ type tokenService struct {
 func NewTokenService(repo identity.TokenRepository) TokenService {
 	jwtSecret := getEnv("JWT_SECRET", DefaultJWTSecret)
 	refreshTokenSecret := getEnv("REFRESH_TOKEN_SECRET", DefaultRefreshTokenSecret)
-
-	jwtExpirationHoursStr := getEnv("JWT_EXPIRATION_HOURS", strconv.Itoa(DefaultJWTExpirationHours))
-	jwtExpirationHours, err := strconv.Atoi(jwtExpirationHoursStr)
-	if err != nil {
-		jwtExpirationHours = DefaultJWTExpirationHours
-	}
 
 	refreshTokenExpirationHoursStr := getEnv("REFRESH_TOKEN_EXPIRATION_HOURS", strconv.Itoa(DefaultRefreshTokenExpirationHours))
 	refreshTokenExpirationHours, err := strconv.Atoi(refreshTokenExpirationHoursStr)
@@ -75,7 +69,6 @@ func NewTokenService(repo identity.TokenRepository) TokenService {
 		repo:                        repo,
 		jwtSecret:                   jwtSecret,
 		refreshTokenSecret:          refreshTokenSecret,
-		jwtExpirationHours:          jwtExpirationHours,
 		refreshTokenExpirationHours: refreshTokenExpirationHours,
 	}
 }
@@ -134,7 +127,7 @@ func (s *tokenService) GenerateAccessTokenResult(userID int, email string, role 
 		Email:  email,
 		Role:   role,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Duration(s.jwtExpirationHours) * time.Hour)),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(AccessTokenTTL)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 		},
 	}
@@ -224,6 +217,10 @@ func (s *tokenService) RevokeToken(ctx context.Context, tokenString string) erro
 // RevokeAllForUser revokes all tokens for a user
 func (s *tokenService) RevokeAllForUser(ctx context.Context, userID int) error {
 	return s.repo.RevokeAllForUser(ctx, userID)
+}
+
+func (s *tokenService) RefreshCookieMaxAge() int {
+	return s.refreshTokenExpirationHours * 3600
 }
 
 // CleanupExpiredToken removes an expired access token from the database

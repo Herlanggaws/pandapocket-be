@@ -96,6 +96,7 @@ func (h *IdentityHandlers) Register(c *gin.Context) {
 		return
 	}
 
+	setRefreshCookie(c, response.RefreshToken, h.tokenService.RefreshCookieMaxAge())
 	SuccessResponse(c, http.StatusCreated, gin.H{
 		"token":         response.Token,
 		"refresh_token": response.RefreshToken,
@@ -120,6 +121,7 @@ func (h *IdentityHandlers) Login(c *gin.Context) {
 		return
 	}
 
+	setRefreshCookie(c, response.RefreshToken, h.tokenService.RefreshCookieMaxAge())
 	SuccessResponse(c, http.StatusOK, gin.H{
 		"token":         response.Token,
 		"refresh_token": response.RefreshToken,
@@ -177,25 +179,65 @@ func (h *IdentityHandlers) Logout(c *gin.Context) {
 		return
 	}
 
+	clearRefreshCookie(c)
 	SuccessResponse(c, http.StatusOK, gin.H{
 		"message": "Logout successful",
 	})
 }
 
-// RefreshToken handles token refresh
+const refreshCookieName = "bb_refresh"
+
+func refreshCredential(bodyToken, cookieToken string) string {
+	if bodyToken != "" {
+		return bodyToken
+	}
+	return cookieToken
+}
+
+func requestIsHTTPS(c *gin.Context) bool {
+	if c.Request.TLS != nil {
+		return true
+	}
+	return strings.EqualFold(c.GetHeader("X-Forwarded-Proto"), "https")
+}
+
+func setRefreshCookie(c *gin.Context, token string, maxAge int) {
+	c.SetSameSite(http.SameSiteLaxMode)
+	c.SetCookie(refreshCookieName, token, maxAge, "/", "", requestIsHTTPS(c), true)
+}
+
+func clearRefreshCookie(c *gin.Context) {
+	c.SetSameSite(http.SameSiteLaxMode)
+	c.SetCookie(refreshCookieName, "", -1, "/", "", requestIsHTTPS(c), true)
+}
+
+// RefreshToken rotates a refresh token from the JSON body, or from the bb_refresh cookie when the body is empty.
 func (h *IdentityHandlers) RefreshToken(c *gin.Context) {
-	var req identity.RefreshTokenRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		ValidationErrorResponse(c, formatValidationError(err))
+	var body struct {
+		RefreshToken string `json:"refresh_token"`
+	}
+	if c.Request.ContentLength > 0 {
+		if err := c.ShouldBindJSON(&body); err != nil {
+			ValidationErrorResponse(c, formatValidationError(err))
+			return
+		}
+	}
+	cookieToken, _ := c.Cookie(refreshCookieName)
+	refreshToken := refreshCredential(body.RefreshToken, cookieToken)
+	if refreshToken == "" {
+		UnauthorizedResponse(c, "INVALID_TOKEN", "Invalid refresh token")
 		return
 	}
 
-	response, err := h.refreshTokenUseCase.Execute(c.Request.Context(), req)
+	response, err := h.refreshTokenUseCase.Execute(c.Request.Context(), identity.RefreshTokenRequest{
+		RefreshToken: refreshToken,
+	})
 	if err != nil {
 		HandleError(c, err, http.StatusUnauthorized)
 		return
 	}
 
+	setRefreshCookie(c, response.RefreshToken, h.tokenService.RefreshCookieMaxAge())
 	SuccessResponse(c, http.StatusOK, gin.H{
 		"token":         response.Token,
 		"refresh_token": response.RefreshToken,
