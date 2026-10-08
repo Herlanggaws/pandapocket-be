@@ -59,7 +59,9 @@ func (s *stubStreamer) StreamChat(_ context.Context, _ []paas.Message, onDelta f
 }
 
 type memCredits struct {
-	balance *domainAI.CreditBalance
+	balance      *domainAI.CreditBalance
+	ledger       []domainAI.CreditLedgerEntry
+	nextLedgerID int
 }
 
 func (m *memCredits) FindByUserID(_ context.Context, _ int) (*domainAI.CreditBalance, error) {
@@ -82,6 +84,53 @@ func (m *memCredits) PurchaseExists(_ context.Context, _ string) (bool, error) {
 
 func (m *memCredits) RecordPurchase(_ context.Context, _ int, _, _ string, _ int) error {
 	return nil
+}
+
+func (m *memCredits) RecordSpend(_ context.Context, userID int, source string) (*domainAI.CreditBalance, error) {
+	if !domainAI.ValidSpendSource(source) {
+		return nil, domainAI.ErrInvalidSpendSource
+	}
+	if m.balance == nil {
+		return nil, domainAI.ErrBalanceNotFound
+	}
+	includedBefore := m.balance.IncludedUsed
+	purchasedBefore := m.balance.PurchasedRemaining
+	if err := m.balance.Spend(); err != nil {
+		return nil, err
+	}
+	m.nextLedgerID++
+	m.ledger = append(m.ledger, domainAI.CreditLedgerEntry{
+		ID:                m.nextLedgerID,
+		UserID:            userID,
+		Kind:              domainAI.LedgerKindSpend,
+		Source:            source,
+		DeltaIncludedUsed: m.balance.IncludedUsed - includedBefore,
+		DeltaPurchased:    m.balance.PurchasedRemaining - purchasedBefore,
+		CreatedAt:         m.balance.UpdatedAt,
+	})
+	cp := *m.balance
+	return &cp, nil
+}
+
+func (m *memCredits) ListLedger(_ context.Context, userID, beforeID, limit int) ([]domainAI.CreditLedgerEntry, error) {
+	if limit <= 0 {
+		return nil, nil
+	}
+	out := make([]domainAI.CreditLedgerEntry, 0)
+	for i := len(m.ledger) - 1; i >= 0; i-- {
+		row := m.ledger[i]
+		if row.UserID != userID {
+			continue
+		}
+		if beforeID > 0 && row.ID >= beforeID {
+			continue
+		}
+		out = append(out, row)
+		if len(out) == limit {
+			break
+		}
+	}
+	return out, nil
 }
 
 type memThreads struct {

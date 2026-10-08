@@ -313,7 +313,7 @@ func (uc *AdvisorChatUseCase) runGeneration(
 	}
 
 	if appendErr := uc.threads.AppendMessage(finishCtx, threadID, domainAI.RoleAssistant, full, promptTokens, completionTokens); appendErr != nil {
-		creditsAfter, spendErr := uc.credits.SpendOne(finishCtx, userID)
+		creditsAfter, spendErr := uc.credits.SpendOne(finishCtx, userID, domainAI.SpendSourceAdvisorChat)
 		_ = uc.threads.FinishGeneration(finishCtx, threadID, domainAI.GenerationIdle)
 		if spendErr != nil {
 			job.publish(StreamEvent{Kind: StreamError, ErrCode: "AI_CHAT_ERROR", Credits: creditsBefore})
@@ -324,7 +324,7 @@ func (uc *AdvisorChatUseCase) runGeneration(
 		return
 	}
 
-	creditsAfter, spendErr := uc.credits.SpendOne(finishCtx, userID)
+	creditsAfter, spendErr := uc.credits.SpendOne(finishCtx, userID, domainAI.SpendSourceAdvisorChat)
 	_ = uc.threads.FinishGeneration(finishCtx, threadID, domainAI.GenerationIdle)
 	if spendErr != nil {
 		job.publish(StreamEvent{Kind: StreamError, ErrCode: "AI_CREDITS_REQUIRED", Credits: creditsBefore})

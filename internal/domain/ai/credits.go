@@ -11,15 +11,16 @@ import (
 )
 
 var (
-	ErrCreditsRequired = errors.New("ai credits required")
-	ErrInvalidPack     = errors.New("invalid ai credit pack")
-	ErrMessageTooLong  = errors.New("message exceeds max length")
-	ErrUpstream        = errors.New("ai upstream error")
-	ErrNotConfigured   = errors.New("ai provider is not configured")
-	ErrBalanceNotFound = errors.New("ai credit balance not found")
-	ErrThreadNotFound  = errors.New("ai advisor thread not found")
-	ErrTurnInProgress  = errors.New("ai turn already in progress")
-	ErrDraftNotFound   = errors.New("ai transaction draft not found")
+	ErrCreditsRequired    = errors.New("ai credits required")
+	ErrInvalidPack        = errors.New("invalid ai credit pack")
+	ErrMessageTooLong     = errors.New("message exceeds max length")
+	ErrUpstream           = errors.New("ai upstream error")
+	ErrNotConfigured      = errors.New("ai provider is not configured")
+	ErrBalanceNotFound    = errors.New("ai credit balance not found")
+	ErrInvalidSpendSource = errors.New("invalid credit spend source")
+	ErrThreadNotFound     = errors.New("ai advisor thread not found")
+	ErrTurnInProgress     = errors.New("ai turn already in progress")
+	ErrDraftNotFound      = errors.New("ai transaction draft not found")
 )
 
 const (
@@ -167,11 +168,51 @@ func SyncUnlockForSubscription(b *CreditBalance, isTrialing bool) {
 	b.UpdatedAt = time.Now().UTC()
 }
 
+const (
+	LedgerKindSpend    = "spend"
+	LedgerKindPurchase = "purchase"
+
+	SpendSourceAdvisorChat    = "advisor_chat"
+	SpendSourceAdvisorDraft   = "advisor_draft"
+	SpendSourceReceiptScan    = "receipt_scan"
+	SpendSourceInsightsReport = "insights_report"
+)
+
+func ValidSpendSource(source string) bool {
+	switch source {
+	case SpendSourceAdvisorChat, SpendSourceAdvisorDraft, SpendSourceReceiptScan, SpendSourceInsightsReport:
+		return true
+	default:
+		return false
+	}
+}
+
+// CreditLedgerEntry is one purchase or spend. Delta is the credit change shown to the user.
+type CreditLedgerEntry struct {
+	ID                int
+	UserID            int
+	Kind              string
+	Source            string
+	DeltaPurchased    int
+	DeltaIncludedUsed int
+	Pack              string
+	CreatedAt         time.Time
+}
+
+func (e CreditLedgerEntry) Delta() int {
+	if e.Kind == LedgerKindSpend {
+		return -1
+	}
+	return e.DeltaPurchased
+}
+
 type CreditBalanceRepository interface {
 	FindByUserID(ctx context.Context, userID int) (*CreditBalance, error)
 	Save(ctx context.Context, balance *CreditBalance) error
 	PurchaseExists(ctx context.Context, doitPaymentID string) (bool, error)
 	RecordPurchase(ctx context.Context, userID int, pack, doitPaymentID string, credits int) error
+	RecordSpend(ctx context.Context, userID int, source string) (*CreditBalance, error)
+	ListLedger(ctx context.Context, userID, beforeID, limit int) ([]CreditLedgerEntry, error)
 }
 
 type ThreadMessage struct {

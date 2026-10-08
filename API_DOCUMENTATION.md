@@ -118,6 +118,7 @@ CORS currently allows all origins (`*`). Allowed request headers: `Origin`, `Con
 | POST | `/api/billing/checkout` | Yes | Start Doit checkout; returns `hosted_url` (does not unlock Pro) |
 | POST | `/api/billing/cancel` | Yes | Schedule cancel at period end |
 | GET | `/api/ai/advisor/credits` | Yes (Pro) | Read-only AI credit balance (no thread) |
+| GET | `/api/ai/advisor/credits/ledger` | Yes (Pro) | AI credit usage and top-up history |
 | GET | `/api/ai/advisor/threads` | Yes (Pro) | List AI chat threads |
 | POST | `/api/ai/advisor/threads` | Yes (Pro) | Create thread |
 | GET | `/api/ai/advisor/threads/:id` | Yes (Pro) | Thread messages + credits + `generation_status` |
@@ -2067,6 +2068,39 @@ Env: `PAAS_AI_BASE_URL`, `PAAS_AI_API_KEY`, `PAAS_AI_MODEL` (default `glm-5.3-fl
 
 Pro-only. Returns the same `credits` object as a thread (`available`, `included_unlocked`, `included_used`, `purchased_remaining`, `is_trialing`). Does not create a thread. Free → `403 PREMIUM_REQUIRED`.
 
+#### GET /api/ai/advisor/credits/ledger
+
+Pro-only. Newest credit events first: spends (`delta: -1`) and top-ups (`delta` is the pack size). Spends start when this log shipped; older usage is only in the balance counters. Free → `403 PREMIUM_REQUIRED`.
+
+Query: `before` (exclusive id cursor), `limit` (default 20, max 50).
+
+```json
+{
+  "status": "success",
+  "data": {
+    "entries": [
+      {
+        "id": 12,
+        "kind": "spend",
+        "source": "advisor_chat",
+        "delta": -1,
+        "created_at": "2026-10-08T00:00:00Z"
+      },
+      {
+        "id": 9,
+        "kind": "purchase",
+        "delta": 50,
+        "pack": "ai_credits_s",
+        "created_at": "2026-09-28T00:00:00Z"
+      }
+    ],
+    "next_before": 9
+  }
+}
+```
+
+`source` on spend: `advisor_chat` | `advisor_draft` | `receipt_scan` | `insights_report`. `next_before` is omitted when the page is the last one.
+
 #### POST /api/ai/insights/report
 
 Pro-only one-shot report for the Insights period. Spec: `doc/insights-ai-report.md`. Shares the Tanya AI credit balance. Debits **1 credit only after** a non-empty report. Not stored.
@@ -2710,6 +2744,11 @@ Keep this file in sync with the running API. When routes, request/response shape
 ---
 
 ## Version History
+
+- **v2.49.0**: **AI credit usage log**
+  - `GET /api/ai/advisor/credits/ledger`: newest spends and top-ups (`before`, `limit`)
+  - Each successful debit writes `kind=spend` with `source` in the same transaction as the balance update
+  - Sources: `advisor_chat`, `advisor_draft`, `receipt_scan`, `insights_report`
 
 - **v2.48.0**: **Receivables / piutang (C11)**
   - `GET/POST /api/receivables`, `PUT /api/receivables/:id`, archive/unarchive, `GET/POST /api/receivables/:id/collections`

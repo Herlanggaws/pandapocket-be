@@ -631,6 +631,7 @@ func (app *App) SetupRoutes() *gin.Engine {
 			protected.POST("/billing/cancel", app.BillingHandlers.CancelSubscription)
 
 			protected.GET("/ai/advisor/credits", app.AIAdvisorHandlers.GetCredits)
+			protected.GET("/ai/advisor/credits/ledger", app.AIAdvisorHandlers.GetCreditLedger)
 			protected.POST("/ai/insights/report", app.AIAdvisorHandlers.InsightsReport)
 			protected.POST("/ai/receipts/scan", app.AIAdvisorHandlers.ScanReceipt)
 			protected.GET("/ai/advisor/threads", app.AIAdvisorHandlers.ListThreads)

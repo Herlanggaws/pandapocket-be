@@ -100,7 +100,7 @@ func (uc *ReceiptScanUseCase) Execute(ctx context.Context, userID int, image []b
 	if err != nil {
 		return nil, err
 	}
-	creditsAfter, err := uc.credits.SpendOne(ctx, userID)
+	creditsAfter, err := uc.credits.SpendOne(ctx, userID, domainAI.SpendSourceReceiptScan)
 	if err != nil {
 		return nil, err
 	}

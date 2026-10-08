@@ -152,7 +152,7 @@ func (uc *AdvisorChatUseCase) writeTransactionDraft(
 		uc.failDraftTurn(finishCtx, threadID, job, creditsBefore)
 		return
 	}
-	creditsAfter, spendErr := uc.credits.SpendOne(finishCtx, userID)
+	creditsAfter, spendErr := uc.credits.SpendOne(finishCtx, userID, domainAI.SpendSourceAdvisorDraft)
 	_ = uc.threads.FinishGeneration(finishCtx, threadID, domainAI.GenerationIdle)
 	_ = uc.threads.TrimOldest(finishCtx, threadID, domainAI.MaxThreadMsgs)
 	if spendErr != nil {

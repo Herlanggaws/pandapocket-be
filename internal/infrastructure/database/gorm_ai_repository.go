@@ -27,6 +27,7 @@ type AICreditLedgerEntry struct {
 	ID                uint      `gorm:"primaryKey" json:"id"`
 	UserID            uint      `gorm:"not null;index" json:"user_id"`
 	Kind              string    `gorm:"type:varchar(32);not null" json:"kind"`
+	Source            string    `gorm:"type:varchar(32);not null;default:''" json:"source,omitempty"`
 	DeltaPurchased    int       `gorm:"not null;default:0" json:"delta_purchased"`
 	DeltaIncludedUsed int       `gorm:"not null;default:0" json:"delta_included_used"`
 	Pack              *string   `gorm:"type:varchar(32)" json:"pack,omitempty"`
@@ -161,6 +162,91 @@ func (r *GormAICreditRepository) RecordPurchase(ctx context.Context, userID int,
 		}
 		return tx.Create(&entry).Error
 	})
+}
+
+func (r *GormAICreditRepository) RecordSpend(ctx context.Context, userID int, source string) (*domainAI.CreditBalance, error) {
+	if !domainAI.ValidSpendSource(source) {
+		return nil, domainAI.ErrInvalidSpendSource
+	}
+	var saved domainAI.CreditBalance
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var model AICreditBalance
+		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&model, "user_id = ?", userID).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return domainAI.ErrBalanceNotFound
+		}
+		if err != nil {
+			return err
+		}
+		balance := domainAI.CreditBalance{
+			UserID:             int(model.UserID),
+			IncludedGranted:    model.IncludedGranted,
+			IncludedUnlocked:   model.IncludedUnlocked,
+			IncludedUsed:       model.IncludedUsed,
+			PurchasedRemaining: model.PurchasedRemaining,
+			UpdatedAt:          model.UpdatedAt,
+		}
+		includedBefore := balance.IncludedUsed
+		purchasedBefore := balance.PurchasedRemaining
+		if err := balance.Spend(); err != nil {
+			return err
+		}
+		model.IncludedUsed = balance.IncludedUsed
+		model.PurchasedRemaining = balance.PurchasedRemaining
+		model.UpdatedAt = balance.UpdatedAt
+		if err := tx.Save(&model).Error; err != nil {
+			return err
+		}
+		entry := AICreditLedgerEntry{
+			UserID:            uint(userID),
+			Kind:              domainAI.LedgerKindSpend,
+			Source:            source,
+			DeltaIncludedUsed: balance.IncludedUsed - includedBefore,
+			DeltaPurchased:    balance.PurchasedRemaining - purchasedBefore,
+			CreatedAt:         balance.UpdatedAt,
+		}
+		if err := tx.Create(&entry).Error; err != nil {
+			return err
+		}
+		saved = balance
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &saved, nil
+}
+
+func (r *GormAICreditRepository) ListLedger(ctx context.Context, userID, beforeID, limit int) ([]domainAI.CreditLedgerEntry, error) {
+	if limit <= 0 {
+		return nil, nil
+	}
+	query := r.db.WithContext(ctx).Where("user_id = ?", userID)
+	if beforeID > 0 {
+		query = query.Where("id < ?", beforeID)
+	}
+	var rows []AICreditLedgerEntry
+	if err := query.Order("id desc").Limit(limit).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	out := make([]domainAI.CreditLedgerEntry, 0, len(rows))
+	for _, row := range rows {
+		pack := ""
+		if row.Pack != nil {
+			pack = *row.Pack
+		}
+		out = append(out, domainAI.CreditLedgerEntry{
+			ID:                int(row.ID),
+			UserID:            int(row.UserID),
+			Kind:              row.Kind,
+			Source:            row.Source,
+			DeltaPurchased:    row.DeltaPurchased,
+			DeltaIncludedUsed: row.DeltaIncludedUsed,
+			Pack:              pack,
+			CreatedAt:         row.CreatedAt,
+		})
+	}
+	return out, nil
 }
 
 type GormAIThreadRepository struct {

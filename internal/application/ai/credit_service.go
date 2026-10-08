@@ -20,11 +20,11 @@ func NewCreditService(credits domainAI.CreditBalanceRepository, subs domainBilli
 }
 
 type CreditsView struct {
-	Available           int  `json:"available"`
-	IncludedUnlocked    int  `json:"included_unlocked"`
-	IncludedUsed        int  `json:"included_used"`
-	PurchasedRemaining  int  `json:"purchased_remaining"`
-	IsTrialing          bool `json:"is_trialing"`
+	Available          int  `json:"available"`
+	IncludedUnlocked   int  `json:"included_unlocked"`
+	IncludedUsed       int  `json:"included_used"`
+	PurchasedRemaining int  `json:"purchased_remaining"`
+	IsTrialing         bool `json:"is_trialing"`
 }
 
 func (s *CreditService) isTrialing(ctx context.Context, userID int, now time.Time) (bool, error) {
@@ -81,15 +81,35 @@ func (s *CreditService) View(ctx context.Context, userID int) (*CreditsView, err
 	}, nil
 }
 
-func (s *CreditService) SpendOne(ctx context.Context, userID int) (*CreditsView, error) {
-	balance, trialing, err := s.Ensure(ctx, userID)
+const (
+	creditLedgerDefaultLimit = 20
+	creditLedgerMaxLimit     = 50
+)
+
+type CreditLedgerItem struct {
+	ID        int       `json:"id"`
+	Kind      string    `json:"kind"`
+	Source    string    `json:"source,omitempty"`
+	Delta     int       `json:"delta"`
+	Pack      string    `json:"pack,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+type CreditLedgerPage struct {
+	Entries    []CreditLedgerItem `json:"entries"`
+	NextBefore int                `json:"next_before,omitempty"`
+}
+
+func (s *CreditService) SpendOne(ctx context.Context, userID int, source string) (*CreditsView, error) {
+	if !domainAI.ValidSpendSource(source) {
+		return nil, domainAI.ErrInvalidSpendSource
+	}
+	_, trialing, err := s.Ensure(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
-	if err := balance.Spend(); err != nil {
-		return nil, err
-	}
-	if err := s.credits.Save(ctx, balance); err != nil {
+	balance, err := s.credits.RecordSpend(ctx, userID, source)
+	if err != nil {
 		return nil, err
 	}
 	return &CreditsView{
@@ -99,6 +119,35 @@ func (s *CreditService) SpendOne(ctx context.Context, userID int) (*CreditsView,
 		PurchasedRemaining: balance.PurchasedRemaining,
 		IsTrialing:         trialing,
 	}, nil
+}
+
+func (s *CreditService) ListLedger(ctx context.Context, userID, beforeID, limit int) (*CreditLedgerPage, error) {
+	if limit <= 0 {
+		limit = creditLedgerDefaultLimit
+	}
+	if limit > creditLedgerMaxLimit {
+		limit = creditLedgerMaxLimit
+	}
+	rows, err := s.credits.ListLedger(ctx, userID, beforeID, limit)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]CreditLedgerItem, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, CreditLedgerItem{
+			ID:        row.ID,
+			Kind:      row.Kind,
+			Source:    row.Source,
+			Delta:     row.Delta(),
+			Pack:      row.Pack,
+			CreatedAt: row.CreatedAt,
+		})
+	}
+	page := &CreditLedgerPage{Entries: items}
+	if len(rows) == limit {
+		page.NextBefore = rows[len(rows)-1].ID
+	}
+	return page, nil
 }
 
 func (s *CreditService) UnlockFullIncluded(ctx context.Context, userID int) error {

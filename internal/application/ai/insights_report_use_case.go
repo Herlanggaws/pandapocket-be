@@ -107,6 +107,13 @@ func (uc *InsightsReportUseCase) ViewCredits(ctx context.Context, userID int) (*
 	return uc.credits.View(ctx, userID)
 }
 
+func (uc *InsightsReportUseCase) ListCreditLedger(ctx context.Context, userID, beforeID, limit int) (*CreditLedgerPage, error) {
+	if err := RequireProAI(ctx, uc.entitlements, userID); err != nil {
+		return nil, err
+	}
+	return uc.credits.ListLedger(ctx, userID, beforeID, limit)
+}
+
 func (uc *InsightsReportUseCase) Execute(ctx context.Context, userID int, req InsightsReportRequest) (*InsightsReportResponse, error) {
 	if err := RequireProAI(ctx, uc.entitlements, userID); err != nil {
 		return nil, err
@@ -154,7 +161,7 @@ func (uc *InsightsReportUseCase) Execute(ctx context.Context, userID int, req In
 		return nil, ErrInsightsReportBlank
 	}
 
-	creditsAfter, err := uc.credits.SpendOne(ctx, userID)
+	creditsAfter, err := uc.credits.SpendOne(ctx, userID, domainAI.SpendSourceInsightsReport)
 	if err != nil {
 		return nil, err
 	}

@@ -154,6 +154,18 @@ func (h *AIAdvisorHandlers) GetCredits(c *gin.Context) {
 	SuccessResponse(c, http.StatusOK, view)
 }
 
+func (h *AIAdvisorHandlers) GetCreditLedger(c *gin.Context) {
+	userID := c.GetInt("user_id")
+	before, _ := strconv.Atoi(c.Query("before"))
+	limit, _ := strconv.Atoi(c.Query("limit"))
+	page, err := h.report.ListCreditLedger(c.Request.Context(), userID, before, limit)
+	if err != nil {
+		h.mapReportErr(c, err)
+		return
+	}
+	SuccessResponse(c, http.StatusOK, page)
+}
+
 func (h *AIAdvisorHandlers) InsightsReport(c *gin.Context) {
 	userID := c.GetInt("user_id")
 	var req appAI.InsightsReportRequest
