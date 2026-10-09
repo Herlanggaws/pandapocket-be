@@ -14,6 +14,8 @@ import (
 	domainAI "panda-pocket/internal/domain/ai"
 	domainBilling "panda-pocket/internal/domain/billing"
 	"panda-pocket/internal/infrastructure/doit"
+
+	"github.com/google/uuid"
 )
 
 var (
@@ -34,6 +36,7 @@ type HandleDoitWebhookUseCase struct {
 	events    domainBilling.WebhookEventRepository
 	subs      domainBilling.SubscriptionRepository
 	pending   domainBilling.PendingPaymentRepository
+	publicIDs domainBilling.PublicIDLookup
 	aiCredits AICreditApplier
 	appURL    string
 }
@@ -43,12 +46,14 @@ func NewHandleDoitWebhookUseCase(
 	subs domainBilling.SubscriptionRepository,
 	aiCredits AICreditApplier,
 	pending domainBilling.PendingPaymentRepository,
+	publicIDs domainBilling.PublicIDLookup,
 ) *HandleDoitWebhookUseCase {
 	return &HandleDoitWebhookUseCase{
 		secret:    os.Getenv("DOIT_WEBHOOK_SECRET"),
 		events:    events,
 		subs:      subs,
 		pending:   pending,
+		publicIDs: publicIDs,
 		aiCredits: aiCredits,
 		appURL:    os.Getenv("APP_URL"),
 	}
@@ -143,9 +148,21 @@ func (uc *HandleDoitWebhookUseCase) findPending(ctx context.Context, paymentID s
 }
 
 func (uc *HandleDoitWebhookUseCase) applyRecordedPayment(ctx context.Context, payment paymentData, recorded domainBilling.PendingPayment, amount int, amountOK bool) error {
-	claimed, ok := claimedUser(payment)
-	if !ok || claimed != recorded.UserID || !amountOK || amount != recorded.Amount {
+	claim, ok := claimedIdentity(payment)
+	if !ok || !amountOK || amount != recorded.Amount {
 		return ErrWebhookPaymentMismatch
+	}
+	if claim.userID != 0 && claim.userID != recorded.UserID {
+		return ErrWebhookPaymentMismatch
+	}
+	if claim.publicID != "" {
+		ownerPublicID, err := lookupPublicID(uc.publicIDs, ctx, recorded.UserID)
+		if err != nil {
+			return err
+		}
+		if !strings.EqualFold(claim.publicID, ownerPublicID) {
+			return ErrWebhookPaymentMismatch
+		}
 	}
 	switch recorded.Kind {
 	case domainBilling.KindPro:
@@ -197,7 +214,11 @@ func (uc *HandleDoitWebhookUseCase) activatePro(ctx context.Context, userID int,
 		if !errors.Is(err, domainBilling.ErrNotFound) {
 			return err
 		}
-		sub, err = domainBilling.NewFreeSubscription(userID)
+		publicID, lookupErr := lookupPublicID(uc.publicIDs, ctx, userID)
+		if lookupErr != nil {
+			return lookupErr
+		}
+		sub, err = domainBilling.NewFreeSubscription(userID, publicID)
 		if err != nil {
 			return err
 		}
@@ -250,16 +271,37 @@ func wholeRupiah(amount *float64) (int, bool) {
 	return int(*amount), true
 }
 
-func claimedUser(payment paymentData) (int, bool) {
-	refUser, refOK := userIDFromReference(payment.Reference)
-	metaUser, metaOK := userIDFromMetadata(payment.Metadata)
-	if refOK && metaOK && refUser != metaUser {
-		return 0, false
+type paymentClaim struct {
+	userID   int
+	publicID string
+}
+
+func claimedIdentity(payment paymentData) (paymentClaim, bool) {
+	refUserID, refPublicID, refOK := subjectFromReference(payment.Reference)
+	metaUserID, metaUserOK := userIDFromMetadata(payment.Metadata)
+	metaPublicID, metaPublicOK := publicIDFromMetadata(payment.Metadata)
+	if refOK && refUserID != 0 && metaUserOK && refUserID != metaUserID {
+		return paymentClaim{}, false
 	}
-	if refOK {
-		return refUser, true
+	if refOK && refPublicID != "" && metaPublicOK && !strings.EqualFold(refPublicID, metaPublicID) {
+		return paymentClaim{}, false
 	}
-	return metaUser, metaOK
+
+	claim := paymentClaim{}
+	if refOK && refUserID != 0 {
+		claim.userID = refUserID
+	} else if metaUserOK {
+		claim.userID = metaUserID
+	}
+	if refOK && refPublicID != "" {
+		claim.publicID = refPublicID
+	} else if metaPublicOK {
+		claim.publicID = metaPublicID
+	}
+	if claim.userID == 0 && claim.publicID == "" {
+		return paymentClaim{}, false
+	}
+	return claim, true
 }
 
 func userIDFromMetadata(metadata map[string]interface{}) (int, bool) {
@@ -277,16 +319,46 @@ func userIDFromMetadata(metadata map[string]interface{}) (int, bool) {
 	return userID, true
 }
 
-func userIDFromReference(reference string) (int, bool) {
+func subjectFromReference(reference string) (int, string, bool) {
 	parts := strings.Split(reference, ":")
 	if len(parts) < 2 || parts[0] != "user" {
-		return 0, false
+		return 0, "", false
 	}
-	userID, err := strconv.Atoi(parts[1])
+	return parseExternalSubject(parts[1])
+}
+
+func publicIDFromMetadata(metadata map[string]interface{}) (string, bool) {
+	if metadata == nil {
+		return "", false
+	}
+	raw, ok := metadata["public_id"]
+	if !ok {
+		return "", false
+	}
+	value, ok := raw.(string)
+	if !ok {
+		return "", false
+	}
+	return parsePublicID(value)
+}
+
+func parseExternalSubject(raw string) (int, string, bool) {
+	if publicID, ok := parsePublicID(raw); ok {
+		return 0, publicID, true
+	}
+	userID, err := strconv.Atoi(raw)
 	if err != nil || userID <= 0 {
-		return 0, false
+		return 0, "", false
 	}
-	return userID, true
+	return userID, "", true
+}
+
+func parsePublicID(raw string) (string, bool) {
+	parsed, err := uuid.Parse(raw)
+	if err != nil {
+		return "", false
+	}
+	return parsed.String(), true
 }
 
 func legacyProReference(reference string) (int, domainBilling.BillingInterval, bool) {

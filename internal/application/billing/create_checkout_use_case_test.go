@@ -3,6 +3,7 @@ package billing
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -10,16 +11,36 @@ import (
 	"panda-pocket/internal/infrastructure/doit"
 )
 
+const checkoutPublicID = "11111111-1111-4111-8111-111111111111"
+
+type stubPublicIDs map[int]string
+
+func (s stubPublicIDs) PublicID(_ context.Context, userID int) (string, error) {
+	publicID, ok := s[userID]
+	if !ok || publicID == "" {
+		return "", errors.New("public id not found")
+	}
+	return publicID, nil
+}
+
+func checkoutIDs() stubPublicIDs {
+	return stubPublicIDs{1: checkoutPublicID, 9: checkoutPublicID}
+}
+
 type stubPayments struct {
-	calls  int
-	amount int
+	calls   int
+	amount  int
+	last    doit.CreatePaymentRequest
+	lastKey string
 }
 
 func (s *stubPayments) Configured() bool  { return true }
 func (s *stubPayments) ReturnURL() string { return "" }
-func (s *stubPayments) CreatePayment(_ context.Context, _ string, req doit.CreatePaymentRequest) (*doit.CreatePaymentResponse, error) {
+func (s *stubPayments) CreatePayment(_ context.Context, idempotencyKey string, req doit.CreatePaymentRequest) (*doit.CreatePaymentResponse, error) {
 	s.calls++
 	s.amount = req.Amount
+	s.last = req
+	s.lastKey = idempotencyKey
 	return &doit.CreatePaymentResponse{
 		ID:        "pay_test",
 		HostedURL: "https://pay.example/hosted",
@@ -61,7 +82,7 @@ func paidSubscription(userID int, interval domainBilling.BillingInterval, period
 		&periodEnd,
 		nil,
 		nil,
-		domainBilling.CustomerRef(userID),
+		domainBilling.CustomerRef("legacy"),
 		false,
 		now,
 		now,
@@ -70,21 +91,27 @@ func paidSubscription(userID int, interval domainBilling.BillingInterval, period
 
 func TestCheckoutAmountsKeepExistingPrices(t *testing.T) {
 	payments := &stubPayments{}
-	uc := NewCreateCheckoutUseCase(payments, &checkoutSubs{}, &memoryPending{})
+	uc := NewCreateCheckoutUseCase(payments, &checkoutSubs{}, &memoryPending{}, checkoutIDs())
 
 	monthly, err := uc.Execute(context.Background(), 1, CreateCheckoutRequest{Interval: "monthly"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if payments.amount != 19000 || monthly.Reference != "user:1:monthly" {
+	if payments.amount != 19000 || monthly.Reference != "user:"+checkoutPublicID+":monthly" {
 		t.Fatalf("monthly checkout amount=%d ref=%s", payments.amount, monthly.Reference)
+	}
+	if payments.last.Metadata["public_id"] != checkoutPublicID || payments.last.Metadata["user_id"] != nil {
+		t.Fatalf("metadata=%v", payments.last.Metadata)
+	}
+	if !strings.HasPrefix(payments.lastKey, "checkout:"+checkoutPublicID+":") {
+		t.Fatalf("idempotency=%s", payments.lastKey)
 	}
 
 	semiannual, err := uc.Execute(context.Background(), 1, CreateCheckoutRequest{Interval: "semiannual"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if payments.amount != 99000 || semiannual.Reference != "user:1:semiannual" {
+	if payments.amount != 99000 || semiannual.Reference != "user:"+checkoutPublicID+":semiannual" {
 		t.Fatalf("semiannual checkout amount=%d ref=%s", payments.amount, semiannual.Reference)
 	}
 
@@ -92,7 +119,7 @@ func TestCheckoutAmountsKeepExistingPrices(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if payments.amount != 149000 || yearly.Reference != "user:1:yearly" {
+	if payments.amount != 149000 || yearly.Reference != "user:"+checkoutPublicID+":yearly" {
 		t.Fatalf("yearly checkout amount=%d ref=%s", payments.amount, yearly.Reference)
 	}
 }
@@ -102,7 +129,7 @@ func TestCheckoutRejectsShorterIntervalWithoutSaving(t *testing.T) {
 	originalEnd := periodEnd
 	subs := &checkoutSubs{sub: paidSubscription(9, domainBilling.IntervalYearly, periodEnd)}
 	payments := &stubPayments{}
-	uc := NewCreateCheckoutUseCase(payments, subs, &memoryPending{})
+	uc := NewCreateCheckoutUseCase(payments, subs, &memoryPending{}, checkoutIDs())
 
 	_, err := uc.Execute(context.Background(), 9, CreateCheckoutRequest{Interval: "monthly"})
 	if !errors.Is(err, ErrShorterIntervalBlocked) {
@@ -126,7 +153,7 @@ func TestCheckoutRejectsShorterIntervalWithoutSaving(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if payments.amount != 149000 || longer.Reference != "user:9:yearly" {
+	if payments.amount != 149000 || longer.Reference != "user:"+checkoutPublicID+":yearly" {
 		t.Fatalf("same-interval repurchase amount=%d ref=%s", payments.amount, longer.Reference)
 	}
 	if subs.saves != 0 {
@@ -138,13 +165,13 @@ func TestCheckoutAllowsShorterIntervalAfterPeriodEnds(t *testing.T) {
 	periodEnd := time.Now().UTC().AddDate(0, 0, -1)
 	subs := &checkoutSubs{sub: paidSubscription(9, domainBilling.IntervalYearly, periodEnd)}
 	payments := &stubPayments{}
-	uc := NewCreateCheckoutUseCase(payments, subs, &memoryPending{})
+	uc := NewCreateCheckoutUseCase(payments, subs, &memoryPending{}, checkoutIDs())
 
 	res, err := uc.Execute(context.Background(), 9, CreateCheckoutRequest{Interval: "monthly"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if payments.amount != 19000 || res.Reference != "user:9:monthly" {
+	if payments.amount != 19000 || res.Reference != "user:"+checkoutPublicID+":monthly" {
 		t.Fatalf("amount=%d ref=%s", payments.amount, res.Reference)
 	}
 }

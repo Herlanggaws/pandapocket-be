@@ -11,7 +11,7 @@ func TestSubscriptionIsPro(t *testing.T) {
 	past := now.Add(-24 * time.Hour)
 
 	t.Run("free expired is not pro", func(t *testing.T) {
-		sub, err := NewFreeSubscription(1)
+		sub, err := NewFreeSubscription(1, "1")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -23,7 +23,7 @@ func TestSubscriptionIsPro(t *testing.T) {
 	t.Run("active with future period end is pro", func(t *testing.T) {
 		sub := ReconstituteSubscription(
 			NewSubscriptionID(1), 1, PlanPro, nil, StatusActive,
-			nil, &future, nil, nil, CustomerRef(1), false, now, now,
+			nil, &future, nil, nil, CustomerRef("1"), false, now, now,
 		)
 		if !sub.IsPro(now) {
 			t.Fatal("expected active subscription to be Pro")
@@ -33,7 +33,7 @@ func TestSubscriptionIsPro(t *testing.T) {
 	t.Run("active with expired period is not pro", func(t *testing.T) {
 		sub := ReconstituteSubscription(
 			NewSubscriptionID(1), 1, PlanPro, nil, StatusActive,
-			nil, &past, nil, nil, CustomerRef(1), false, now, now,
+			nil, &past, nil, nil, CustomerRef("1"), false, now, now,
 		)
 		if sub.IsPro(now) {
 			t.Fatal("expected expired period not to be Pro")
@@ -43,7 +43,7 @@ func TestSubscriptionIsPro(t *testing.T) {
 	t.Run("past_due within grace is pro", func(t *testing.T) {
 		sub := ReconstituteSubscription(
 			NewSubscriptionID(1), 1, PlanPro, nil, StatusPastDue,
-			nil, &past, &future, nil, CustomerRef(1), false, now, now,
+			nil, &past, &future, nil, CustomerRef("1"), false, now, now,
 		)
 		if !sub.IsPro(now) {
 			t.Fatal("expected past_due within grace to be Pro")
@@ -53,7 +53,7 @@ func TestSubscriptionIsPro(t *testing.T) {
 	t.Run("past_due after grace is not pro", func(t *testing.T) {
 		sub := ReconstituteSubscription(
 			NewSubscriptionID(1), 1, PlanPro, nil, StatusPastDue,
-			nil, &past, &past, nil, CustomerRef(1), false, now, now,
+			nil, &past, &past, nil, CustomerRef("1"), false, now, now,
 		)
 		if sub.IsPro(now) {
 			t.Fatal("expected past_due after grace not to be Pro")
@@ -63,7 +63,7 @@ func TestSubscriptionIsPro(t *testing.T) {
 	t.Run("trial active is pro regardless of status", func(t *testing.T) {
 		sub := ReconstituteSubscription(
 			NewSubscriptionID(1), 1, PlanFree, nil, StatusTrialing,
-			&future, nil, nil, nil, CustomerRef(1), false, now, now,
+			&future, nil, nil, nil, CustomerRef("1"), false, now, now,
 		)
 		if !sub.IsPro(now) {
 			t.Fatal("expected active trial to be Pro")
@@ -73,7 +73,7 @@ func TestSubscriptionIsPro(t *testing.T) {
 	t.Run("expired trial is not pro", func(t *testing.T) {
 		sub := ReconstituteSubscription(
 			NewSubscriptionID(1), 1, PlanFree, nil, StatusExpired,
-			&past, nil, nil, nil, CustomerRef(1), false, now, now,
+			&past, nil, nil, nil, CustomerRef("1"), false, now, now,
 		)
 		if sub.IsPro(now) {
 			t.Fatal("expected expired trial not to be Pro")
@@ -83,7 +83,7 @@ func TestSubscriptionIsPro(t *testing.T) {
 
 func TestNewTrialSubscription(t *testing.T) {
 	before := time.Now().UTC()
-	sub, err := NewTrialSubscription(5)
+	sub, err := NewTrialSubscription(5, "5")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +103,7 @@ func TestNewTrialSubscription(t *testing.T) {
 	if !sub.IsPro(time.Now().UTC()) {
 		t.Fatal("active trial should be Pro")
 	}
-	if sub.DoitCustomerRef() != CustomerRef(5) {
+	if sub.DoitCustomerRef() != CustomerRef("5") {
 		t.Fatalf("unexpected customer ref %s", sub.DoitCustomerRef())
 	}
 }
@@ -116,7 +116,7 @@ func TestExpireTrialIfNeeded(t *testing.T) {
 	t.Run("expires ended trial", func(t *testing.T) {
 		sub := ReconstituteSubscription(
 			NewSubscriptionID(1), 1, PlanFree, nil, StatusTrialing,
-			&past, nil, nil, nil, CustomerRef(1), false, now, now,
+			&past, nil, nil, nil, CustomerRef("1"), false, now, now,
 		)
 		if !sub.ExpireTrialIfNeeded(now) {
 			t.Fatal("expected expire")
@@ -135,7 +135,7 @@ func TestExpireTrialIfNeeded(t *testing.T) {
 	t.Run("does not expire active trial", func(t *testing.T) {
 		sub := ReconstituteSubscription(
 			NewSubscriptionID(1), 1, PlanFree, nil, StatusTrialing,
-			&future, nil, nil, nil, CustomerRef(1), false, now, now,
+			&future, nil, nil, nil, CustomerRef("1"), false, now, now,
 		)
 		if sub.ExpireTrialIfNeeded(now) {
 			t.Fatal("should not expire")
@@ -148,7 +148,7 @@ func TestExpireTrialIfNeeded(t *testing.T) {
 	t.Run("does not clear already expired", func(t *testing.T) {
 		sub := ReconstituteSubscription(
 			NewSubscriptionID(1), 1, PlanFree, nil, StatusExpired,
-			&past, nil, nil, nil, CustomerRef(1), false, now, now,
+			&past, nil, nil, nil, CustomerRef("1"), false, now, now,
 		)
 		if sub.ExpireTrialIfNeeded(now) {
 			t.Fatal("already expired should be no-op")
@@ -160,7 +160,7 @@ func TestActivatePro(t *testing.T) {
 	now := time.Date(2026, 9, 21, 12, 0, 0, 0, time.UTC)
 
 	t.Run("monthly sets 30 day period", func(t *testing.T) {
-		sub, err := NewFreeSubscription(1)
+		sub, err := NewFreeSubscription(1, "1")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -186,7 +186,7 @@ func TestActivatePro(t *testing.T) {
 	})
 
 	t.Run("semiannual sets 183 day period", func(t *testing.T) {
-		sub, err := NewFreeSubscription(4)
+		sub, err := NewFreeSubscription(4, "4")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -203,7 +203,7 @@ func TestActivatePro(t *testing.T) {
 	})
 
 	t.Run("yearly sets 365 day period", func(t *testing.T) {
-		sub, err := NewFreeSubscription(2)
+		sub, err := NewFreeSubscription(2, "2")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -217,7 +217,7 @@ func TestActivatePro(t *testing.T) {
 	})
 
 	t.Run("rejects bad interval", func(t *testing.T) {
-		sub, err := NewFreeSubscription(3)
+		sub, err := NewFreeSubscription(3, "3")
 		if err != nil {
 			t.Fatal(err)
 		}

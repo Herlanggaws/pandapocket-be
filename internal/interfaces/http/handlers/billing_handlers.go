@@ -62,7 +62,12 @@ func (h *BillingHandlers) Checkout(c *gin.Context) {
 			InternalServerErrorResponse(c, "BILLING_NOT_CONFIGURED", "Billing checkout is not configured")
 			return
 		}
-		log.Printf("billing checkout error user=%d: %v", userID, err)
+		publicID, lookupErr := h.createCheckoutUseCase.ExternalID(c.Request.Context(), userID)
+		if lookupErr != nil {
+			log.Printf("billing checkout error: %v", err)
+		} else {
+			log.Printf("billing checkout error public_id=%s: %v", publicID, err)
+		}
 		InternalServerErrorResponse(c, "CHECKOUT_ERROR", "Failed to create checkout")
 		return
 	}

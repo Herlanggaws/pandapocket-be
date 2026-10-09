@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/google/uuid"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -200,7 +201,43 @@ func autoMigrate(db *gorm.DB) error {
 	if err := hashStoredSessionTokens(db); err != nil {
 		return err
 	}
+	if err := backfillPublicIDs(db); err != nil {
+		return err
+	}
 	return widenBillingIntervalCheck(db)
+}
+
+// backfillPublicIDs fills users that predate the external id. Existing values stay.
+func backfillPublicIDs(db *gorm.DB) error {
+	if !db.Migrator().HasTable(&User{}) {
+		return nil
+	}
+	if err := fillBlankPublicIDs(db); err != nil {
+		return err
+	}
+	if db.Dialector.Name() != "postgres" {
+		return nil
+	}
+	if err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_public_id ON users (public_id)`).Error; err != nil {
+		return err
+	}
+	return db.Exec(`ALTER TABLE users ALTER COLUMN public_id SET NOT NULL`).Error
+}
+
+func fillBlankPublicIDs(db *gorm.DB) error {
+	var users []User
+	if err := db.Where("public_id IS NULL OR public_id = ''").Find(&users).Error; err != nil {
+		return err
+	}
+	for _, user := range users {
+		err := db.Model(&User{}).
+			Where("id = ? AND (public_id IS NULL OR public_id = '')", user.ID).
+			Update("public_id", uuid.NewString()).Error
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // widenBillingIntervalCheck adds semiannual to the existing check.
@@ -446,7 +483,7 @@ func backfillDefaultWallets(db *gorm.DB) error {
 			if err := db.Create(&defaultWallet).Error; err != nil {
 				return err
 			}
-			log.Printf("Created default wallet for user %d", user.ID)
+			log.Printf("Created default wallet for public_id=%s", user.PublicID)
 		} else {
 			if err := db.Where("user_id = ? AND is_default = ?", user.ID, true).First(&defaultWallet).Error; err != nil {
 				if err := db.Where("user_id = ? AND is_archived = ?", user.ID, false).First(&defaultWallet).Error; err != nil {
@@ -499,17 +536,20 @@ func backfillFreeSubscriptions(db *gorm.DB) error {
 			continue
 		}
 
+		if user.PublicID == "" {
+			return fmt.Errorf("user missing public_id")
+		}
 		sub := Subscription{
 			UserID:            user.ID,
 			Plan:              "free",
 			Status:            "expired",
-			DoitCustomerRef:   fmt.Sprintf("user:%d", user.ID),
+			DoitCustomerRef:   fmt.Sprintf("user:%s", user.PublicID),
 			CancelAtPeriodEnd: false,
 		}
 		if err := db.Create(&sub).Error; err != nil {
 			return err
 		}
-		log.Printf("Created free subscription for user %d", user.ID)
+		log.Printf("Created free subscription for public_id=%s", user.PublicID)
 	}
 
 	return nil

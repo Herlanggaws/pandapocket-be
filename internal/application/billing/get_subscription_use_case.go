@@ -20,11 +20,12 @@ type SubscriptionResponse struct {
 }
 
 type GetSubscriptionUseCase struct {
-	repo domainBilling.SubscriptionRepository
+	repo      domainBilling.SubscriptionRepository
+	publicIDs domainBilling.PublicIDLookup
 }
 
-func NewGetSubscriptionUseCase(repo domainBilling.SubscriptionRepository) *GetSubscriptionUseCase {
-	return &GetSubscriptionUseCase{repo: repo}
+func NewGetSubscriptionUseCase(repo domainBilling.SubscriptionRepository, publicIDs domainBilling.PublicIDLookup) *GetSubscriptionUseCase {
+	return &GetSubscriptionUseCase{repo: repo, publicIDs: publicIDs}
 }
 
 func (uc *GetSubscriptionUseCase) Execute(ctx context.Context, userID int) (*SubscriptionResponse, error) {
@@ -34,7 +35,11 @@ func (uc *GetSubscriptionUseCase) Execute(ctx context.Context, userID int) (*Sub
 		if !errors.Is(err, domainBilling.ErrNotFound) {
 			return nil, err
 		}
-		sub, err = domainBilling.NewFreeSubscription(userID)
+		publicID, lookupErr := lookupPublicID(uc.publicIDs, ctx, userID)
+		if lookupErr != nil {
+			return nil, lookupErr
+		}
+		sub, err = domainBilling.NewFreeSubscription(userID, publicID)
 		if err != nil {
 			return nil, err
 		}

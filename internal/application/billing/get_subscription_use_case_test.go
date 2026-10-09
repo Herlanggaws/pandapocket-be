@@ -8,6 +8,10 @@ import (
 	domainBilling "panda-pocket/internal/domain/billing"
 )
 
+func subscriptionPublicIDs() stubPublicIDs {
+	return stubPublicIDs{42: "pub-42", 7: "pub-7", 9: "pub-9", 11: "pub-11"}
+}
+
 type memSubscriptionRepo struct {
 	byUser map[int]*domainBilling.Subscription
 	nextID int
@@ -44,7 +48,7 @@ func (r *memSubscriptionRepo) ListAll(_ context.Context) ([]*domainBilling.Subsc
 
 func TestGetSubscriptionCreatesFreeWhenMissing(t *testing.T) {
 	repo := newMemSubscriptionRepo()
-	uc := NewGetSubscriptionUseCase(repo)
+	uc := NewGetSubscriptionUseCase(repo, subscriptionPublicIDs())
 
 	resp, err := uc.Execute(context.Background(), 42)
 	if err != nil {
@@ -60,7 +64,7 @@ func TestGetSubscriptionCreatesFreeWhenMissing(t *testing.T) {
 
 func TestGetSubscriptionReturnsExisting(t *testing.T) {
 	repo := newMemSubscriptionRepo()
-	sub, err := domainBilling.NewFreeSubscription(7)
+	sub, err := domainBilling.NewFreeSubscription(7, "pub-7")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +72,7 @@ func TestGetSubscriptionReturnsExisting(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	uc := NewGetSubscriptionUseCase(repo)
+	uc := NewGetSubscriptionUseCase(repo, subscriptionPublicIDs())
 	resp, err := uc.Execute(context.Background(), 7)
 	if err != nil {
 		t.Fatal(err)
@@ -87,13 +91,13 @@ func TestGetSubscriptionNormalizesExpiredTrial(t *testing.T) {
 	past := now.Add(-time.Hour)
 	sub := domainBilling.ReconstituteSubscription(
 		domainBilling.NewSubscriptionID(0), 9, domainBilling.PlanFree, nil, domainBilling.StatusTrialing,
-		&past, nil, nil, nil, domainBilling.CustomerRef(9), false, now, now,
+		&past, nil, nil, nil, domainBilling.CustomerRef("pub-9"), false, now, now,
 	)
 	if err := repo.Save(context.Background(), sub); err != nil {
 		t.Fatal(err)
 	}
 
-	uc := NewGetSubscriptionUseCase(repo)
+	uc := NewGetSubscriptionUseCase(repo, subscriptionPublicIDs())
 	resp, err := uc.Execute(context.Background(), 9)
 	if err != nil {
 		t.Fatal(err)
@@ -115,7 +119,7 @@ func TestGetSubscriptionNormalizesExpiredTrial(t *testing.T) {
 
 func TestGetSubscriptionKeepsActiveTrial(t *testing.T) {
 	repo := newMemSubscriptionRepo()
-	sub, err := domainBilling.NewTrialSubscription(11)
+	sub, err := domainBilling.NewTrialSubscription(11, "pub-11")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +127,7 @@ func TestGetSubscriptionKeepsActiveTrial(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	uc := NewGetSubscriptionUseCase(repo)
+	uc := NewGetSubscriptionUseCase(repo, subscriptionPublicIDs())
 	resp, err := uc.Execute(context.Background(), 11)
 	if err != nil {
 		t.Fatal(err)

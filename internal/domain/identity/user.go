@@ -4,12 +4,14 @@ import (
 	"errors"
 	"time"
 
+	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
 
 // User represents a user in the identity domain
 type User struct {
 	id        UserID
+	publicID  string
 	email     Email
 	password  PasswordHash
 	role      Role
@@ -108,6 +110,7 @@ func (r Role) IsSuperAdmin() bool {
 func NewUser(id UserID, email Email, password PasswordHash, role Role) *User {
 	return &User{
 		id:        id,
+		publicID:  uuid.NewString(),
 		email:     email,
 		password:  password,
 		role:      role,
@@ -118,6 +121,17 @@ func NewUser(id UserID, email Email, password PasswordHash, role Role) *User {
 // Getters
 func (u *User) ID() UserID {
 	return u.id
+}
+
+func (u *User) PublicID() string {
+	return u.publicID
+}
+
+// AssignPublicID keeps the stored external id when a row is loaded.
+func (u *User) AssignPublicID(publicID string) {
+	if publicID != "" {
+		u.publicID = publicID
+	}
 }
 
 func (u *User) Email() Email {

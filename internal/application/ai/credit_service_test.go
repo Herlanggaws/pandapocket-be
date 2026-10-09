@@ -30,7 +30,7 @@ func (f fixedSubs) ListAll(context.Context) ([]*domainBilling.Subscription, erro
 }
 
 func TestEnsureTrialKeepsCapAndUsage(t *testing.T) {
-	sub, err := domainBilling.NewTrialSubscription(7)
+	sub, err := domainBilling.NewTrialSubscription(7, "7")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +66,7 @@ func TestEnsureTrialKeepsCapAndUsage(t *testing.T) {
 }
 
 func TestSpendOneWritesLedgerRow(t *testing.T) {
-	sub, err := domainBilling.NewTrialSubscription(7)
+	sub, err := domainBilling.NewTrialSubscription(7, "7")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +106,7 @@ func TestSpendOneWritesLedgerRow(t *testing.T) {
 }
 
 func TestEnsureActiveUnlocksGrantWithoutReset(t *testing.T) {
-	sub, err := domainBilling.NewTrialSubscription(7)
+	sub, err := domainBilling.NewTrialSubscription(7, "7")
 	if err != nil {
 		t.Fatal(err)
 	}

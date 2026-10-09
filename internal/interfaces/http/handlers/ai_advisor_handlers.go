@@ -303,7 +303,12 @@ func (h *AIAdvisorHandlers) Topup(c *gin.Context) {
 			InternalServerErrorResponse(c, "BILLING_NOT_CONFIGURED", "Billing checkout is not configured")
 			return
 		}
-		log.Printf("AI topup error user=%d: %v", userID, err)
+		publicID, lookupErr := h.topup.ExternalID(c.Request.Context(), userID)
+		if lookupErr != nil {
+			log.Printf("AI topup error: %v", err)
+		} else {
+			log.Printf("AI topup error public_id=%s: %v", publicID, err)
+		}
 		InternalServerErrorResponse(c, "AI_TOPUP_ERROR", "Failed to create AI credit top-up")
 		return
 	}

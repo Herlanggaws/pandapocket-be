@@ -9,6 +9,7 @@ import (
 // User represents a user in the database
 type User struct {
 	ID           uint       `gorm:"primaryKey" json:"id"`
+	PublicID     string     `gorm:"type:varchar(36)" json:"-"`
 	Email        string     `gorm:"uniqueIndex;not null" json:"email"`
 	PasswordHash string     `gorm:"not null" json:"-"`
 	Role         string     `gorm:"default:'user';check:role IN ('user', 'admin', 'super_admin')" json:"role"`

@@ -101,7 +101,7 @@ func TestSubscriptionChecker(t *testing.T) {
 		t.Fatalf("missing sub should be free, got isPro=%v err=%v", isPro, err)
 	}
 
-	free, _ := billing.NewFreeSubscription(1)
+	free, _ := billing.NewFreeSubscription(1, "1")
 	_ = repo.Save(context.Background(), free)
 	isPro, err = checker.IsPro(context.Background(), 1)
 	if err != nil || isPro {
@@ -110,7 +110,7 @@ func TestSubscriptionChecker(t *testing.T) {
 
 	pro := billing.ReconstituteSubscription(
 		billing.NewSubscriptionID(2), 2, billing.PlanPro, nil, billing.StatusActive,
-		nil, &future, nil, nil, billing.CustomerRef(2), false, now, now,
+		nil, &future, nil, nil, billing.CustomerRef("2"), false, now, now,
 	)
 	_ = repo.Save(context.Background(), pro)
 	isPro, err = checker.IsPro(context.Background(), 2)

@@ -2068,7 +2068,7 @@ Body: `{ "pack": "ai_credits_s" | "ai_credits_m" }`.
 
 Returns `{ hosted_url, payment_id, reference, pack, credits, amount }`. **Does not** add credits. The webhook credits the ledger only when `payment_id`, user, and amount match the stored top-up (skips `ActivatePro`).
 
-Each call creates a **new** Doit payment (Idempotency-Key + reference include unix nano). Re-clicking top-up after a paid attempt must not reuse the paid hosted page. If Doit returns `status=paid` for a new key, the API retries once with a fresh key.
+Each call creates a **new** Doit payment. The reference is `user:{public_id}:ai:{pack}:{unixNano}` and metadata sends `public_id`. Re-clicking top-up after a paid attempt must not reuse the paid hosted page. If Doit returns `status=paid` for a new key, the API retries once with a fresh key.
 
 Return URL: `DOIT_AI_RETURN_URL` (default `/advisor`).
 
@@ -2191,6 +2191,8 @@ Requires env `DOIT_API_KEY` (and optionally `DOIT_RETURN_URL`).
 
 `interval`: `monthly` (Rp19.000, +30 days), `semiannual` (Rp99.000, +183 days), or `yearly` (Rp149.000, +365 days). Moving to an equal or longer interval mid-cycle is allowed: pay the full amount (no prorate); the new period starts from the payment date. A shorter interval is rejected with **400** while `current_period_end` is still in the future; the existing row is not changed. Existing `monthly` and `yearly` subscriptions are left as stored.
 
+The Doit `reference` is `user:{public_id}:{interval}`. Metadata sends `public_id`, not the integer `users.id`. `public_id` is a random UUID column, not a primary key.
+
 **Response:**
 ```json
 {
@@ -2198,7 +2200,7 @@ Requires env `DOIT_API_KEY` (and optionally `DOIT_RETURN_URL`).
   "data": {
     "hosted_url": "https://pay.doit.id/pay/…",
     "payment_id": "pay_…",
-    "reference": "user:42:monthly"
+    "reference": "user:11111111-1111-4111-8111-111111111111:monthly"
   },
   "error": null
 }
@@ -2226,7 +2228,7 @@ Public (no JWT). Doit sends signed events. Read **raw body** for signature verif
 
 | Event | Behavior |
 | --- | --- |
-| `payment.paid` | Activate Pro or add AI credits only when `payment_id`, user, and `amount` match `pending_payments`. Interval or pack comes from that row. Already-issued `user:{id}:…` references still resolve when `amount` matches the catalog. Otherwise **400** `PAYMENT_MISMATCH` |
+| `payment.paid` | Activate Pro or add AI credits only when `payment_id`, user, and `amount` match `pending_payments`. Interval or pack comes from that row. New references carry `public_id` and must match that user. Already-issued `user:{id}:…` references still resolve when `amount` matches the catalog. A `public_id` reference with no pending row is rejected. Otherwise **400** `PAYMENT_MISMATCH` |
 | `payment.expired` | 200, no entitlement change |
 | `webhook.test` | 200, ignore |
 | Other | 200, ignore |
@@ -2754,6 +2756,12 @@ Keep this file in sync with the running API. When routes, request/response shape
 ---
 
 ## Version History
+
+- **v2.56.0**: **External `public_id` on Doit references**
+  - `users.public_id` is a random UUID. `users.id` stays the integer primary key and stays in the JWT
+  - New checkout and AI top-up references, metadata, and idempotency keys use `public_id`
+  - Already-issued `user:{id}:…` payments still resolve when the amount matches the catalog
+  - A `public_id` reference with no `pending_payments` row returns **400** `PAYMENT_MISMATCH`
 
 - **v2.55.0**: **Auth limits, database admin role, and stricter JWT**
   - Login and reset: 10 attempts per IP and per email in 15 minutes. Register and forgot: 5. Refresh: 60 per IP

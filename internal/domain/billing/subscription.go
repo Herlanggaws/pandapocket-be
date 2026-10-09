@@ -68,21 +68,24 @@ type Subscription struct {
 	updatedAt          time.Time
 }
 
-func CustomerRef(userID int) string {
-	return fmt.Sprintf("user:%d", userID)
+func CustomerRef(publicID string) string {
+	return fmt.Sprintf("user:%s", publicID)
 }
 
 // NewFreeSubscription creates a Free row without trial (backfill / lazy repair).
-func NewFreeSubscription(userID int) (*Subscription, error) {
+func NewFreeSubscription(userID int, publicID string) (*Subscription, error) {
 	if userID <= 0 {
 		return nil, errors.New("user id is required")
+	}
+	if publicID == "" {
+		return nil, errors.New("public id is required")
 	}
 	now := time.Now().UTC()
 	return &Subscription{
 		userID:            userID,
 		plan:              PlanFree,
 		status:            StatusExpired,
-		doitCustomerRef:   CustomerRef(userID),
+		doitCustomerRef:   CustomerRef(publicID),
 		cancelAtPeriodEnd: false,
 		createdAt:         now,
 		updatedAt:         now,
@@ -90,9 +93,12 @@ func NewFreeSubscription(userID int) (*Subscription, error) {
 }
 
 // NewTrialSubscription creates a 14-day Pro trial row for a newly registered user.
-func NewTrialSubscription(userID int) (*Subscription, error) {
+func NewTrialSubscription(userID int, publicID string) (*Subscription, error) {
 	if userID <= 0 {
 		return nil, errors.New("user id is required")
+	}
+	if publicID == "" {
+		return nil, errors.New("public id is required")
 	}
 	now := time.Now().UTC()
 	trialEnds := now.AddDate(0, 0, TrialDurationDays)
@@ -101,7 +107,7 @@ func NewTrialSubscription(userID int) (*Subscription, error) {
 		plan:              PlanFree,
 		status:            StatusTrialing,
 		trialEndsAt:       &trialEnds,
-		doitCustomerRef:   CustomerRef(userID),
+		doitCustomerRef:   CustomerRef(publicID),
 		cancelAtPeriodEnd: false,
 		createdAt:         now,
 		updatedAt:         now,

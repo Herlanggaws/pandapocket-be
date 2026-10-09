@@ -2,6 +2,8 @@ package ai
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -10,16 +12,34 @@ import (
 	"panda-pocket/internal/infrastructure/doit"
 )
 
+const topupPublicID = "33333333-3333-4333-8333-333333333333"
+
+type stubPublicIDs map[int]string
+
+func (s stubPublicIDs) PublicID(_ context.Context, userID int) (string, error) {
+	publicID, ok := s[userID]
+	if !ok || publicID == "" {
+		return "", errors.New("public id not found")
+	}
+	return publicID, nil
+}
+
+func topupIDs() stubPublicIDs {
+	return stubPublicIDs{32: topupPublicID, 7: topupPublicID}
+}
+
 type stubPayments struct {
 	configured bool
 	calls      []string
+	last       doit.CreatePaymentRequest
 	responses  []*doit.CreatePaymentResponse
 }
 
 func (s *stubPayments) Configured() bool { return s.configured }
 
-func (s *stubPayments) CreatePayment(_ context.Context, idempotencyKey string, _ doit.CreatePaymentRequest) (*doit.CreatePaymentResponse, error) {
+func (s *stubPayments) CreatePayment(_ context.Context, idempotencyKey string, req doit.CreatePaymentRequest) (*doit.CreatePaymentResponse, error) {
 	s.calls = append(s.calls, idempotencyKey)
+	s.last = req
 	idx := len(s.calls) - 1
 	if idx < len(s.responses) {
 		return s.responses[idx], nil
@@ -34,7 +54,7 @@ func (s *stubPayments) CreatePayment(_ context.Context, idempotencyKey string, _
 
 func TestCreateTopupDistinctIdempotencyKeys(t *testing.T) {
 	payments := &stubPayments{configured: true}
-	uc := NewCreateTopupUseCase(payments, entitlement.StaticChecker{Pro: true}, &memoryPending{})
+	uc := NewCreateTopupUseCase(payments, entitlement.StaticChecker{Pro: true}, &memoryPending{}, topupIDs())
 	base := time.Date(2026, 9, 24, 8, 0, 0, 0, time.UTC)
 	n := 0
 	uc.now = func() time.Time {
@@ -60,6 +80,15 @@ func TestCreateTopupDistinctIdempotencyKeys(t *testing.T) {
 	if first.PaymentID == "" || second.HostedURL == "" {
 		t.Fatalf("expected payment responses")
 	}
+	if payments.last.Metadata["public_id"] != topupPublicID || payments.last.Metadata["user_id"] != nil {
+		t.Fatalf("metadata=%v", payments.last.Metadata)
+	}
+	if !strings.HasPrefix(payments.last.Reference, "user:"+topupPublicID+":ai:") {
+		t.Fatalf("reference=%s", payments.last.Reference)
+	}
+	if strings.Contains(payments.calls[0], ":32:") {
+		t.Fatalf("idempotency still contains sequential user id: %s", payments.calls[0])
+	}
 }
 
 func TestCreateTopupRetriesWhenDoitReturnsPaid(t *testing.T) {
@@ -71,7 +100,7 @@ func TestCreateTopupRetriesWhenDoitReturnsPaid(t *testing.T) {
 		},
 	}
 	pending := &memoryPending{}
-	uc := NewCreateTopupUseCase(payments, entitlement.StaticChecker{Pro: true}, pending)
+	uc := NewCreateTopupUseCase(payments, entitlement.StaticChecker{Pro: true}, pending, topupIDs())
 	uc.now = func() time.Time { return time.Date(2026, 9, 24, 8, 30, 0, 0, time.UTC) }
 
 	resp, err := uc.Execute(context.Background(), 7, CreateTopupRequest{Pack: "ai_credits_m"})

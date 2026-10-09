@@ -5,6 +5,7 @@ import (
 	"panda-pocket/internal/domain/identity"
 	"time"
 
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -36,6 +37,7 @@ func toDomainUser(userModel User) (*identity.User, error) {
 	userID := identity.NewUserID(int(userModel.ID))
 
 	user := identity.NewUser(userID, emailVO, passwordHashVO, roleVO)
+	user.AssignPublicID(userModel.PublicID)
 	if userModel.DeletedAt != nil {
 		user.MarkDeleted(*userModel.DeletedAt)
 	}
@@ -44,7 +46,14 @@ func toDomainUser(userModel User) (*identity.User, error) {
 
 // Save saves a user to the database
 func (r *GormUserRepository) Save(ctx context.Context, user *identity.User) error {
+	publicID := user.PublicID()
+	if publicID == "" {
+		publicID = uuid.NewString()
+		user.AssignPublicID(publicID)
+	}
+
 	userModel := &User{
+		PublicID:     publicID,
 		Email:        user.Email().Value(),
 		PasswordHash: user.PasswordHash().Value(),
 		Role:         user.Role().Value(),
@@ -60,7 +69,24 @@ func (r *GormUserRepository) Save(ctx context.Context, user *identity.User) erro
 	}
 
 	user.AssignID(identity.NewUserID(int(userModel.ID)))
+	user.AssignPublicID(userModel.PublicID)
 	return nil
+}
+
+// PublicID returns the external id for a user. It is not the primary key.
+func (r *GormUserRepository) PublicID(ctx context.Context, userID int) (string, error) {
+	var user User
+	err := r.activeScope(r.db.WithContext(ctx)).
+		Select("public_id").
+		Where("id = ?", userID).
+		First(&user).Error
+	if err != nil {
+		return "", err
+	}
+	if user.PublicID == "" {
+		return "", gorm.ErrRecordNotFound
+	}
+	return user.PublicID, nil
 }
 
 // Update updates a user in the database

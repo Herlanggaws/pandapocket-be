@@ -65,7 +65,7 @@ func (uc *RegisterUserUseCase) Execute(ctx context.Context, req RegisterUserRequ
 		return nil, err
 	}
 
-	sub, err := billing.NewTrialSubscription(user.ID().Value())
+	sub, err := billing.NewTrialSubscription(user.ID().Value(), user.PublicID())
 	if err != nil {
 		return nil, err
 	}

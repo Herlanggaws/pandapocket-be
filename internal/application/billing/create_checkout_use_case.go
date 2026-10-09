@@ -31,13 +31,18 @@ type CreateCheckoutResponse struct {
 }
 
 type CreateCheckoutUseCase struct {
-	payments PaymentCreator
-	subs     domainBilling.SubscriptionRepository
-	pending  domainBilling.PendingPaymentRepository
+	payments  PaymentCreator
+	subs      domainBilling.SubscriptionRepository
+	pending   domainBilling.PendingPaymentRepository
+	publicIDs domainBilling.PublicIDLookup
 }
 
-func NewCreateCheckoutUseCase(payments PaymentCreator, subs domainBilling.SubscriptionRepository, pending domainBilling.PendingPaymentRepository) *CreateCheckoutUseCase {
-	return &CreateCheckoutUseCase{payments: payments, subs: subs, pending: pending}
+func NewCreateCheckoutUseCase(payments PaymentCreator, subs domainBilling.SubscriptionRepository, pending domainBilling.PendingPaymentRepository, publicIDs domainBilling.PublicIDLookup) *CreateCheckoutUseCase {
+	return &CreateCheckoutUseCase{payments: payments, subs: subs, pending: pending, publicIDs: publicIDs}
+}
+
+func (uc *CreateCheckoutUseCase) ExternalID(ctx context.Context, userID int) (string, error) {
+	return lookupPublicID(uc.publicIDs, ctx, userID)
 }
 
 func (uc *CreateCheckoutUseCase) Execute(ctx context.Context, userID int, req CreateCheckoutRequest) (*CreateCheckoutResponse, error) {
@@ -54,16 +59,20 @@ func (uc *CreateCheckoutUseCase) Execute(ctx context.Context, userID int, req Cr
 		return nil, err
 	}
 
-	reference := fmt.Sprintf("%s:%s", domainBilling.CustomerRef(userID), interval)
-	idempotencyKey := fmt.Sprintf("checkout:%d:%s:%s", userID, interval, time.Now().UTC().Format("2006-01-02"))
+	publicID, err := lookupPublicID(uc.publicIDs, ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	reference := fmt.Sprintf("%s:%s", domainBilling.CustomerRef(publicID), interval)
+	idempotencyKey := fmt.Sprintf("checkout:%s:%s:%s", publicID, interval, time.Now().UTC().Format("2006-01-02"))
 
 	paymentReq := doit.CreatePaymentRequest{
 		Amount:    amount,
 		Rail:      "any",
 		Reference: reference,
 		Metadata: map[string]interface{}{
-			"user_id":  userID,
-			"interval": string(interval),
+			"public_id": publicID,
+			"interval":  string(interval),
 		},
 	}
 	if returnURL := uc.payments.ReturnURL(); returnURL != "" {
