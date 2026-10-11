@@ -70,6 +70,10 @@ func (p PasswordHash) Value() string {
 	return p.value
 }
 
+func (p PasswordHash) IsSet() bool {
+	return p.value != ""
+}
+
 func (p PasswordHash) Matches(plain string) bool {
 	err := bcrypt.CompareHashAndPassword([]byte(p.value), []byte(plain))
 	return err == nil

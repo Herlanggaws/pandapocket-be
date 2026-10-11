@@ -11,7 +11,7 @@ type User struct {
 	ID           uint       `gorm:"primaryKey" json:"id"`
 	PublicID     string     `gorm:"type:varchar(36)" json:"-"`
 	Email        string     `gorm:"uniqueIndex;not null" json:"email"`
-	PasswordHash string     `gorm:"not null" json:"-"`
+	PasswordHash *string    `json:"-"`
 	Role         string     `gorm:"default:'user';check:role IN ('user', 'admin', 'super_admin')" json:"role"`
 	LastLoginAt  *time.Time `json:"last_login_at,omitempty"`
 	DeletedAt    *time.Time `gorm:"index" json:"deleted_at,omitempty"`
@@ -27,9 +27,21 @@ type User struct {
 	Budgets               []Budget               `gorm:"foreignKey:UserID" json:"budgets,omitempty"`
 	RecurringTransactions []RecurringTransaction `gorm:"foreignKey:UserID" json:"recurring_transactions,omitempty"`
 	Transfers             []Transfer             `gorm:"foreignKey:UserID" json:"transfers,omitempty"`
+	Identities            []UserIdentity         `gorm:"foreignKey:UserID" json:"-"`
 	UserPreferences       *UserPreferences       `gorm:"foreignKey:UserID" json:"user_preferences,omitempty"`
 	Subscription          *Subscription          `gorm:"foreignKey:UserID" json:"subscription,omitempty"`
 	Notifications         []Notification         `gorm:"foreignKey:UserID" json:"notifications,omitempty"`
+}
+
+// UserIdentity links a user to a Google or Apple subject.
+type UserIdentity struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	UserID    uint      `gorm:"not null;index" json:"user_id"`
+	Provider  string    `gorm:"not null;uniqueIndex:idx_identity_provider_subject" json:"provider"`
+	Subject   string    `gorm:"not null;uniqueIndex:idx_identity_provider_subject" json:"subject"`
+	Email     string    `json:"email"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // Wallet represents a money account / dompet for a user

@@ -51,8 +51,9 @@ func TestSaveAssignsPublicID(t *testing.T) {
 func TestFillBlankPublicIDsKeepsExisting(t *testing.T) {
 	db := openPublicIDTestDB(t)
 	kept := "11111111-1111-4111-8111-111111111111"
-	existing := User{Email: "kept@example.com", PasswordHash: "x", Role: "user", PublicID: kept}
-	blank := User{Email: "blank@example.com", PasswordHash: "x", Role: "user"}
+	hash := "x"
+	existing := User{Email: "kept@example.com", PasswordHash: &hash, Role: "user", PublicID: kept}
+	blank := User{Email: "blank@example.com", PasswordHash: &hash, Role: "user"}
 	if err := db.Create(&existing).Error; err != nil {
 		t.Fatal(err)
 	}

@@ -68,7 +68,7 @@ func TestLogoutRejectsForeignRefreshWithoutRevoking(t *testing.T) {
 
 func serveLogout(tokens *sessionTokenService, callerID int, body []byte) int {
 	gin.SetMode(gin.TestMode)
-	handler := NewIdentityHandlers(nil, nil, nil, nil, nil, nil, tokens, nil, nil, nil, nil, nil)
+	handler := NewIdentityHandlers(nil, nil, nil, nil, nil, nil, tokens, nil, nil, nil, nil, nil, nil)
 	router := gin.New()
 	router.POST("/logout", func(c *gin.Context) {
 		c.Set("user_id", callerID)

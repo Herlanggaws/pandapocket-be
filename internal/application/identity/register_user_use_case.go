@@ -21,6 +21,7 @@ type RegisterUserResponse struct {
 	Email        string `json:"email"`
 	Token        string `json:"token"`
 	RefreshToken string `json:"refresh_token"`
+	HasPassword  bool   `json:"has_password"`
 }
 
 // RegisterUserUseCase handles user registration
@@ -83,5 +84,6 @@ func (uc *RegisterUserUseCase) Execute(ctx context.Context, req RegisterUserRequ
 		Email:        user.Email().Value(),
 		Token:        token,
 		RefreshToken: refreshToken,
+		HasPassword:  true,
 	}, nil
 }

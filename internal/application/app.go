@@ -23,6 +23,7 @@ import (
 	"panda-pocket/internal/infrastructure/doit"
 	"panda-pocket/internal/infrastructure/fx"
 	"panda-pocket/internal/infrastructure/notification"
+	"panda-pocket/internal/infrastructure/oauth"
 	"panda-pocket/internal/infrastructure/paas"
 	"panda-pocket/internal/interfaces/http/handlers"
 	"panda-pocket/internal/interfaces/http/middleware"
@@ -58,6 +59,7 @@ type App struct {
 func NewApp(db *gorm.DB) *App {
 	// Infrastructure layer - repositories (GORM)
 	userRepo := database.NewGormUserRepository(db)
+	identityRepo := database.NewGormIdentityRepository(db)
 	categoryRepo := database.NewGormCategoryRepository(db)
 	currencyRepo := database.NewGormCurrencyRepository(db)
 	transactionRepo := database.NewGormTransactionRepository(db)
@@ -104,6 +106,14 @@ func NewApp(db *gorm.DB) *App {
 	notificationHelper := appNotification.NewCreateNotificationHelper(notificationRepo)
 	registerUserUseCase := appIdentity.NewRegisterUserUseCase(userService, tokenService, subscriptionRepo)
 	loginUserUseCase := appIdentity.NewLoginUserUseCase(userService, tokenService)
+	signInWithProviderUseCase := appIdentity.NewSignInWithProviderUseCase(
+		appIdentity.NewOAuthTokenVerifier(oauth.NewIDTokenVerifier()),
+		userRepo,
+		identityRepo,
+		userService,
+		tokenService,
+		subscriptionRepo,
+	)
 	getUsersUseCase := appIdentity.NewGetUsersUseCase(userService)
 	forgotPasswordUseCase := appIdentity.NewForgotPasswordUseCase(userRepo, tokenRepo, emailService)
 	resetPasswordUseCase := appIdentity.NewResetPasswordUseCase(userRepo, tokenRepo, tokenService)
@@ -369,6 +379,7 @@ func NewApp(db *gorm.DB) *App {
 		updatePreferencesUseCase,
 		resetAccountDataUseCase,
 		deleteAccountUseCase,
+		signInWithProviderUseCase,
 	)
 	financeHandlers := handlers.NewFinanceHandlers(
 		createTransactionUseCase,
@@ -533,6 +544,7 @@ func (app *App) SetupRoutes() *gin.Engine {
 		{
 			auth.POST("/register", authLimits.Limit("register", 5, true), app.IdentityHandlers.Register)
 			auth.POST("/login", authLimits.Limit("login", 10, true), app.IdentityHandlers.Login)
+			auth.POST("/sso", authLimits.Limit("sso", 10, false), app.IdentityHandlers.SignInWithProvider)
 			auth.POST("/refresh", authLimits.Limit("refresh", 60, false), app.IdentityHandlers.RefreshToken)
 			auth.POST("/logout", app.AuthMiddleware.RequireAuth(), app.IdentityHandlers.Logout)
 			auth.POST("/forgot", authLimits.Limit("forgot", 5, true), app.IdentityHandlers.ForgotPassword)

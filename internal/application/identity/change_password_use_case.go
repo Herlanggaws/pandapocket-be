@@ -8,7 +8,7 @@ import (
 
 type ChangePasswordRequest struct {
 	UserID             int    `json:"-"` // From token
-	OldPassword        string `json:"old_password" binding:"required"`
+	OldPassword        string `json:"old_password"`
 	NewPassword        string `json:"new_password" binding:"required,min=8"`
 	ConfirmNewPassword string `json:"confirm_new_password" binding:"required"`
 }
@@ -44,8 +44,7 @@ func (uc *ChangePasswordUseCase) Execute(ctx context.Context, req ChangePassword
 		return errors.New("password cannot be the same as your email")
 	}
 
-	// 3. Verify old password
-	if !user.CheckPassword(req.OldPassword) {
+	if user.PasswordHash().IsSet() && !user.CheckPassword(req.OldPassword) {
 		return errors.New("invalid old password")
 	}
 

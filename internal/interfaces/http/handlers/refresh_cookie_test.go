@@ -84,6 +84,9 @@ func (r *cookieUserRepo) FindByID(_ context.Context, id domainIdentity.UserID) (
 func (r *cookieUserRepo) FindByEmail(context.Context, domainIdentity.Email) (*domainIdentity.User, error) {
 	return nil, errors.New("not found")
 }
+func (r *cookieUserRepo) FindByEmailFolded(ctx context.Context, email domainIdentity.Email) (*domainIdentity.User, error) {
+	return r.FindByEmail(ctx, email)
+}
 func (r *cookieUserRepo) FindAll(context.Context) ([]*domainIdentity.User, error) {
 	return nil, nil
 }
@@ -176,7 +179,7 @@ func newRefreshHandler(t *testing.T) (*IdentityHandlers, *rotatingTokenRepo, map
 		nil, nil, nil, nil, nil,
 		appIdentity.NewRefreshTokenUseCase(domainIdentity.NewUserService(&cookieUserRepo{users: users}), tokenService),
 		tokenService,
-		nil, nil, nil, nil, nil,
+		nil, nil, nil, nil, nil, nil,
 	)
 	return handler, repo, users
 }

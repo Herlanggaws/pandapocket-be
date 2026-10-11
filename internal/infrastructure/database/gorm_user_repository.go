@@ -29,7 +29,7 @@ func toDomainUser(userModel User) (*identity.User, error) {
 		return nil, err
 	}
 
-	passwordHashVO := identity.NewPasswordHash(userModel.PasswordHash)
+	passwordHashVO := identity.NewPasswordHash(passwordHashValue(userModel.PasswordHash))
 	roleVO, err := identity.NewRole(userModel.Role)
 	if err != nil {
 		return nil, err
@@ -55,7 +55,7 @@ func (r *GormUserRepository) Save(ctx context.Context, user *identity.User) erro
 	userModel := &User{
 		PublicID:     publicID,
 		Email:        user.Email().Value(),
-		PasswordHash: user.PasswordHash().Value(),
+		PasswordHash: passwordHashPointer(user.PasswordHash().Value()),
 		Role:         user.Role().Value(),
 		DeletedAt:    user.DeletedAt(),
 	}
@@ -116,6 +116,31 @@ func (r *GormUserRepository) FindByEmail(ctx context.Context, email identity.Ema
 	}
 
 	return toDomainUser(userModel)
+}
+
+func (r *GormUserRepository) FindByEmailFolded(ctx context.Context, email identity.Email) (*identity.User, error) {
+	var userModel User
+	err := r.activeScope(r.db.WithContext(ctx)).
+		Where("LOWER(email) = LOWER(?)", email.Value()).
+		First(&userModel).Error
+	if err != nil {
+		return nil, err
+	}
+	return toDomainUser(userModel)
+}
+
+func passwordHashValue(hash *string) string {
+	if hash == nil {
+		return ""
+	}
+	return *hash
+}
+
+func passwordHashPointer(hash string) *string {
+	if hash == "" {
+		return nil
+	}
+	return &hash
 }
 
 // Delete deletes a user by ID

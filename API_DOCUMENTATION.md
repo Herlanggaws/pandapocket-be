@@ -62,12 +62,13 @@ Allowed origins: `https://berbudget.com`, `https://www.berbudget.com`, `https://
 | POST | `/webhooks/doit` | No | Doit payment webhooks (`PayBridge-Signature`) |
 | POST | `/api/auth/register` | No | |
 | POST | `/api/auth/login` | No | |
+| POST | `/api/auth/sso` | No | Google or Apple ID token. Same session response as login. Android can call this later |
 | POST | `/api/auth/refresh` | No | Rotates refresh token. Body `refresh_token`, or cookie `bb_refresh` when the body is empty |
 | POST | `/api/auth/logout` | Yes | Revokes every session. Optional `refresh_token` must belong to the caller |
 | POST | `/api/auth/forgot` | No | Forgot password |
 | POST | `/api/auth/reset-password` | No | Reset with token from email |
 | POST | `/api/auth/change-password` | Yes | Authenticated password change |
-| DELETE | `/api/auth/account` | Yes | Soft-delete account (password required); purge after 14 days |
+| DELETE | `/api/auth/account` | Yes | Soft-delete account (password required when one is set); purge after 14 days |
 | GET | `/api/users` | Yes (admin) | List users |
 | GET | `/api/dashboard/stats` | Yes (admin) | Admin dashboard statistics |
 | GET/POST | `/api/categories` | Yes | |
@@ -301,12 +302,34 @@ Login to get access and refresh tokens. The access token expires in 15 minutes. 
     "refresh_token": "...",
     "user": {
       "id": 1,
-      "email": "user@example.com"
+      "email": "user@example.com",
+      "has_password": true
     }
   },
   "error": null
 }
 ```
+
+### POST /api/auth/sso
+
+Sign in or register with a Google or Apple ID token. Rate limit: 10 attempts per IP in 15 minutes (**429** `RATE_LIMITED`). The access token, `refresh_token`, and `bb_refresh` cookie match login.
+
+The server checks the token signature against the provider JWKS, then `aud` against `GOOGLE_OAUTH_CLIENT_IDS` or `APPLE_OAUTH_CLIENT_IDS` (comma-separated). `nonce` must match the token. Google stores the raw nonce. Apple stores the hex SHA-256 of the nonce. Google also requires `email_verified`.
+
+Lookup order: existing `(provider, subject)`, then a verified email already on an account (the identity is linked), otherwise a new user with no password and the same 14-day trial as register. A later Android client sends the same body after adding its client ID to the env list. No separate mobile route.
+
+**Request Body:**
+```json
+{
+  "provider": "google",
+  "id_token": "eyJhbGciOiJSUzI1NiIs...",
+  "nonce": "client-generated-nonce"
+}
+```
+
+`provider` is `google` or `apple`.
+
+**Response:** same shape as login, including `user.has_password` (`false` when the account has no password yet).
 
 ### POST /api/auth/refresh
 
@@ -408,7 +431,7 @@ Reset password using the token from the forgot-password flow. Every session for 
 
 ### POST /api/auth/change-password
 
-Change password for the authenticated user. Requires `Authorization: Bearer <token>`. Every session for that user is revoked, including the token used for this request. `new_password` must be at least 8 characters and must not equal the account email.
+Change password for the authenticated user. Requires `Authorization: Bearer <token>`. Every session for that user is revoked, including the token used for this request. `new_password` must be at least 8 characters and must not equal the account email. `old_password` is required when the account already has a password. An SSO-only account (`has_password` false) may omit it and this call sets the first password.
 
 **Request Body:**
 ```json
@@ -432,7 +455,7 @@ Change password for the authenticated user. Requires `Authorization: Bearer <tok
 
 ### DELETE /api/auth/account
 
-Soft-delete the authenticated user's account. Requires `Authorization: Bearer <token>` and the current password. Login is blocked immediately; all sessions are revoked. Personal data is retained for up to 14 days, then hard-purged by a background job. The original email can be registered again right after soft-delete.
+Soft-delete the authenticated user's account. Requires `Authorization: Bearer <token>`. Accounts that already have a password must send it. SSO-only accounts (`has_password` false) may send an empty `password`. Login is blocked immediately; all sessions are revoked. Personal data is retained for up to 14 days, then hard-purged by a background job. The original email can be registered again right after soft-delete.
 
 **Request Body:**
 ```json
@@ -2756,6 +2779,12 @@ Keep this file in sync with the running API. When routes, request/response shape
 ---
 
 ## Version History
+
+- **v2.57.0**: **Google and Apple sign-in**
+  - `POST /api/auth/sso` verifies an ID token and returns the same session as login
+  - Existing verified email is linked. A new account gets the 14-day trial and no password
+  - `user.has_password` is on register, login, and SSO. Change-password and delete-account skip the old password when none is set
+  - Extra client IDs (Android later) are added to `GOOGLE_OAUTH_CLIENT_IDS` or `APPLE_OAUTH_CLIENT_IDS`
 
 - **v2.56.0**: **External `public_id` on Doit references**
   - `users.public_id` is a random UUID. `users.id` stays the integer primary key and stays in the JWT

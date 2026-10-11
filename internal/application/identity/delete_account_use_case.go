@@ -13,12 +13,12 @@ const AccountDeletionRetention = 14 * 24 * time.Hour
 
 type DeleteAccountRequest struct {
 	UserID   int    `json:"-"`
-	Password string `json:"password" binding:"required"`
+	Password string `json:"password"`
 }
 
 type DeleteAccountResponse struct {
-	Message           string    `json:"message"`
-	ScheduledPurgeAt  time.Time `json:"scheduled_purge_at"`
+	Message          string    `json:"message"`
+	ScheduledPurgeAt time.Time `json:"scheduled_purge_at"`
 }
 
 type tokenRevoker interface {
@@ -47,10 +47,6 @@ func mangledDeletedEmail(userID int, at time.Time) string {
 }
 
 func (uc *DeleteAccountUseCase) Execute(ctx context.Context, req DeleteAccountRequest) (*DeleteAccountResponse, error) {
-	if req.Password == "" {
-		return nil, errors.New("password is required")
-	}
-
 	userID := domainIdentity.NewUserID(req.UserID)
 	user, err := uc.userRepo.FindByID(ctx, userID)
 	if err != nil {
@@ -60,7 +56,7 @@ func (uc *DeleteAccountUseCase) Execute(ctx context.Context, req DeleteAccountRe
 		return nil, errors.New("user not found")
 	}
 
-	if !user.CheckPassword(req.Password) {
+	if user.PasswordHash().IsSet() && !user.CheckPassword(req.Password) {
 		return nil, errors.New("invalid password")
 	}
 

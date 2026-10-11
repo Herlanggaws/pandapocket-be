@@ -60,8 +60,9 @@ func TestWipeUserDataScopedByUserID(t *testing.T) {
 	wiper := NewGormUserDataWiper(db)
 	ctx := context.Background()
 
-	userA := User{Email: "a@example.com", PasswordHash: "x", Role: "user"}
-	userB := User{Email: "b@example.com", PasswordHash: "x", Role: "user"}
+	hash := "x"
+	userA := User{Email: "a@example.com", PasswordHash: &hash, Role: "user"}
+	userB := User{Email: "b@example.com", PasswordHash: &hash, Role: "user"}
 	if err := db.Create(&userA).Error; err != nil {
 		t.Fatalf("create userA: %v", err)
 	}

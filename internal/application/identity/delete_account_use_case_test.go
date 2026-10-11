@@ -3,6 +3,7 @@ package identity
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -56,6 +57,21 @@ func (r *memUserRepo) FindByID(ctx context.Context, id domainIdentity.UserID) (*
 		return nil, errors.New("not found")
 	}
 	return user, nil
+}
+
+func (r *memUserRepo) FindByEmailFolded(ctx context.Context, email domainIdentity.Email) (*domainIdentity.User, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for stored, id := range r.emails {
+		if !strings.EqualFold(stored, email.Value()) {
+			continue
+		}
+		if _, deleted := r.deleted[id]; deleted {
+			return nil, errors.New("not found")
+		}
+		return r.users[id], nil
+	}
+	return nil, errors.New("not found")
 }
 
 func (r *memUserRepo) FindByEmail(ctx context.Context, email domainIdentity.Email) (*domainIdentity.User, error) {

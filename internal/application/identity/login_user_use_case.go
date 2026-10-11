@@ -20,6 +20,7 @@ type LoginUserResponse struct {
 	Email        string `json:"email"`
 	Token        string `json:"token"`
 	RefreshToken string `json:"refresh_token"`
+	HasPassword  bool   `json:"has_password"`
 }
 
 // LoginUserUseCase handles user login
@@ -50,7 +51,9 @@ func (uc *LoginUserUseCase) Execute(ctx context.Context, req LoginUserRequest) (
 		return nil, errors.New("invalid credentials")
 	}
 
-	// Verify password
+	if !user.PasswordHash().IsSet() {
+		return nil, errors.New("invalid credentials")
+	}
 	err = bcrypt.CompareHashAndPassword([]byte(user.PasswordHash().Value()), []byte(req.Password))
 	if err != nil {
 		return nil, errors.New("invalid credentials")
@@ -67,5 +70,6 @@ func (uc *LoginUserUseCase) Execute(ctx context.Context, req LoginUserRequest) (
 		Email:        user.Email().Value(),
 		Token:        token,
 		RefreshToken: refreshToken,
+		HasPassword:  user.PasswordHash().IsSet(),
 	}, nil
 }

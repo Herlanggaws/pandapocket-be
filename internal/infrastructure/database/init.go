@@ -160,6 +160,7 @@ func autoMigrate(db *gorm.DB) error {
 
 	if err := db.AutoMigrate(
 		&User{},
+		&UserIdentity{},
 		&Currency{},
 		&Category{},
 		&Wallet{},
@@ -204,7 +205,19 @@ func autoMigrate(db *gorm.DB) error {
 	if err := backfillPublicIDs(db); err != nil {
 		return err
 	}
+	if err := relaxUserPasswordNull(db); err != nil {
+		return err
+	}
 	return widenBillingIntervalCheck(db)
+}
+
+// relaxUserPasswordNull lets SSO-only accounts store no password.
+// AutoMigrate does not drop NOT NULL from a column that already exists.
+func relaxUserPasswordNull(db *gorm.DB) error {
+	if db.Dialector.Name() != "postgres" || !db.Migrator().HasTable("users") {
+		return nil
+	}
+	return db.Exec(`ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL`).Error
 }
 
 // backfillPublicIDs fills users that predate the external id. Existing values stay.

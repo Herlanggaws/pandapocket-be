@@ -11,18 +11,19 @@ import (
 
 // IdentityHandlers handles identity-related HTTP requests
 type IdentityHandlers struct {
-	registerUserUseCase      *identity.RegisterUserUseCase
-	loginUserUseCase         *identity.LoginUserUseCase
-	getUsersUseCase          *identity.GetUsersUseCase
-	forgotPasswordUseCase    *identity.ForgotPasswordUseCase
-	resetPasswordUseCase     *identity.ResetPasswordUseCase
-	refreshTokenUseCase      *identity.RefreshTokenUseCase
-	tokenService             identity.TokenService
-	changePasswordUseCase    *identity.ChangePasswordUseCase
-	getPreferencesUseCase    *identity.GetPreferencesUseCase
-	updatePreferencesUseCase *identity.UpdatePreferencesUseCase
-	resetAccountDataUseCase  *identity.ResetAccountDataUseCase
-	deleteAccountUseCase     *identity.DeleteAccountUseCase
+	registerUserUseCase       *identity.RegisterUserUseCase
+	loginUserUseCase          *identity.LoginUserUseCase
+	getUsersUseCase           *identity.GetUsersUseCase
+	forgotPasswordUseCase     *identity.ForgotPasswordUseCase
+	resetPasswordUseCase      *identity.ResetPasswordUseCase
+	refreshTokenUseCase       *identity.RefreshTokenUseCase
+	tokenService              identity.TokenService
+	changePasswordUseCase     *identity.ChangePasswordUseCase
+	getPreferencesUseCase     *identity.GetPreferencesUseCase
+	updatePreferencesUseCase  *identity.UpdatePreferencesUseCase
+	resetAccountDataUseCase   *identity.ResetAccountDataUseCase
+	deleteAccountUseCase      *identity.DeleteAccountUseCase
+	signInWithProviderUseCase *identity.SignInWithProviderUseCase
 }
 
 // NewIdentityHandlers creates a new identity handlers instance
@@ -39,20 +40,22 @@ func NewIdentityHandlers(
 	updatePreferencesUseCase *identity.UpdatePreferencesUseCase,
 	resetAccountDataUseCase *identity.ResetAccountDataUseCase,
 	deleteAccountUseCase *identity.DeleteAccountUseCase,
+	signInWithProviderUseCase *identity.SignInWithProviderUseCase,
 ) *IdentityHandlers {
 	return &IdentityHandlers{
-		registerUserUseCase:      registerUserUseCase,
-		loginUserUseCase:         loginUserUseCase,
-		getUsersUseCase:          getUsersUseCase,
-		forgotPasswordUseCase:    forgotPasswordUseCase,
-		resetPasswordUseCase:     resetPasswordUseCase,
-		refreshTokenUseCase:      refreshTokenUseCase,
-		tokenService:             tokenService,
-		changePasswordUseCase:    changePasswordUseCase,
-		getPreferencesUseCase:    getPreferencesUseCase,
-		updatePreferencesUseCase: updatePreferencesUseCase,
-		resetAccountDataUseCase:  resetAccountDataUseCase,
-		deleteAccountUseCase:     deleteAccountUseCase,
+		registerUserUseCase:       registerUserUseCase,
+		loginUserUseCase:          loginUserUseCase,
+		getUsersUseCase:           getUsersUseCase,
+		forgotPasswordUseCase:     forgotPasswordUseCase,
+		resetPasswordUseCase:      resetPasswordUseCase,
+		refreshTokenUseCase:       refreshTokenUseCase,
+		tokenService:              tokenService,
+		changePasswordUseCase:     changePasswordUseCase,
+		getPreferencesUseCase:     getPreferencesUseCase,
+		updatePreferencesUseCase:  updatePreferencesUseCase,
+		resetAccountDataUseCase:   resetAccountDataUseCase,
+		deleteAccountUseCase:      deleteAccountUseCase,
+		signInWithProviderUseCase: signInWithProviderUseCase,
 	}
 }
 
@@ -101,8 +104,9 @@ func (h *IdentityHandlers) Register(c *gin.Context) {
 		"token":         response.Token,
 		"refresh_token": response.RefreshToken,
 		"user": gin.H{
-			"id":    response.UserID,
-			"email": response.Email,
+			"id":           response.UserID,
+			"email":        response.Email,
+			"has_password": response.HasPassword,
 		},
 	})
 }
@@ -126,8 +130,32 @@ func (h *IdentityHandlers) Login(c *gin.Context) {
 		"token":         response.Token,
 		"refresh_token": response.RefreshToken,
 		"user": gin.H{
-			"id":    response.UserID,
-			"email": response.Email,
+			"id":           response.UserID,
+			"email":        response.Email,
+			"has_password": response.HasPassword,
+		},
+	})
+}
+
+func (h *IdentityHandlers) SignInWithProvider(c *gin.Context) {
+	var req identity.SignInWithProviderRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		ValidationErrorResponse(c, formatValidationError(err))
+		return
+	}
+	response, err := h.signInWithProviderUseCase.Execute(c.Request.Context(), req)
+	if err != nil {
+		HandleError(c, err, http.StatusUnauthorized)
+		return
+	}
+	setRefreshCookie(c, response.RefreshToken, h.tokenService.RefreshCookieMaxAge())
+	SuccessResponse(c, http.StatusOK, gin.H{
+		"token":         response.Token,
+		"refresh_token": response.RefreshToken,
+		"user": gin.H{
+			"id":           response.UserID,
+			"email":        response.Email,
+			"has_password": response.HasPassword,
 		},
 	})
 }
