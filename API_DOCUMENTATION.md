@@ -127,6 +127,7 @@ Allowed origins: `https://berbudget.com`, `https://www.berbudget.com`, `https://
 | DELETE | `/api/ai/advisor/threads/:id` | Yes (Pro) | Delete thread |
 | POST | `/api/ai/advisor/threads/:id/chat` | Yes (Pro) | Stream chat (SSE); async pending survives refresh |
 | POST | `/api/ai/advisor/threads/:id/messages/:messageId/draft/saved` | Yes (Pro) | Mark a chat transaction draft as saved |
+| POST | `/api/ai/advisor/threads/:id/messages/:messageId/feedback` | Yes (Pro) | Save thumbs up, down, or clear on an assistant message |
 | GET | `/api/ai/advisor/thread` | Yes (Pro) | Legacy: newest/create thread |
 | DELETE | `/api/ai/advisor/thread` | Yes (Pro) | Legacy: clear newest thread messages |
 | POST | `/api/ai/advisor/chat` | Yes (Pro) | Legacy: chat on newest/create thread |
@@ -2032,7 +2033,7 @@ Creates an empty thread.
     "id": 1,
     "title": "…",
     "generation_status": "idle",
-    "messages": [{ "id": 2, "role": "assistant", "content": "…", "created_at": "…", "draft": { "kind": "expense", "amount": 25000, "date": "2026-09-30", "note": "kopi", "wallet_id": 1, "wallet_name": "Tunai", "category_id": 4, "category_name": "Makanan", "status": "pending" } }],
+    "messages": [{ "id": 2, "role": "assistant", "content": "…", "created_at": "…", "draft": { "kind": "expense", "amount": 25000, "date": "2026-09-30", "note": "kopi", "wallet_id": 1, "wallet_name": "Tunai", "category_id": 4, "category_name": "Makanan", "status": "pending" }, "reply_meta": { "sources": ["budgets"], "cards": [], "follow_ups": ["Pos mana yang paling jebol?"], "actions": [{ "id": "open_budgets", "href": "/budgets" }], "credit_spent": true } }],
     "credits": {
       "available": 12,
       "included_unlocked": 15,
@@ -2061,6 +2062,12 @@ Body: `{ "message": "…" }` (max 2000 chars).
 **Credit policy:** 1 credit is debited only after a successful non-empty AI advice reply, or after a usable transaction draft card (C9). Upstream failure or empty response → no debit (`AI_UPSTREAM_ERROR`). Off-topic (pre-flight classify `OUT_OF_SCOPE`, including local keyword heuristic) → canned refusal as a normal assistant message, **no debit**. A record request that cannot become one draft (missing amount, unknown named wallet, transfer without two wallets) → short ask, **no debit**. Saving the draft does not debit again.
 
 **Transaction draft (C9):** one message, one expense, income, or transfer card. `draft` on the assistant message. `POST /api/ai/advisor/threads/:id/messages/:messageId/draft/saved` marks it saved after `POST /api/expenses`, `/api/incomes`, or `/api/transfers`. Idempotent. `404 AI_DRAFT_NOT_FOUND` when the message has no draft.
+
+**Answer context:** after a successful advice reply is stored and 1 credit is debited, a short JSON completion (same model, no extra credit) picks `sources`, `follow_ups`, and `actions`. The server copies card numbers from that turn's finance snapshot. `reply_meta` is omitted when that call fails. Actions are links only: `open_health` `/health`, `open_budgets` `/budgets`, `open_transactions` `/transactions`, `open_wallets` `/settings/wallets`, `open_goals` `/goals`, `open_insights` `/insights`, `open_debts` `/debts`. `credit_spent` is true only when the debit succeeded.
+
+#### POST /api/ai/advisor/threads/:id/messages/:messageId/feedback
+
+Body: `{ "value": "up" | "down" | "clear" }`. Pro-only. Stores the choice on that assistant message's `reply_meta`. Does not debit and is not sent back to the model. Unknown value → 400. Missing message or a user message → `404 AI_MESSAGE_NOT_FOUND`.
 
 **Topic scope:** Only the user's personal finances in Berbudget. Unrelated topics (recipes, coding, trivia, etc.) are refused. Clear finance / off-topic messages skip the PAAS classify round-trip; ambiguous messages still call PAAS.
 
@@ -2779,6 +2786,11 @@ Keep this file in sync with the running API. When routes, request/response shape
 ---
 
 ## Version History
+
+- **v2.58.0**: **Tanya AI answer context**
+  - Assistant messages may include `reply_meta` (`sources`, `cards`, `follow_ups`, `actions`, `credit_spent`, `feedback`)
+  - Card amounts come from the same finance snapshot as the answer. The model does not write the numbers
+  - `POST /api/ai/advisor/threads/:id/messages/:messageId/feedback` stores `up`, `down`, or `clear` without debiting a credit
 
 - **v2.57.0**: **Google and Apple sign-in**
   - `POST /api/auth/sso` verifies an ID token and returns the same session as login

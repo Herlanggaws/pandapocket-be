@@ -56,6 +56,7 @@ type AIAdvisorMessage struct {
 	Role             string    `gorm:"type:varchar(16);not null" json:"role"`
 	Content          string    `gorm:"type:text;not null" json:"content"`
 	Draft            string    `gorm:"type:text;not null;default:''" json:"draft,omitempty"`
+	ReplyMeta        string    `gorm:"type:text;not null;default:''" json:"reply_meta,omitempty"`
 	PromptTokens     int       `gorm:"not null;default:0" json:"prompt_tokens"`
 	CompletionTokens int       `gorm:"not null;default:0" json:"completion_tokens"`
 	CreatedAt        time.Time `json:"created_at"`
@@ -436,6 +437,7 @@ func mapAdvisorMessage(row AIAdvisorMessage) domainAI.ThreadMessage {
 		Role:             row.Role,
 		Content:          row.Content,
 		DraftJSON:        row.Draft,
+		ReplyMetaJSON:    row.ReplyMeta,
 		PromptTokens:     row.PromptTokens,
 		CompletionTokens: row.CompletionTokens,
 		CreatedAt:        row.CreatedAt,
@@ -487,6 +489,19 @@ func (r *GormAIThreadRepository) UpdateMessageDraft(ctx context.Context, threadI
 	}
 	if res.RowsAffected == 0 {
 		return domainAI.ErrDraftNotFound
+	}
+	return nil
+}
+
+func (r *GormAIThreadRepository) UpdateMessageReplyMeta(ctx context.Context, threadID, messageID int, replyMetaJSON string) error {
+	res := r.db.WithContext(ctx).Model(&AIAdvisorMessage{}).
+		Where("id = ? AND thread_id = ?", messageID, threadID).
+		Update("reply_meta", replyMetaJSON)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return domainAI.ErrMessageNotFound
 	}
 	return nil
 }

@@ -658,6 +658,7 @@ func (app *App) SetupRoutes() *gin.Engine {
 			protected.DELETE("/ai/advisor/threads/:id", app.AIAdvisorHandlers.DeleteThread)
 			protected.POST("/ai/advisor/threads/:id/chat", app.AIAdvisorHandlers.ChatOnThread)
 			protected.POST("/ai/advisor/threads/:id/messages/:messageId/draft/saved", app.AIAdvisorHandlers.MarkDraftSaved)
+			protected.POST("/ai/advisor/threads/:id/messages/:messageId/feedback", app.AIAdvisorHandlers.SetMessageFeedback)
 			protected.GET("/ai/advisor/thread", app.AIAdvisorHandlers.LegacyGetThread)
 			protected.DELETE("/ai/advisor/thread", app.AIAdvisorHandlers.LegacyClearThread)
 			protected.POST("/ai/advisor/chat", app.AIAdvisorHandlers.LegacyChat)

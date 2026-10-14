@@ -3,6 +3,7 @@ package ai
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -17,6 +18,7 @@ type ThreadMessageDTO struct {
 	Content   string            `json:"content"`
 	CreatedAt time.Time         `json:"created_at"`
 	Draft     *TransactionDraft `json:"draft,omitempty"`
+	ReplyMeta json.RawMessage   `json:"reply_meta,omitempty"`
 }
 
 type ThreadSummaryDTO struct {
@@ -206,6 +208,9 @@ func threadMessageDTO(message domainAI.ThreadMessage) ThreadMessageDTO {
 		Content:   message.Content,
 		CreatedAt: message.CreatedAt,
 	}
+	if meta := strings.TrimSpace(message.ReplyMetaJSON); meta != "" && json.Valid([]byte(meta)) {
+		dto.ReplyMeta = json.RawMessage(meta)
+	}
 	if strings.TrimSpace(message.DraftJSON) == "" {
 		return dto
 	}
@@ -215,6 +220,30 @@ func threadMessageDTO(message domainAI.ThreadMessage) ThreadMessageDTO {
 	}
 	dto.Draft = &draft
 	return dto
+}
+
+func (uc *ThreadUseCases) SetFeedback(ctx context.Context, userID, threadID, messageID int, value string) error {
+	if err := RequireProAI(ctx, uc.entitlements, userID); err != nil {
+		return err
+	}
+	if _, err := uc.threads.FindByIDForUser(ctx, threadID, userID); err != nil {
+		return err
+	}
+	message, err := uc.threads.FindMessage(ctx, threadID, messageID)
+	if err != nil {
+		if errors.Is(err, domainAI.ErrDraftNotFound) {
+			return domainAI.ErrMessageNotFound
+		}
+		return err
+	}
+	if message.Role != domainAI.RoleAssistant {
+		return domainAI.ErrMessageNotFound
+	}
+	next, err := mergeFeedback(message.ReplyMetaJSON, value)
+	if err != nil {
+		return err
+	}
+	return uc.threads.UpdateMessageReplyMeta(ctx, threadID, messageID, next)
 }
 
 func (uc *ThreadUseCases) MarkDraftSaved(ctx context.Context, userID, threadID, messageID int) error {

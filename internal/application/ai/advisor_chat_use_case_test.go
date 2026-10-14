@@ -21,14 +21,21 @@ type stubStreamer struct {
 	release       chan struct{}
 	classifyReply string
 	classifyErr   error
+	metaReply     string
 	streamCalls   int
 	completeCalls int
 }
 
 func (s *stubStreamer) Configured() bool { return true }
 
-func (s *stubStreamer) CompleteChat(_ context.Context, _ []paas.Message, _ int) (string, error) {
+func (s *stubStreamer) CompleteChat(_ context.Context, messages []paas.Message, _ int) (string, error) {
 	s.completeCalls++
+	if replyMetaRequest(messages) {
+		if s.metaReply != "" {
+			return s.metaReply, nil
+		}
+		return "", errors.New("no reply meta")
+	}
 	if s.classifyErr != nil {
 		return "", s.classifyErr
 	}
@@ -36,6 +43,15 @@ func (s *stubStreamer) CompleteChat(_ context.Context, _ []paas.Message, _ int) 
 		return s.classifyReply, nil
 	}
 	return "IN_SCOPE", nil
+}
+
+func replyMetaRequest(messages []paas.Message) bool {
+	for _, message := range messages {
+		if strings.Contains(message.Content, replyMetaMarker) {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *stubStreamer) StreamChat(_ context.Context, _ []paas.Message, onDelta func(string) error) (string, int, int, error) {
@@ -278,10 +294,11 @@ func (m *memThreads) append(threadID int, role, content, draftJSON string) error
 	defer m.mu.Unlock()
 	m.nextID++
 	m.msgs[threadID] = append(m.msgs[threadID], domainAI.ThreadMessage{
-		ID:        m.nextID,
-		Role:      role,
-		Content:   content,
-		DraftJSON: draftJSON,
+		ID:            m.nextID,
+		Role:          role,
+		Content:       content,
+		DraftJSON:     draftJSON,
+		ReplyMetaJSON: "",
 	})
 	if t, ok := m.threads[threadID]; ok {
 		t.UpdatedAt = time.Now().UTC()
@@ -298,6 +315,20 @@ func (m *memThreads) FindMessage(_ context.Context, threadID, messageID int) (do
 		}
 	}
 	return domainAI.ThreadMessage{}, domainAI.ErrDraftNotFound
+}
+
+func (m *memThreads) UpdateMessageReplyMeta(_ context.Context, threadID, messageID int, replyMetaJSON string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	msgs := m.msgs[threadID]
+	for i := range msgs {
+		if msgs[i].ID == messageID {
+			msgs[i].ReplyMetaJSON = replyMetaJSON
+			m.msgs[threadID] = msgs
+			return nil
+		}
+	}
+	return domainAI.ErrMessageNotFound
 }
 
 func (m *memThreads) UpdateMessageDraft(_ context.Context, threadID, messageID int, draftJSON string) error {
@@ -474,8 +505,8 @@ func TestAdvisorChatClassifyFailFallsBackToAdvice(t *testing.T) {
 	if last == nil || last.Kind != StreamDone {
 		t.Fatalf("want done, got %#v", last)
 	}
-	if streamer.completeCalls != 1 {
-		t.Fatalf("completeCalls=%d want 1", streamer.completeCalls)
+	if streamer.completeCalls != 2 {
+		t.Fatalf("completeCalls=%d want 2", streamer.completeCalls)
 	}
 	if streamer.streamCalls != 1 {
 		t.Fatalf("streamCalls=%d want 1", streamer.streamCalls)

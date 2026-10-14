@@ -330,6 +330,7 @@ func (uc *AdvisorChatUseCase) runGeneration(
 		job.publish(StreamEvent{Kind: StreamError, ErrCode: "AI_CREDITS_REQUIRED", Credits: creditsBefore})
 		return
 	}
+	uc.attachReplyMeta(bgCtx, threadID, userMessage, full, lang, contextJSON)
 	_ = uc.threads.TrimOldest(finishCtx, threadID, domainAI.MaxThreadMsgs)
 	job.publish(StreamEvent{Kind: StreamDone, Credits: creditsAfter})
 }

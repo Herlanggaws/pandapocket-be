@@ -92,6 +92,34 @@ func (h *AIAdvisorHandlers) MarkDraftSaved(c *gin.Context) {
 	SuccessResponse(c, http.StatusOK, gin.H{"status": appAI.DraftStatusSaved})
 }
 
+func (h *AIAdvisorHandlers) SetMessageFeedback(c *gin.Context) {
+	userID := c.GetInt("user_id")
+	threadID, ok := parseThreadID(c)
+	if !ok {
+		return
+	}
+	messageID, ok := parseMessageID(c)
+	if !ok {
+		return
+	}
+	var body struct {
+		Value string `json:"value"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		ValidationErrorResponse(c, "invalid feedback")
+		return
+	}
+	if err := h.threads.SetFeedback(c.Request.Context(), userID, threadID, messageID, body.Value); err != nil {
+		if errors.Is(err, domainAI.ErrInvalidFeedback) {
+			ValidationErrorResponse(c, "invalid feedback")
+			return
+		}
+		h.mapThreadErr(c, err, "AI_FEEDBACK_ERROR", "Failed to save feedback")
+		return
+	}
+	SuccessResponse(c, http.StatusOK, gin.H{"value": body.Value})
+}
+
 func (h *AIAdvisorHandlers) DeleteThread(c *gin.Context) {
 	userID := c.GetInt("user_id")
 	threadID, ok := parseThreadID(c)
@@ -444,6 +472,16 @@ func parseMessageID(c *gin.Context) (int, bool) {
 func (h *AIAdvisorHandlers) mapThreadErr(c *gin.Context, err error, code, msg string) {
 	if errors.Is(err, entitlement.ErrPremiumRequired) {
 		PremiumRequiredResponse(c, err)
+		return
+	}
+	if errors.Is(err, domainAI.ErrMessageNotFound) {
+		c.JSON(http.StatusNotFound, APIResponse{
+			Status: "error",
+			Error: &ErrorResponse{
+				ErrorCode:    "AI_MESSAGE_NOT_FOUND",
+				ErrorMessage: "Advisor message not found",
+			},
+		})
 		return
 	}
 	if errors.Is(err, domainAI.ErrDraftNotFound) {
