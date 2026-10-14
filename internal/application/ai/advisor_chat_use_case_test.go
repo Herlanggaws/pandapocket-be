@@ -470,6 +470,9 @@ func TestAdvisorChatOutOfScopeNoSpend(t *testing.T) {
 	if !strings.Contains(msgs[1].Content, "keuanganmu") {
 		t.Fatalf("refusal=%q", msgs[1].Content)
 	}
+	if !strings.Contains(msgs[1].ReplyMetaJSON, fallbackFollowUpsID[0]) || strings.Contains(msgs[1].ReplyMetaJSON, `"credit_spent":true`) {
+		t.Fatalf("meta=%q", msgs[1].ReplyMetaJSON)
+	}
 }
 
 func TestAdvisorChatInScopeStillStreams(t *testing.T) {

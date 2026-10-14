@@ -13,12 +13,12 @@ import (
 )
 
 type ThreadMessageDTO struct {
-	ID        int               `json:"id"`
-	Role      string            `json:"role"`
-	Content   string            `json:"content"`
-	CreatedAt time.Time         `json:"created_at"`
-	Draft     *TransactionDraft `json:"draft,omitempty"`
-	ReplyMeta json.RawMessage   `json:"reply_meta,omitempty"`
+	ID        int             `json:"id"`
+	Role      string          `json:"role"`
+	Content   string          `json:"content"`
+	CreatedAt time.Time       `json:"created_at"`
+	Draft     json.RawMessage `json:"draft,omitempty"`
+	ReplyMeta json.RawMessage `json:"reply_meta,omitempty"`
 }
 
 type ThreadSummaryDTO struct {
@@ -211,14 +211,10 @@ func threadMessageDTO(message domainAI.ThreadMessage) ThreadMessageDTO {
 	if meta := strings.TrimSpace(message.ReplyMetaJSON); meta != "" && json.Valid([]byte(meta)) {
 		dto.ReplyMeta = json.RawMessage(meta)
 	}
-	if strings.TrimSpace(message.DraftJSON) == "" {
-		return dto
+	draft := strings.TrimSpace(message.DraftJSON)
+	if draft != "" && json.Valid([]byte(draft)) {
+		dto.Draft = json.RawMessage(draft)
 	}
-	var draft TransactionDraft
-	if err := json.Unmarshal([]byte(message.DraftJSON), &draft); err != nil {
-		return dto
-	}
-	dto.Draft = &draft
 	return dto
 }
 
@@ -260,19 +256,45 @@ func (uc *ThreadUseCases) MarkDraftSaved(ctx context.Context, userID, threadID, 
 	if strings.TrimSpace(message.DraftJSON) == "" {
 		return domainAI.ErrDraftNotFound
 	}
-	var draft TransactionDraft
-	if err := json.Unmarshal([]byte(message.DraftJSON), &draft); err != nil {
+	next, alreadySaved, err := withDraftStatusSaved(message.DraftJSON)
+	if err != nil {
 		return domainAI.ErrDraftNotFound
 	}
-	if draft.Status == DraftStatusSaved {
+	if alreadySaved {
 		return nil
 	}
-	draft.Status = DraftStatusSaved
-	raw, err := json.Marshal(draft)
-	if err != nil {
-		return err
+	return uc.threads.UpdateMessageDraft(ctx, threadID, messageID, next)
+}
+
+func withDraftStatusSaved(raw string) (string, bool, error) {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(raw), &fields); err != nil {
+		return "", false, err
 	}
-	return uc.threads.UpdateMessageDraft(ctx, threadID, messageID, string(raw))
+	if len(fields) == 0 {
+		return "", false, errors.New("empty draft")
+	}
+	if draftStatus(fields["status"]) == DraftStatusSaved {
+		return raw, true, nil
+	}
+	encoded, err := json.Marshal(DraftStatusSaved)
+	if err != nil {
+		return "", false, err
+	}
+	fields["status"] = encoded
+	next, err := json.Marshal(fields)
+	if err != nil {
+		return "", false, err
+	}
+	return string(next), false, nil
+}
+
+func draftStatus(raw json.RawMessage) string {
+	var status string
+	if err := json.Unmarshal(raw, &status); err != nil {
+		return ""
+	}
+	return status
 }
 
 func (uc *ThreadUseCases) Delete(ctx context.Context, userID, threadID int) error {

@@ -261,6 +261,7 @@ func (uc *AdvisorChatUseCase) runGeneration(
 	if classifyErr == nil && !inScope {
 		refusal := offTopicRefusal(lang)
 		_ = uc.threads.AppendMessage(finishCtx, threadID, domainAI.RoleAssistant, refusal, 0, 0)
+		uc.attachFallbackFollowUps(finishCtx, threadID, lang, false)
 		_ = uc.threads.FinishGeneration(finishCtx, threadID, domainAI.GenerationIdle)
 		_ = uc.threads.TrimOldest(finishCtx, threadID, domainAI.MaxThreadMsgs)
 		job.publish(StreamEvent{Kind: StreamDelta, Delta: refusal})
@@ -274,7 +275,7 @@ func (uc *AdvisorChatUseCase) runGeneration(
 		return
 	}
 
-	if uc.loadDraftCatalog != nil && uc.respondIfTransactionDraft(
+	if uc.respondIfDraft(
 		bgCtx, finishCtx, userID, threadID, userMessage, lang, history, job, creditsBefore,
 	) {
 		return

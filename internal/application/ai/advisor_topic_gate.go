@@ -22,6 +22,7 @@ var financeTopicNeedles = []string{
 	"pengeluaran", "pemasukan", "income", "expense", "spending", "spent",
 	"transaksi", "transaction", "transfer", "saldo", "balance",
 	"goal", "target", "tabungan", "saving", "utang", "hutang", "debt",
+	"sekolah", "nyekolahin", "spp",
 	"liabilit", "aset", "asset", "net worth", "kekayaan", "health score",
 	"kesehatan keuangan", "recurring", "langganan", "kategori", "category",
 	"tagihan", "billing", "cicilan", "mortgage", "kredit", "investasi",

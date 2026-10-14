@@ -126,7 +126,7 @@ Allowed origins: `https://berbudget.com`, `https://www.berbudget.com`, `https://
 | PATCH | `/api/ai/advisor/threads/:id` | Yes (Pro) | Rename thread |
 | DELETE | `/api/ai/advisor/threads/:id` | Yes (Pro) | Delete thread |
 | POST | `/api/ai/advisor/threads/:id/chat` | Yes (Pro) | Stream chat (SSE); async pending survives refresh |
-| POST | `/api/ai/advisor/threads/:id/messages/:messageId/draft/saved` | Yes (Pro) | Mark a chat transaction draft as saved |
+| POST | `/api/ai/advisor/threads/:id/messages/:messageId/draft/saved` | Yes (Pro) | Mark a chat transaction or goal draft as saved |
 | POST | `/api/ai/advisor/threads/:id/messages/:messageId/feedback` | Yes (Pro) | Save thumbs up, down, or clear on an assistant message |
 | GET | `/api/ai/advisor/thread` | Yes (Pro) | Legacy: newest/create thread |
 | DELETE | `/api/ai/advisor/thread` | Yes (Pro) | Legacy: clear newest thread messages |
@@ -2059,11 +2059,13 @@ Deletes thread and messages. Credits unchanged.
 
 Body: `{ "message": "…" }` (max 2000 chars).
 
-**Credit policy:** 1 credit is debited only after a successful non-empty AI advice reply, or after a usable transaction draft card (C9). Upstream failure or empty response → no debit (`AI_UPSTREAM_ERROR`). Off-topic (pre-flight classify `OUT_OF_SCOPE`, including local keyword heuristic) → canned refusal as a normal assistant message, **no debit**. A record request that cannot become one draft (missing amount, unknown named wallet, transfer without two wallets) → short ask, **no debit**. Saving the draft does not debit again.
+**Credit policy:** 1 credit is debited only after a successful non-empty AI advice reply, or after a usable transaction draft card (C9) or goal suggestion card (C13). Upstream failure or empty response → no debit (`AI_UPSTREAM_ERROR`). Off-topic (pre-flight classify `OUT_OF_SCOPE`, including local keyword heuristic) → canned refusal as a normal assistant message, **no debit**. A record or plan request that cannot become one card (missing amount, unknown named wallet, transfer without two wallets, goal date missing or not in the future) → short ask, **no debit**. Saving the card does not debit again.
 
-**Transaction draft (C9):** one message, one expense, income, or transfer card. `draft` on the assistant message. `POST /api/ai/advisor/threads/:id/messages/:messageId/draft/saved` marks it saved after `POST /api/expenses`, `/api/incomes`, or `/api/transfers`. Idempotent. `404 AI_DRAFT_NOT_FOUND` when the message has no draft.
+**Transaction draft (C9):** one message, one expense, income, or transfer card. `draft.kind` is `expense`, `income`, or `transfer`. `POST /api/ai/advisor/threads/:id/messages/:messageId/draft/saved` marks it saved after `POST /api/expenses`, `/api/incomes`, or `/api/transfers`. Idempotent. `404 AI_DRAFT_NOT_FOUND` when the message has no draft.
 
-**Answer context:** after a successful advice reply is stored and 1 credit is debited, a short JSON completion (same model, no extra credit) picks `sources`, exactly 3 `follow_ups` (a shorter list is stored empty), and `actions`. The server copies card numbers from that turn's finance snapshot. `reply_meta` is omitted when that call fails. Actions are links only: `open_health` `/health`, `open_budgets` `/budgets`, `open_transactions` `/transactions`, `open_wallets` `/settings/wallets`, `open_goals` `/goals`, `open_insights` `/insights`, `open_debts` `/debts`. `credit_spent` is true only when the debit succeeded.
+**Goal suggestion (C13):** one plan message, one card with `draft.kind = "goal"` (`name`, `target_amount`, `target_date`, `current_amount`, `wallet_id`, `wallet_name`, `category_id`, `category_name`, `note`, `status`). Saving calls `POST /api/goals`. An unknown `category_name` is optional and is created with `POST /api/categories` only if the user checks it; the goal does not store a category. The same `draft/saved` endpoint marks the card saved and keeps the other fields.
+
+**Answer context:** after a successful advice reply is stored and 1 credit is debited, a JSON completion (same model, no extra credit) picks `sources`, exactly 3 `follow_ups`, and `actions`. A shorter list is padded to 3 with fallback questions; if that call fails, those 3 fallbacks are still stored. The server copies card numbers from that turn's finance snapshot. Draft replies and off-topic refusals store the same fallbacks without another model call. Upstream failure stubs omit `reply_meta`. Actions are links only: `open_health` `/health`, `open_budgets` `/budgets`, `open_transactions` `/transactions`, `open_wallets` `/settings/wallets`, `open_goals` `/goals`, `open_insights` `/insights`, `open_debts` `/debts`. `credit_spent` is true only when the debit succeeded.
 
 #### POST /api/ai/advisor/threads/:id/messages/:messageId/feedback
 
@@ -2786,6 +2788,12 @@ Keep this file in sync with the running API. When routes, request/response shape
 ---
 
 ## Version History
+
+- **v2.59.0**: **Tanya AI goal suggestion (C13)**
+  - A plan message prepares one `draft.kind = "goal"` card on the assistant message
+  - 1 shared credit after the card is stored; unusable cards and upstream failures do not debit
+  - `POST /api/ai/advisor/threads/:id/messages/:messageId/draft/saved` marks a goal card saved without dropping its other fields
+  - The ledger write stays on `POST /api/goals` (and `POST /api/categories` only when the user opts in)
 
 - **v2.58.0**: **Tanya AI answer context**
   - Assistant messages may include `reply_meta` (`sources`, `cards`, `follow_ups`, `actions`, `credit_spent`, `feedback`)

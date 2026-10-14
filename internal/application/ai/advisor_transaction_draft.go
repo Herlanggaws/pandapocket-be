@@ -23,10 +23,12 @@ const (
 	draftHistoryRuneMax   = 300
 )
 
-const draftClassifySystem = `Classify whether the user is instructing the app to RECORD one transaction (expense, income, or transfer) versus ASKING about their finances.
-Reply with ONLY one token: RECORD or ASK.
-RECORD examples: "catat kopi 25rb", "gaji masuk 8jt hari ini", "transfer 100rb dari cash ke bca".
-ASK examples: "berapa pengeluaran kopi", "kenapa budget jebol", advice questions.`
+const draftClassifySystem = `Classify the user message as RECORD, PLAN, or ASK.
+Reply with ONLY one token: RECORD, PLAN, or ASK.
+RECORD: instructing the app to record one expense, income, or transfer. Examples: "catat kopi 25rb", "gaji masuk 8jt hari ini", "transfer 100rb dari cash ke bca".
+PLAN: instructing the app to create one savings goal. Examples: "buat target tabungan 10jt", "gua mau nyekolahin anak, biaya masuk 30jt tahun depan".
+ASK: questions or advice about their finances. Examples: "berapa pengeluaran kopi", "kenapa budget jebol".
+A future plan or savings target that mentions amounts is PLAN, not RECORD.`
 
 const draftExtractSystem = `You extract one transaction the user wants to record in Berbudget.
 Return JSON only, no markdown fences:
@@ -97,7 +99,15 @@ func (uc *AdvisorChatUseCase) EnableTransactionDrafts(load func(context.Context,
 	uc.loadDraftCatalog = load
 }
 
-func (uc *AdvisorChatUseCase) respondIfTransactionDraft(
+type turnIntent int
+
+const (
+	intentAsk turnIntent = iota
+	intentRecord
+	intentPlan
+)
+
+func (uc *AdvisorChatUseCase) respondIfDraft(
 	bgCtx, finishCtx context.Context,
 	userID, threadID int,
 	userMessage, lang string,
@@ -105,12 +115,23 @@ func (uc *AdvisorChatUseCase) respondIfTransactionDraft(
 	job *chatJob,
 	creditsBefore *CreditsView,
 ) bool {
-	record, err := classifyRecordIntent(bgCtx, uc.paas, userMessage)
-	if err != nil || !record {
+	if uc.loadDraftCatalog == nil {
 		return false
 	}
-	uc.writeTransactionDraft(bgCtx, finishCtx, userID, threadID, lang, history, job, creditsBefore)
-	return true
+	intent, err := classifyTurnIntent(bgCtx, uc.paas, userMessage)
+	if err != nil {
+		return false
+	}
+	switch intent {
+	case intentRecord:
+		uc.writeTransactionDraft(bgCtx, finishCtx, userID, threadID, lang, history, job, creditsBefore)
+		return true
+	case intentPlan:
+		uc.writeGoalDraft(bgCtx, finishCtx, userID, threadID, lang, history, job, creditsBefore)
+		return true
+	default:
+		return false
+	}
 }
 
 func (uc *AdvisorChatUseCase) writeTransactionDraft(
@@ -127,7 +148,7 @@ func (uc *AdvisorChatUseCase) writeTransactionDraft(
 			uc.failDraftTurn(finishCtx, threadID, job, creditsBefore)
 			return
 		}
-		uc.finishDraftAsk(finishCtx, threadID, draftAskCopy(lang, "wallets"), job, creditsBefore)
+		uc.finishDraftAsk(finishCtx, threadID, draftAskCopy(lang, "wallets"), lang, job, creditsBefore)
 		return
 	}
 
@@ -139,7 +160,7 @@ func (uc *AdvisorChatUseCase) writeTransactionDraft(
 
 	draft, miss := resolveTransactionDraft(reply, catalog, draftToday())
 	if miss != "" {
-		uc.finishDraftAsk(finishCtx, threadID, draftAskCopy(lang, miss), job, creditsBefore)
+		uc.finishDraftAsk(finishCtx, threadID, draftAskCopy(lang, miss), lang, job, creditsBefore)
 		return
 	}
 	raw, err := json.Marshal(draft)
@@ -159,12 +180,14 @@ func (uc *AdvisorChatUseCase) writeTransactionDraft(
 		job.publish(StreamEvent{Kind: StreamError, ErrCode: "AI_CREDITS_REQUIRED", Credits: creditsBefore})
 		return
 	}
+	uc.attachFallbackFollowUps(finishCtx, threadID, lang, true)
 	job.publish(StreamEvent{Kind: StreamDelta, Delta: text})
 	job.publish(StreamEvent{Kind: StreamDone, Credits: creditsAfter})
 }
 
-func (uc *AdvisorChatUseCase) finishDraftAsk(ctx context.Context, threadID int, text string, job *chatJob, credits *CreditsView) {
+func (uc *AdvisorChatUseCase) finishDraftAsk(ctx context.Context, threadID int, text, lang string, job *chatJob, credits *CreditsView) {
 	_ = uc.threads.AppendMessage(ctx, threadID, domainAI.RoleAssistant, text, 0, 0)
+	uc.attachFallbackFollowUps(ctx, threadID, lang, false)
 	_ = uc.threads.FinishGeneration(ctx, threadID, domainAI.GenerationIdle)
 	_ = uc.threads.TrimOldest(ctx, threadID, domainAI.MaxThreadMsgs)
 	job.publish(StreamEvent{Kind: StreamDelta, Delta: text})
@@ -177,12 +200,12 @@ func (uc *AdvisorChatUseCase) failDraftTurn(ctx context.Context, threadID int, j
 	job.publish(StreamEvent{Kind: StreamError, ErrCode: "AI_UPSTREAM_ERROR", Credits: credits})
 }
 
-func classifyRecordIntent(ctx context.Context, completer ChatCompleter, userMessage string) (bool, error) {
-	if record, confident := quickRecordIntent(userMessage); confident {
-		return record, nil
+func classifyTurnIntent(ctx context.Context, completer ChatCompleter, userMessage string) (turnIntent, error) {
+	if intent, confident := quickTurnIntent(userMessage); confident {
+		return intent, nil
 	}
 	if completer == nil {
-		return false, fmt.Errorf("completer is nil")
+		return intentAsk, fmt.Errorf("completer is nil")
 	}
 	classifyCtx, cancel := context.WithTimeout(ctx, draftClassifyTimeout)
 	defer cancel()
@@ -191,28 +214,45 @@ func classifyRecordIntent(ctx context.Context, completer ChatCompleter, userMess
 		{Role: "user", Content: userMessage},
 	}, topicClassifyMaxTokens)
 	if err != nil {
-		return false, err
+		return intentAsk, err
 	}
-	return parseRecordIntent(raw)
+	return parseTurnIntent(raw)
 }
 
-func quickRecordIntent(userMessage string) (record bool, confident bool) {
+func quickTurnIntent(userMessage string) (turnIntent, bool) {
 	asked := containsAnyWord(userMessage, recordQuestionWords)
 	verb := hasRecordVerb(userMessage)
 	transferCommand := strings.Contains(strings.ToLower(userMessage), "transfer") && messageHasAmount(userMessage)
 	if verb && !asked {
-		return true, true
+		return intentRecord, true
 	}
 	if transferCommand && !asked {
-		return true, true
+		return intentRecord, true
+	}
+	if hasPlanPhrase(userMessage) && !verb && !asked {
+		return intentPlan, true
 	}
 	if asked && !verb {
-		return false, true
+		return intentAsk, true
 	}
 	if messageHasAmount(userMessage) {
-		return false, false
+		return intentAsk, false
 	}
-	return false, true
+	return intentAsk, true
+}
+
+func hasPlanPhrase(userMessage string) bool {
+	lower := strings.ToLower(userMessage)
+	phrases := []string{
+		"target", "tabungan", "nabung", "uang pangkal", "nyekolahin", "sekolahin",
+		"financial goal", "saving goal", "savings goal",
+	}
+	for _, phrase := range phrases {
+		if strings.Contains(lower, phrase) {
+			return true
+		}
+	}
+	return false
 }
 
 var recordQuestionWords = []string{
@@ -246,18 +286,20 @@ func messageHasAmount(userMessage string) bool {
 	return containsAnyWord(userMessage, []string{"rb", "ribu", "juta", "jt"})
 }
 
-func parseRecordIntent(raw string) (bool, error) {
+func parseTurnIntent(raw string) (turnIntent, error) {
 	fields := strings.Fields(strings.ToUpper(raw))
 	if len(fields) == 0 {
-		return false, fmt.Errorf("empty record classify")
+		return intentAsk, fmt.Errorf("empty record classify")
 	}
 	switch fields[len(fields)-1] {
 	case "RECORD":
-		return true, nil
+		return intentRecord, nil
+	case "PLAN":
+		return intentPlan, nil
 	case "ASK":
-		return false, nil
+		return intentAsk, nil
 	default:
-		return false, fmt.Errorf("unparsed record classify")
+		return intentAsk, fmt.Errorf("unparsed record classify")
 	}
 }
 

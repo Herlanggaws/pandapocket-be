@@ -15,8 +15,8 @@ import (
 
 const (
 	replyMetaMarker    = "reply_meta_v1"
-	replyMetaMaxTokens = 512
-	replyMetaTimeout   = 12 * time.Second
+	replyMetaMaxTokens = 4096
+	replyMetaTimeout   = 30 * time.Second
 	maxFollowUps       = 3
 	maxReplyActions    = 2
 	maxFollowUpRunes   = 160
@@ -36,6 +36,18 @@ var replyActionHrefs = map[string]string{
 var allowedReplySources = map[string]struct{}{
 	"cashflow": {}, "budgets": {}, "health": {},
 	"transactions": {}, "wallets": {}, "goals": {}, "debts": {},
+}
+
+var fallbackFollowUpsID = []string{
+	"Pos pengeluaran mana yang paling besar bulan ini?",
+	"Berapa yang sebaiknya gua sisihin dari sisa uang?",
+	"Anggaran mana yang perlu dirapetin dulu?",
+}
+
+var fallbackFollowUpsEN = []string{
+	"Which spending category is the largest this month?",
+	"How much should I set aside from what's left?",
+	"Which budget should I tighten first?",
 }
 
 const replyMetaSystem = replyMetaMarker + `
@@ -97,21 +109,47 @@ func (uc *AdvisorChatUseCase) attachReplyMeta(
 	threadID int,
 	userMessage, answer, lang, contextJSON string,
 ) {
-	if uc.paas == nil {
+	encoded, ok := uc.completeReplyMeta(ctx, threadID, userMessage, answer, lang, contextJSON)
+	if !ok {
+		encoded, ok = fallbackReplyMeta(lang, true)
+	}
+	if !ok {
 		return
+	}
+	uc.saveReplyMeta(ctx, threadID, encoded)
+}
+
+func (uc *AdvisorChatUseCase) attachFallbackFollowUps(ctx context.Context, threadID int, lang string, creditSpent bool) {
+	encoded, ok := fallbackReplyMeta(lang, creditSpent)
+	if !ok {
+		return
+	}
+	uc.saveReplyMeta(ctx, threadID, encoded)
+}
+
+func (uc *AdvisorChatUseCase) completeReplyMeta(
+	ctx context.Context,
+	threadID int,
+	userMessage, answer, lang, contextJSON string,
+) (string, bool) {
+	if uc.paas == nil {
+		return "", false
 	}
 	metaCtx, cancel := context.WithTimeout(ctx, replyMetaTimeout)
 	defer cancel()
 	raw, err := uc.paas.CompleteChat(metaCtx, replyMetaMessages(lang, userMessage, answer), replyMetaMaxTokens)
 	if err != nil {
 		log.Printf("AI advisor reply meta skipped thread=%d: %v", threadID, err)
-		return
+		return "", false
 	}
-	encoded, ok := buildReplyMeta(raw, contextJSON, true)
+	encoded, ok := buildReplyMeta(raw, contextJSON, lang, true)
 	if !ok {
 		log.Printf("AI advisor reply meta unusable thread=%d", threadID)
-		return
 	}
+	return encoded, ok
+}
+
+func (uc *AdvisorChatUseCase) saveReplyMeta(ctx context.Context, threadID int, encoded string) {
 	messageID, err := latestAssistantID(ctx, uc.threads, threadID)
 	if err != nil {
 		log.Printf("AI advisor reply meta message thread=%d: %v", threadID, err)
@@ -148,18 +186,31 @@ func latestAssistantID(ctx context.Context, threads domainAI.ThreadRepository, t
 	return 0, domainAI.ErrMessageNotFound
 }
 
-func buildReplyMeta(modelRaw, contextJSON string, creditSpent bool) (string, bool) {
+func buildReplyMeta(modelRaw, contextJSON, lang string, creditSpent bool) (string, bool) {
 	parsed, ok := parseReplyMetaModel(modelRaw)
 	if !ok {
 		return "", false
 	}
-	meta := storedReplyMeta{
+	return marshalReplyMeta(storedReplyMeta{
 		Sources:     filterSources(parsed.Sources),
 		Cards:       cardsForSources(parsed.Sources, contextJSON),
-		FollowUps:   clipFollowUps(parsed.FollowUps),
+		FollowUps:   fillFollowUps(parsed.FollowUps, lang),
 		Actions:     filterActions(parsed.Actions),
 		CreditSpent: creditSpent,
-	}
+	})
+}
+
+func fallbackReplyMeta(lang string, creditSpent bool) (string, bool) {
+	return marshalReplyMeta(storedReplyMeta{
+		Sources:     []string{},
+		Cards:       []json.RawMessage{},
+		FollowUps:   fillFollowUps(nil, lang),
+		Actions:     []storedAction{},
+		CreditSpent: creditSpent,
+	})
+}
+
+func marshalReplyMeta(meta storedReplyMeta) (string, bool) {
 	raw, err := json.Marshal(meta)
 	if err != nil {
 		return "", false
@@ -205,23 +256,39 @@ func filterSources(sources []string) []string {
 	return out
 }
 
-func clipFollowUps(lines []string) []string {
+func fillFollowUps(lines []string, lang string) []string {
 	out := make([]string, 0, maxFollowUps)
-	for _, line := range lines {
-		text := strings.TrimSpace(line)
+	seen := map[string]struct{}{}
+	add := func(text string) {
+		if len(out) == maxFollowUps {
+			return
+		}
+		text = strings.TrimSpace(text)
 		if text == "" {
-			continue
+			return
 		}
 		text = clipRunes(text, maxFollowUpRunes)
-		out = append(out, text)
-		if len(out) == maxFollowUps {
-			break
+		key := strings.ToLower(text)
+		if _, dup := seen[key]; dup {
+			return
 		}
+		seen[key] = struct{}{}
+		out = append(out, text)
 	}
-	if len(out) < maxFollowUps {
-		return []string{}
+	for _, line := range lines {
+		add(line)
+	}
+	for _, line := range fallbackQuestions(lang) {
+		add(line)
 	}
 	return out
+}
+
+func fallbackQuestions(lang string) []string {
+	if lang == "en" {
+		return fallbackFollowUpsEN
+	}
+	return fallbackFollowUpsID
 }
 
 func filterActions(ids []string) []storedAction {

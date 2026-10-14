@@ -27,7 +27,7 @@ func TestBuildReplyMetaKeepsServerNumbers(t *testing.T) {
 		"follow_ups": ["  Berapa yang harus gua sisihin? ", "Pos mana yang paling jebol?", "tiga", "empat"],
 		"actions": ["open_wallets", "open_health", "open_wallets", "delete_wallet"]
 	}` + "\n```"
-	encoded, ok := buildReplyMeta(raw, contextJSON, true)
+	encoded, ok := buildReplyMeta(raw, contextJSON, "id", true)
 	if !ok {
 		t.Fatal("expected meta")
 	}
@@ -75,9 +75,9 @@ func TestBuildReplyMetaKeepsServerNumbers(t *testing.T) {
 	}
 }
 
-func TestBuildReplyMetaDropsShortFollowUps(t *testing.T) {
+func TestBuildReplyMetaPadsShortFollowUps(t *testing.T) {
 	raw := `{"sources":["budgets"],"follow_ups":["Pos mana?","Berapa sisihin?"],"actions":[]}`
-	encoded, ok := buildReplyMeta(raw, `{}`, true)
+	encoded, ok := buildReplyMeta(raw, `{}`, "id", true)
 	if !ok {
 		t.Fatal("expected meta")
 	}
@@ -85,14 +85,39 @@ func TestBuildReplyMetaDropsShortFollowUps(t *testing.T) {
 	if err := json.Unmarshal([]byte(encoded), &meta); err != nil {
 		t.Fatal(err)
 	}
-	if len(meta.FollowUps) != 0 {
+	if len(meta.FollowUps) != 3 || meta.FollowUps[0] != "Pos mana?" || meta.FollowUps[1] != "Berapa sisihin?" || meta.FollowUps[2] != fallbackFollowUpsID[0] {
 		t.Fatalf("follow_ups=%v", meta.FollowUps)
 	}
 }
 
 func TestBuildReplyMetaRejectsNonJSON(t *testing.T) {
-	if _, ok := buildReplyMeta("IN_SCOPE", `{}`, true); ok {
+	if _, ok := buildReplyMeta("IN_SCOPE", `{}`, "id", true); ok {
 		t.Fatal("expected reject")
+	}
+}
+
+func TestAdvisorChatStoresFallbackWhenMetaFails(t *testing.T) {
+	streamer := &stubStreamer{full: "Anggaran pendidikan sudah 96%."}
+	uc, _, threads, threadID := newTestChat(streamer)
+	ch, unsub, err := uc.Start(context.Background(), 1, threadID, "Kenapa budget saya jebol?")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unsub()
+	last := drain(ch)
+	if last == nil || last.Kind != StreamDone {
+		t.Fatalf("want done, got %#v", last)
+	}
+	msgs, err := threads.ListMessages(context.Background(), threadID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var meta storedReplyMeta
+	if err := json.Unmarshal([]byte(msgs[len(msgs)-1].ReplyMetaJSON), &meta); err != nil {
+		t.Fatal(err)
+	}
+	if !meta.CreditSpent || len(meta.FollowUps) != 3 || meta.FollowUps[0] != fallbackFollowUpsID[0] {
+		t.Fatalf("meta=%+v", meta)
 	}
 }
 
