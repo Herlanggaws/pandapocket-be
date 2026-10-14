@@ -43,7 +43,7 @@ You choose which slices of the user's Berbudget data the answer relied on.
 Reply with JSON only, no markdown:
 {"sources":["cashflow"],"follow_ups":["..."],"actions":["open_budgets"]}
 sources: zero or more of cashflow, budgets, health, transactions, wallets, goals, debts.
-follow_ups: 2 or 3 short next questions in the same language as the answer.
+follow_ups: exactly 3 short next questions in the same language as the answer, specific to the advice just given.
 actions: 0 to 2 of open_health, open_budgets, open_transactions, open_wallets, open_goals, open_insights, open_debts.
 Do not invent numbers.`
 
@@ -217,6 +217,9 @@ func clipFollowUps(lines []string) []string {
 		if len(out) == maxFollowUps {
 			break
 		}
+	}
+	if len(out) < maxFollowUps {
+		return []string{}
 	}
 	return out
 }

@@ -2033,7 +2033,7 @@ Creates an empty thread.
     "id": 1,
     "title": "…",
     "generation_status": "idle",
-    "messages": [{ "id": 2, "role": "assistant", "content": "…", "created_at": "…", "draft": { "kind": "expense", "amount": 25000, "date": "2026-09-30", "note": "kopi", "wallet_id": 1, "wallet_name": "Tunai", "category_id": 4, "category_name": "Makanan", "status": "pending" }, "reply_meta": { "sources": ["budgets"], "cards": [], "follow_ups": ["Pos mana yang paling jebol?"], "actions": [{ "id": "open_budgets", "href": "/budgets" }], "credit_spent": true } }],
+    "messages": [{ "id": 2, "role": "assistant", "content": "…", "created_at": "…", "draft": { "kind": "expense", "amount": 25000, "date": "2026-09-30", "note": "kopi", "wallet_id": 1, "wallet_name": "Tunai", "category_id": 4, "category_name": "Makanan", "status": "pending" }, "reply_meta": { "sources": ["budgets"], "cards": [], "follow_ups": ["Pos mana yang paling jebol?", "Berapa yang harus disisihin?", "Anggaran mana yang dirapetin dulu?"], "actions": [{ "id": "open_budgets", "href": "/budgets" }], "credit_spent": true } }],
     "credits": {
       "available": 12,
       "included_unlocked": 15,
@@ -2063,7 +2063,7 @@ Body: `{ "message": "…" }` (max 2000 chars).
 
 **Transaction draft (C9):** one message, one expense, income, or transfer card. `draft` on the assistant message. `POST /api/ai/advisor/threads/:id/messages/:messageId/draft/saved` marks it saved after `POST /api/expenses`, `/api/incomes`, or `/api/transfers`. Idempotent. `404 AI_DRAFT_NOT_FOUND` when the message has no draft.
 
-**Answer context:** after a successful advice reply is stored and 1 credit is debited, a short JSON completion (same model, no extra credit) picks `sources`, `follow_ups`, and `actions`. The server copies card numbers from that turn's finance snapshot. `reply_meta` is omitted when that call fails. Actions are links only: `open_health` `/health`, `open_budgets` `/budgets`, `open_transactions` `/transactions`, `open_wallets` `/settings/wallets`, `open_goals` `/goals`, `open_insights` `/insights`, `open_debts` `/debts`. `credit_spent` is true only when the debit succeeded.
+**Answer context:** after a successful advice reply is stored and 1 credit is debited, a short JSON completion (same model, no extra credit) picks `sources`, exactly 3 `follow_ups` (a shorter list is stored empty), and `actions`. The server copies card numbers from that turn's finance snapshot. `reply_meta` is omitted when that call fails. Actions are links only: `open_health` `/health`, `open_budgets` `/budgets`, `open_transactions` `/transactions`, `open_wallets` `/settings/wallets`, `open_goals` `/goals`, `open_insights` `/insights`, `open_debts` `/debts`. `credit_spent` is true only when the debit succeeded.
 
 #### POST /api/ai/advisor/threads/:id/messages/:messageId/feedback
 

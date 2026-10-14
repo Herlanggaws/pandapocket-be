@@ -75,6 +75,21 @@ func TestBuildReplyMetaKeepsServerNumbers(t *testing.T) {
 	}
 }
 
+func TestBuildReplyMetaDropsShortFollowUps(t *testing.T) {
+	raw := `{"sources":["budgets"],"follow_ups":["Pos mana?","Berapa sisihin?"],"actions":[]}`
+	encoded, ok := buildReplyMeta(raw, `{}`, true)
+	if !ok {
+		t.Fatal("expected meta")
+	}
+	var meta storedReplyMeta
+	if err := json.Unmarshal([]byte(encoded), &meta); err != nil {
+		t.Fatal(err)
+	}
+	if len(meta.FollowUps) != 0 {
+		t.Fatalf("follow_ups=%v", meta.FollowUps)
+	}
+}
+
 func TestBuildReplyMetaRejectsNonJSON(t *testing.T) {
 	if _, ok := buildReplyMeta("IN_SCOPE", `{}`, true); ok {
 		t.Fatal("expected reject")
