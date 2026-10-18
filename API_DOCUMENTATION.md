@@ -52,7 +52,7 @@ Authorization: Bearer <your-token>
 
 ## CORS Configuration
 
-Allowed origins: `https://berbudget.com`, `https://www.berbudget.com`, `https://stg.berbudget.com`, and `http://localhost:3000`. Override with a comma-separated `CORS_ALLOWED_ORIGINS`. Credentials are allowed so the `bb_refresh` cookie is sent on browser `fetch`. Allowed request headers: `Origin`, `Content-Type`, `Accept`, `Authorization`.
+Allowed origins: `https://berbudget.com`, `https://www.berbudget.com`, `https://stg.berbudget.com`, `https://bearbudget.id`, `https://www.bearbudget.id`, and `http://localhost:3000`. Override with a comma-separated `CORS_ALLOWED_ORIGINS`. Credentials are allowed so the `bb_refresh` cookie is sent on browser `fetch`. Allowed request headers: `Origin`, `Content-Type`, `Accept`, `Authorization`.
 
 ## Endpoint Index
 

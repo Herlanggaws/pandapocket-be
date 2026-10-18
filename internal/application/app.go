@@ -729,6 +729,8 @@ func corsAllowedOrigins() []string {
 		"https://berbudget.com",
 		"https://www.berbudget.com",
 		"https://stg.berbudget.com",
+		"https://bearbudget.id",
+		"https://www.bearbudget.id",
 		"http://localhost:3000",
 	}
 }
