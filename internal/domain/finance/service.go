@@ -134,18 +134,18 @@ func (s *TransactionService) GetTransactionsByUserWithFilters(
 	return s.transactionRepo.FindByUserIDWithFilters(ctx, userID, filters)
 }
 
-// UpdateTransaction updates a transaction. Currency stays on the existing row so an amount or description edit cannot be rejected as a currency change.
+// UpdateTransaction updates a transaction. Currency follows the target wallet (same as create).
 func (s *TransactionService) UpdateTransaction(
 	ctx context.Context,
 	transactionID TransactionID,
 	userID UserID,
+	walletID WalletID,
 	categoryID CategoryID,
 	amount float64,
 	description string,
 	date time.Time,
 	expectedType TransactionType,
 ) (*Transaction, error) {
-	// Get transaction to verify ownership, querying the correct table first based on expected type
 	transaction, err := s.transactionRepo.FindByIDAndType(ctx, transactionID, expectedType)
 	if err != nil {
 		return nil, errors.New("transaction not found")
@@ -155,49 +155,55 @@ func (s *TransactionService) UpdateTransaction(
 		return nil, errors.New("access denied")
 	}
 
-	// Verify transaction type matches expected type (double-check for safety)
 	if transaction.Type() != expectedType {
 		return nil, errors.New("transaction type mismatch")
 	}
 
-	currencyID := transaction.CurrencyID()
+	wallet, err := s.walletRepo.FindByID(ctx, walletID)
+	if err != nil {
+		return nil, errors.New("wallet not found")
+	}
+	if wallet.UserID().Value() != userID.Value() {
+		return nil, errors.New("access denied to wallet")
+	}
+	if err := wallet.CanAcceptTransactions(); err != nil {
+		return nil, err
+	}
+
+	currencyID := wallet.CurrencyID()
 	amountDomain, err := NewMoney(amount, currencyID)
 	if err != nil {
 		return nil, err
 	}
 
-	// Validate category exists and user has access
 	category, err := s.categoryRepo.FindByID(ctx, categoryID)
 	if err != nil {
 		return nil, errors.New("category not found")
 	}
 
-	// Check if user has access to category (default or user's own)
 	if !category.IsDefault() && (category.UserID() == nil || category.UserID().Value() != userID.Value()) {
 		return nil, errors.New("access denied to category")
 	}
 
-	// Validate the stored currency still exists and the user can use it
 	currency, err := s.currencyRepo.FindByID(ctx, currencyID)
 	if err != nil {
 		return nil, errors.New("currency not found")
 	}
 
-	// Check if user has access to currency (default or user's own)
 	if !currency.IsSystem() && (currency.UserID() == nil || currency.UserID().Value() != userID.Value()) {
 		return nil, errors.New("access denied to currency")
 	}
 
-	// Update transaction fields
+	if err := transaction.UpdateWallet(walletID, currencyID); err != nil {
+		return nil, err
+	}
 	if err := transaction.UpdateAmount(amountDomain); err != nil {
 		return nil, err
 	}
 	transaction.UpdateDescription(description)
 	transaction.UpdateDate(date)
-
 	transaction.categoryID = categoryID
 
-	// Save updated transaction
 	if err := s.transactionRepo.Save(ctx, transaction); err != nil {
 		return nil, err
 	}

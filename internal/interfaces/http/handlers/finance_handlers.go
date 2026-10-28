@@ -536,6 +536,7 @@ func (h *FinanceHandlers) UpdateExpense(c *gin.Context) {
 	expenseID := c.Param("id")
 
 	var req struct {
+		WalletID    int     `json:"wallet_id" binding:"required"`
 		CategoryID  int     `json:"category_id" binding:"required"`
 		Amount      float64 `json:"amount" binding:"required"`
 		Description string  `json:"description"`
@@ -551,6 +552,7 @@ func (h *FinanceHandlers) UpdateExpense(c *gin.Context) {
 		c.Request.Context(),
 		expenseID,
 		userID,
+		req.WalletID,
 		strconv.Itoa(req.CategoryID),
 		req.Amount,
 		req.Description,
@@ -570,6 +572,7 @@ func (h *FinanceHandlers) UpdateExpense(c *gin.Context) {
 		"expense": gin.H{
 			"id":          transaction.ID().Value(),
 			"user_id":     transaction.UserID().Value(),
+			"wallet_id":   transaction.WalletID().Value(),
 			"category_id": transaction.CategoryID().Value(),
 			"currency_id": transaction.CurrencyID().Value(),
 			"amount":      transaction.Amount().Amount(),
@@ -586,6 +589,7 @@ func (h *FinanceHandlers) UpdateIncome(c *gin.Context) {
 	incomeID := c.Param("id")
 
 	var req struct {
+		WalletID    int     `json:"wallet_id" binding:"required"`
 		CategoryID  int     `json:"category_id" binding:"required"`
 		Amount      float64 `json:"amount" binding:"required"`
 		Description string  `json:"description"`
@@ -601,6 +605,7 @@ func (h *FinanceHandlers) UpdateIncome(c *gin.Context) {
 		c.Request.Context(),
 		incomeID,
 		userID,
+		req.WalletID,
 		strconv.Itoa(req.CategoryID),
 		req.Amount,
 		req.Description,
@@ -616,6 +621,7 @@ func (h *FinanceHandlers) UpdateIncome(c *gin.Context) {
 		"income": gin.H{
 			"id":          transaction.ID().Value(),
 			"user_id":     transaction.UserID().Value(),
+			"wallet_id":   transaction.WalletID().Value(),
 			"category_id": transaction.CategoryID().Value(),
 			"currency_id": transaction.CurrencyID().Value(),
 			"amount":      transaction.Amount().Amount(),

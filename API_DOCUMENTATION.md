@@ -700,11 +700,12 @@ Create a new expense transaction.
 
 ### PUT /api/expenses/:id
 
-Update an existing expense transaction. `description` is optional. The stored currency is kept.
+Update an existing expense transaction. `description` is optional. `wallet_id` is required; currency is inherited from the target wallet (same as create).
 
 **Request Body:**
 ```json
 {
+  "wallet_id": 2,
   "category_id": 1,
   "amount": 75.0,
   "description": "Updated lunch at restaurant",
@@ -719,6 +720,7 @@ Update an existing expense transaction. `description` is optional. The stored cu
   "expense": {
     "id": 1,
     "user_id": 1,
+    "wallet_id": 2,
     "category_id": 1,
     "currency_id": 1,
     "amount": 75.0,
@@ -759,13 +761,20 @@ The "access denied" error can occur in the following scenarios:
    - A default category (available to all users)
    - A category that you created (belongs to your user account)
 
-4. **Currency Access**: The currency being used is not a default currency and does not belong to the authenticated user.
+4. **Wallet Access**: The `wallet_id` is missing, not found, archived, or belongs to another user.
+   ```json
+   {
+     "error": "access denied to wallet"
+   }
+   ```
+
+5. **Currency Access**: The currency of the target wallet is not a system currency and does not belong to the authenticated user.
    ```json
    {
      "error": "access denied to currency"
    }
    ```
-   **Note**: Updates keep the transaction's existing currency. Amount and description edits do not change currency.
+   **Note**: Currency follows the target wallet. Changing `wallet_id` to a different-currency wallet updates `currency_id` accordingly.
 
 **400 Bad Request - Transaction Not Found:**
 ```json
@@ -867,11 +876,12 @@ Create a new income transaction.
 
 ### PUT /api/incomes/:id
 
-Update an existing income transaction. `description` is optional. The stored currency is kept.
+Update an existing income transaction. `description` is optional. `wallet_id` is required; currency is inherited from the target wallet (same as create).
 
 **Request Body:**
 ```json
 {
+  "wallet_id": 2,
   "category_id": 9,
   "amount": 3500.0,
   "description": "Updated monthly salary",
@@ -887,6 +897,7 @@ Update an existing income transaction. `description` is optional. The stored cur
     "income": {
       "id": 1,
       "user_id": 1,
+      "wallet_id": 2,
       "category_id": 9,
       "currency_id": 1,
       "amount": 3500.0,
@@ -944,7 +955,19 @@ The "access denied" error can occur in the following scenarios:
    - A default category (available to all users)
    - A category that you created (belongs to your user account)
 
-4. **Currency Access**: The currency being used is not a default currency and does not belong to the authenticated user.
+4. **Wallet Access**: The `wallet_id` is missing, not found, archived, or belongs to another user.
+   ```json
+   {
+     "status": "error",
+     "data": null,
+     "error": {
+       "error_code": "WALLET_ACCESS_DENIED",
+       "error_message": "access denied to wallet"
+     }
+   }
+   ```
+
+5. **Currency Access**: The currency of the target wallet is not a system currency and does not belong to the authenticated user.
    ```json
    {
      "status": "error",
@@ -955,7 +978,7 @@ The "access denied" error can occur in the following scenarios:
      }
    }
    ```
-   **Note**: Updates keep the transaction's existing currency. Amount and description edits do not change currency.
+   **Note**: Currency follows the target wallet. Changing `wallet_id` to a different-currency wallet updates `currency_id` accordingly.
 
 **400 Bad Request - Transaction Not Found:**
 ```json
@@ -2788,6 +2811,10 @@ Keep this file in sync with the running API. When routes, request/response shape
 ---
 
 ## Version History
+
+- **v2.60.0**: **Transaction update accepts `wallet_id`**
+  - `PUT /api/expenses/:id` and `PUT /api/incomes/:id` require `wallet_id`; response includes `wallet_id`
+  - Currency inherits from the target wallet (same as create), including cross-currency wallet moves
 
 - **v2.59.0**: **Tanya AI goal suggestion (C13)**
   - A plan message prepares one `draft.kind = "goal"` card on the assistant message

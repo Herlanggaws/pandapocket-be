@@ -202,6 +202,18 @@ func (t *Transaction) UpdateAmount(newAmount Money) error {
 	return nil
 }
 
+// UpdateWallet moves the transaction to another wallet and inherits that wallet's currency.
+func (t *Transaction) UpdateWallet(walletID WalletID, currencyID CurrencyID) error {
+	money, err := NewMoney(t.amount.Amount(), currencyID)
+	if err != nil {
+		return err
+	}
+	t.walletID = walletID
+	t.currencyID = currencyID
+	t.amount = money
+	return nil
+}
+
 // UpdateDescription updates the transaction description
 func (t *Transaction) UpdateDescription(description string) {
 	t.description = description

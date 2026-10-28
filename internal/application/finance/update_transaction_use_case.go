@@ -24,25 +24,23 @@ func (uc *UpdateTransactionUseCase) Execute(
 	ctx context.Context,
 	transactionIDStr string,
 	userID int,
+	walletID int,
 	categoryIDStr string,
 	amount float64,
 	description string,
 	dateStr string,
 	expectedType finance.TransactionType,
 ) (*finance.Transaction, error) {
-	// Parse transaction ID
 	transactionIDInt, err := strconv.Atoi(transactionIDStr)
 	if err != nil {
 		return nil, err
 	}
 
-	// Parse category ID
 	categoryIDInt, err := strconv.Atoi(categoryIDStr)
 	if err != nil {
 		return nil, err
 	}
 
-	// Parse date
 	date, err := time.Parse("2006-01-02", dateStr)
 	if err != nil {
 		return nil, err
@@ -50,12 +48,14 @@ func (uc *UpdateTransactionUseCase) Execute(
 
 	transactionID := finance.NewTransactionID(transactionIDInt)
 	userIDDomain := finance.NewUserID(userID)
+	walletIDDomain := finance.NewWalletID(walletID)
 	categoryID := finance.NewCategoryID(categoryIDInt)
 
 	return uc.transactionService.UpdateTransaction(
 		ctx,
 		transactionID,
 		userIDDomain,
+		walletIDDomain,
 		categoryID,
 		amount,
 		description,
