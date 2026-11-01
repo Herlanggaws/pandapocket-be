@@ -678,9 +678,12 @@ Create a new expense transaction.
   "category_id": 1,
   "amount": 50.0,
   "description": "Lunch at restaurant",
-  "date": "2024-01-15"
+  "date": "2024-01-15",
+  "source": "manual"
 }
 ```
+
+`source` is optional and analytics-only (`first_expense_added`). Allowed values: `manual`, `foto_struk`. Empty or any other value is treated as `manual`. It is not stored on the transaction and is not returned in the response.
 
 **Response:**
 ```json
@@ -2811,6 +2814,10 @@ Keep this file in sync with the running API. When routes, request/response shape
 ---
 
 ## Version History
+
+- **v2.61.0**: **Expense create `source` for PostHog**
+  - Optional `source` on `POST /api/expenses` (`manual` | `foto_struk`) for `first_expense_added` only
+  - Not persisted; unknown/empty values fall back to `manual`
 
 - **v2.60.0**: **Transaction update accepts `wallet_id`**
   - `PUT /api/expenses/:id` and `PUT /api/incomes/:id` require `wallet_id`; response includes `wallet_id`

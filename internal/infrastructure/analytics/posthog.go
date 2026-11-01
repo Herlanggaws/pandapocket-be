@@ -10,9 +10,17 @@ import (
 )
 
 var (
-	mu     sync.Mutex
-	client posthog.Client
+	mu          sync.Mutex
+	client      posthog.Client
+	testCapture func(userID int, event string, properties map[string]interface{})
 )
+
+// SetTestCapture installs a hook used by unit tests. Pass nil to clear.
+func SetTestCapture(fn func(userID int, event string, properties map[string]interface{})) {
+	mu.Lock()
+	defer mu.Unlock()
+	testCapture = fn
+}
 
 // InitFromEnv configures PostHog when POSTHOG_API_KEY is set. Safe to call with empty key.
 func InitFromEnv() {
@@ -49,7 +57,11 @@ func Close() {
 func Capture(userID int, event string, properties map[string]interface{}) {
 	mu.Lock()
 	c := client
+	hook := testCapture
 	mu.Unlock()
+	if hook != nil {
+		hook(userID, event, properties)
+	}
 	if c == nil || userID <= 0 || event == "" {
 		return
 	}

@@ -17,6 +17,16 @@ type CreateTransactionRequest struct {
 	Description string  `json:"description"`
 	Date        string  `json:"date" binding:"required"`
 	Type        string  `json:"type"`
+	// Source is analytics-only (first_expense_added). Not persisted.
+	Source string `json:"source"`
+}
+
+// normalizeExpenseSource keeps only known client sources for PostHog.
+func normalizeExpenseSource(source string) string {
+	if source == "foto_struk" {
+		return "foto_struk"
+	}
+	return "manual"
 }
 
 // CreateTransactionResponse represents the response after creating a transaction
@@ -112,7 +122,7 @@ func (uc *CreateTransactionUseCase) Execute(ctx context.Context, userID int, req
 		)
 		if countErr == nil && expenseCount == 1 {
 			analytics.Capture(userID, "first_expense_added", map[string]interface{}{
-				"source": "manual",
+				"source": normalizeExpenseSource(req.Source),
 			})
 		}
 	}
