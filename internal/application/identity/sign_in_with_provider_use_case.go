@@ -7,6 +7,7 @@ import (
 
 	"panda-pocket/internal/domain/billing"
 	domainIdentity "panda-pocket/internal/domain/identity"
+	"panda-pocket/internal/infrastructure/analytics"
 )
 
 type SignInWithProviderRequest struct {
@@ -144,5 +145,8 @@ func (uc *SignInWithProviderUseCase) registerWithoutPassword(ctx context.Context
 	if err := uc.subscriptionRepo.Save(ctx, sub); err != nil {
 		return nil, errors.New("failed to create subscription")
 	}
+	analytics.Capture(user.ID().Value(), "trial_started", map[string]interface{}{
+		"plan": "pro",
+	})
 	return user, nil
 }

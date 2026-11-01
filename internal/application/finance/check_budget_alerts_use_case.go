@@ -7,6 +7,7 @@ import (
 	appNotification "panda-pocket/internal/application/notification"
 	domainFinance "panda-pocket/internal/domain/finance"
 	domainIdentity "panda-pocket/internal/domain/identity"
+	"panda-pocket/internal/infrastructure/analytics"
 )
 
 // CheckBudgetAlertsUseCase creates in-app notifications when a category budget is overspent
@@ -71,6 +72,9 @@ func (uc *CheckBudgetAlertsUseCase) Execute(ctx context.Context, userID, categor
 		title := fmt.Sprintf("Budget alert: %s", categoryName)
 		var message string
 		if report.PercentageUsed >= 100 {
+			analytics.Capture(userID, "budget_over", map[string]interface{}{
+				"category_id": categoryID,
+			})
 			message = fmt.Sprintf(
 				"You've exceeded your %s budget (%.0f%% used).",
 				categoryName,

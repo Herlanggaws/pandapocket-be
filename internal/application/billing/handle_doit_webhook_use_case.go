@@ -13,6 +13,7 @@ import (
 
 	domainAI "panda-pocket/internal/domain/ai"
 	domainBilling "panda-pocket/internal/domain/billing"
+	"panda-pocket/internal/infrastructure/analytics"
 	"panda-pocket/internal/infrastructure/doit"
 
 	"github.com/google/uuid"
@@ -229,6 +230,10 @@ func (uc *HandleDoitWebhookUseCase) activatePro(ctx context.Context, userID int,
 	if err := uc.subs.Save(ctx, sub); err != nil {
 		return err
 	}
+	analytics.Capture(userID, "subscription_started", map[string]interface{}{
+		"plan":     "pro",
+		"interval": string(interval),
+	})
 	if uc.aiCredits != nil {
 		_ = uc.aiCredits.UnlockFullIncluded(ctx, userID)
 	}

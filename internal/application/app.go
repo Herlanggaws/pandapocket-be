@@ -28,6 +28,7 @@ import (
 	"panda-pocket/internal/interfaces/http/handlers"
 	"panda-pocket/internal/interfaces/http/middleware"
 
+	"github.com/getsentry/sentry-go/gin"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -528,6 +529,9 @@ func (app *App) SetupRoutes() *gin.Engine {
 	}
 	authLimits := middleware.NewAuthAttemptLimiter(15 * time.Minute)
 
+	r.Use(sentrygin.New(sentrygin.Options{Repanic: true}))
+	r.Use(middleware.SentryHTTP())
+
 	// CORS configuration
 	config := cors.DefaultConfig()
 	config.AllowOrigins = corsAllowedOrigins()
@@ -535,6 +539,12 @@ func (app *App) SetupRoutes() *gin.Engine {
 	config.AllowHeaders = []string{"Origin", "Content-Type", "Accept", "Authorization"}
 	config.AllowCredentials = true
 	r.Use(cors.New(config))
+
+	if os.Getenv("GIN_MODE") != "release" {
+		r.GET("/api/dev/sentry-test", func(c *gin.Context) {
+			panic("Bear Budget API Sentry verification error")
+		})
+	}
 
 	r.POST("/mcp", app.MCPHandlers.Serve)
 

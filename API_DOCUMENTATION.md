@@ -2,7 +2,7 @@
 
 ## Overview
 
-PandaPocket (product brand: **Berbudget**) is a personal finance management API built with Domain-Driven Design (DDD) architecture. The API allows users to track expenses, incomes, categories, budgets, recurring rules, and preferences with analytics and in-app notifications.
+PandaPocket (product brand: **Bear Budget**) is a personal finance management API built with Domain-Driven Design (DDD) architecture. The API allows users to track expenses, incomes, categories, budgets, recurring rules, and preferences with analytics and in-app notifications.
 
 **Base URL:** `http://localhost:8080/api`  
 **Content-Type:** `application/json`  
@@ -52,7 +52,7 @@ Authorization: Bearer <your-token>
 
 ## CORS Configuration
 
-Allowed origins: `https://berbudget.com`, `https://www.berbudget.com`, `https://stg.berbudget.com`, `https://bearbudget.id`, `https://www.bearbudget.id`, and `http://localhost:3000`. Override with a comma-separated `CORS_ALLOWED_ORIGINS`. Credentials are allowed so the `bb_refresh` cookie is sent on browser `fetch`. Allowed request headers: `Origin`, `Content-Type`, `Accept`, `Authorization`.
+Allowed origins (canonical first): `https://bearbudget.id`, `https://www.bearbudget.id`; staging `https://stg.berbudget.com`; legacy aliases `https://berbudget.com`, `https://www.berbudget.com`; plus `http://localhost:3000`. Override with a comma-separated `CORS_ALLOWED_ORIGINS`. Credentials are allowed so the `bb_refresh` cookie is sent on browser `fetch`. Allowed request headers: `Origin`, `Content-Type`, `Accept`, `Authorization`.
 
 ## Endpoint Index
 
@@ -2094,7 +2094,7 @@ Body: `{ "message": "…" }` (max 2000 chars).
 
 Body: `{ "value": "up" | "down" | "clear" }`. Pro-only. Stores the choice on that assistant message's `reply_meta`. Does not debit and is not sent back to the model. Unknown value → 400. Missing message or a user message → `404 AI_MESSAGE_NOT_FOUND`.
 
-**Topic scope:** Only the user's personal finances in Berbudget. Unrelated topics (recipes, coding, trivia, etc.) are refused. Clear finance / off-topic messages skip the PAAS classify round-trip; ambiguous messages still call PAAS.
+**Topic scope:** Only the user's personal finances in Bear Budget. Unrelated topics (recipes, coding, trivia, etc.) are refused. Clear finance / off-topic messages skip the PAAS classify round-trip; ambiguous messages still call PAAS.
 
 **Async pending:** Generation runs detached from the HTTP client (≈180s timeout). Refresh does not cancel the job. While `generation_status=pending`, further chat → `409 AI_TURN_IN_PROGRESS`. Clients should poll GET until idle. A process restart releases every pending row. GET also settles a pending row older than the timeout: status returns `idle`, and if the last message is still the user, a failure stub is appended with no credit debit.
 
@@ -2801,7 +2801,7 @@ Keep this file in sync with the running API. When routes, request/response shape
 - The API uses Domain-Driven Design (DDD) architecture
 - Built with Go and Gin framework for HTTP routing
 - Authentication uses a 15-minute bearer access token plus a rotating refresh token. Browsers keep the refresh token in cookie `bb_refresh`. The `tokens` table stores SHA-256 hashes, not the JWTs. Admin routes load the role from the database. Access and refresh tokens must be HS256
-- CORS allows the Berbudget web origins listed above, with credentials
+- CORS allows the Bear Budget web origins listed above, with credentials
 - All timestamps are in UTC format
 - Date formats should be in `YYYY-MM-DD` format for input
 - Amounts are stored as floating-point numbers
@@ -3081,7 +3081,7 @@ Keep this file in sync with the running API. When routes, request/response shape
   - Weekly requires `weekday`; monthly `day_of_month` (clamp to last day); yearly `month_of_year` + `day_of_month`
   - Due advancement is schedule-aware; list responses include `schedule_label`
 
-- **v2.6.0**: **Berbudget backlog ship**
+- **v2.6.0**: **Bear Budget backlog ship**
   - `GET /api/users` is admin-only; forgot-password no longer returns token/reset_link in JSON
   - Preferences GET/PUT, in-app notifications, recurring transactions (due → pending confirm/reject)
   - Analytics returns `spending_by_category` and `spending_by_period`

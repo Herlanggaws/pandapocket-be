@@ -5,6 +5,7 @@ import (
 	"errors"
 	"panda-pocket/internal/domain/entitlement"
 	"panda-pocket/internal/domain/finance"
+	"panda-pocket/internal/infrastructure/analytics"
 	"time"
 )
 
@@ -100,6 +101,20 @@ func (uc *CreateTransactionUseCase) Execute(ctx context.Context, userID int, req
 	)
 	if err != nil {
 		return nil, err
+	}
+
+	if finance.TransactionType(req.Type) == finance.TransactionTypeExpense {
+		expenseType := finance.TransactionTypeExpense
+		_, expenseCount, countErr := uc.transactionService.GetTransactionsByUserWithFilters(
+			ctx,
+			finance.NewUserID(userID),
+			finance.TransactionFilters{TransactionType: &expenseType, Limit: 1},
+		)
+		if countErr == nil && expenseCount == 1 {
+			analytics.Capture(userID, "first_expense_added", map[string]interface{}{
+				"source": "manual",
+			})
+		}
 	}
 
 	return &CreateTransactionResponse{

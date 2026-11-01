@@ -5,6 +5,7 @@ import (
 	"errors"
 	"panda-pocket/internal/domain/billing"
 	"panda-pocket/internal/domain/identity"
+	"panda-pocket/internal/infrastructure/analytics"
 
 	"golang.org/x/crypto/bcrypt"
 )
@@ -73,6 +74,9 @@ func (uc *RegisterUserUseCase) Execute(ctx context.Context, req RegisterUserRequ
 	if err := uc.subscriptionRepo.Save(ctx, sub); err != nil {
 		return nil, errors.New("failed to create subscription")
 	}
+	analytics.Capture(user.ID().Value(), "trial_started", map[string]interface{}{
+		"plan": "pro",
+	})
 
 	token, refreshToken, err := uc.tokenService.GenerateToken(ctx, user.ID().Value(), user.Email().Value(), user.Role().Value())
 	if err != nil {
