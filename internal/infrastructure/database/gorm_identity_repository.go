@@ -44,3 +44,15 @@ func (r *GormIdentityRepository) Save(ctx context.Context, external identity.Ext
 	}
 	return r.db.WithContext(ctx).Create(&row).Error
 }
+
+func (r *GormIdentityRepository) DeleteByProviderSubject(ctx context.Context, provider, subject string) error {
+	return r.db.WithContext(ctx).
+		Where("provider = ? AND subject = ?", provider, subject).
+		Delete(&UserIdentity{}).Error
+}
+
+func (r *GormIdentityRepository) DeleteByUserID(ctx context.Context, userID int) error {
+	return r.db.WithContext(ctx).
+		Where("user_id = ?", userID).
+		Delete(&UserIdentity{}).Error
+}

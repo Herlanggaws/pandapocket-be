@@ -136,10 +136,13 @@ func (w *GormUserDataWiper) WipeUserData(ctx context.Context, userID uint) error
 	})
 }
 
-// HardDeleteAccount wipes owned data, auth tokens, and the user row.
+// HardDeleteAccount wipes owned data, auth tokens, identities, and the user row.
 func (w *GormUserDataWiper) HardDeleteAccount(ctx context.Context, userID uint) error {
 	return w.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := wipeUserOwnedRows(tx, userID); err != nil {
+			return err
+		}
+		if err := tx.Where("user_id = ?", userID).Delete(&UserIdentity{}).Error; err != nil {
 			return err
 		}
 		if err := tx.Where("user_id = ?", userID).Delete(&Token{}).Error; err != nil {

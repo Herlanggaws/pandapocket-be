@@ -27,16 +27,19 @@ type tokenRevoker interface {
 
 type DeleteAccountUseCase struct {
 	userRepo     domainIdentity.UserRepository
+	identities   domainIdentity.IdentityRepository
 	tokenRevoker tokenRevoker
 	now          func() time.Time
 }
 
 func NewDeleteAccountUseCase(
 	userRepo domainIdentity.UserRepository,
+	identities domainIdentity.IdentityRepository,
 	tokenRevoker tokenRevoker,
 ) *DeleteAccountUseCase {
 	return &DeleteAccountUseCase{
 		userRepo:     userRepo,
+		identities:   identities,
 		tokenRevoker: tokenRevoker,
 		now:          time.Now,
 	}
@@ -63,6 +66,10 @@ func (uc *DeleteAccountUseCase) Execute(ctx context.Context, req DeleteAccountRe
 	deletedAt := uc.now().UTC()
 	mangledEmail := mangledDeletedEmail(req.UserID, deletedAt)
 	if err := uc.userRepo.SoftDelete(ctx, userID, mangledEmail, deletedAt); err != nil {
+		return nil, err
+	}
+
+	if err := uc.identities.DeleteByUserID(ctx, req.UserID); err != nil {
 		return nil, err
 	}
 

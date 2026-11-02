@@ -14,4 +14,6 @@ type ExternalIdentity struct {
 type IdentityRepository interface {
 	FindByProviderSubject(ctx context.Context, provider, subject string) (*ExternalIdentity, error)
 	Save(ctx context.Context, identity ExternalIdentity) error
+	DeleteByProviderSubject(ctx context.Context, provider, subject string) error
+	DeleteByUserID(ctx context.Context, userID int) error
 }

@@ -219,7 +219,7 @@ func TestDeleteAccountRejectsInvalidPassword(t *testing.T) {
 	repo := newMemUserRepo()
 	user := seedUser(t, repo, "user@example.com", "correct-password")
 	revoker := &memTokenRevoker{}
-	uc := NewDeleteAccountUseCase(repo, revoker)
+	uc := NewDeleteAccountUseCase(repo, &memIdentities{}, revoker)
 
 	_, err := uc.Execute(context.Background(), DeleteAccountRequest{
 		UserID:   user.ID().Value(),
@@ -236,8 +236,12 @@ func TestDeleteAccountRejectsInvalidPassword(t *testing.T) {
 func TestDeleteAccountSoftDeletesAndRevokes(t *testing.T) {
 	repo := newMemUserRepo()
 	user := seedUser(t, repo, "user@example.com", "correct-password")
+	identities := &memIdentities{rows: []domainIdentity.ExternalIdentity{
+		{UserID: user.ID().Value(), Provider: "google", Subject: "sub-keep-delete", Email: "user@example.com"},
+		{UserID: user.ID().Value() + 99, Provider: "google", Subject: "other-user", Email: "other@example.com"},
+	}}
 	revoker := &memTokenRevoker{}
-	uc := NewDeleteAccountUseCase(repo, revoker)
+	uc := NewDeleteAccountUseCase(repo, identities, revoker)
 	fixedNow := time.Date(2026, 9, 18, 10, 0, 0, 0, time.UTC)
 	uc.now = func() time.Time { return fixedNow }
 
@@ -269,6 +273,9 @@ func TestDeleteAccountSoftDeletesAndRevokes(t *testing.T) {
 	}
 	if exists {
 		t.Fatal("original email should be free after soft delete")
+	}
+	if len(identities.rows) != 1 || identities.rows[0].Subject != "other-user" {
+		t.Fatalf("expected only other user's identity, got %+v", identities.rows)
 	}
 }
 

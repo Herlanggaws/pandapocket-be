@@ -90,7 +90,16 @@ func (uc *SignInWithProviderUseCase) resolveUser(ctx context.Context, verified V
 		return nil, err
 	}
 	if existing != nil {
-		return uc.users.FindByID(ctx, domainIdentity.NewUserID(existing.UserID))
+		user, findErr := uc.users.FindByID(ctx, domainIdentity.NewUserID(existing.UserID))
+		if findErr == nil {
+			return user, nil
+		}
+		if !isMissingUser(findErr) {
+			return nil, findErr
+		}
+		if err := uc.identities.DeleteByProviderSubject(ctx, verified.Provider, verified.Subject); err != nil {
+			return nil, err
+		}
 	}
 	if verified.Email == "" || !verified.EmailVerified {
 		return nil, errors.New("verified email is required")

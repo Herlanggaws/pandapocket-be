@@ -3,6 +3,7 @@ package identity
 import (
 	"context"
 	"testing"
+	"time"
 
 	"panda-pocket/internal/domain/billing"
 	domainIdentity "panda-pocket/internal/domain/identity"
@@ -51,6 +52,30 @@ func (m *memIdentities) Save(_ context.Context, identity domainIdentity.External
 	return nil
 }
 
+func (m *memIdentities) DeleteByProviderSubject(_ context.Context, provider, subject string) error {
+	kept := m.rows[:0]
+	for _, row := range m.rows {
+		if row.Provider == provider && row.Subject == subject {
+			continue
+		}
+		kept = append(kept, row)
+	}
+	m.rows = kept
+	return nil
+}
+
+func (m *memIdentities) DeleteByUserID(_ context.Context, userID int) error {
+	kept := m.rows[:0]
+	for _, row := range m.rows {
+		if row.UserID == userID {
+			continue
+		}
+		kept = append(kept, row)
+	}
+	m.rows = kept
+	return nil
+}
+
 func TestSignInLinksExistingEmail(t *testing.T) {
 	users := newMemUserRepo()
 	existing := seedUser(t, users, "ada@example.com", "password-ok")
@@ -96,5 +121,49 @@ func TestSignInRegistersWithoutPassword(t *testing.T) {
 	}
 	if response.HasPassword || response.Email != "new@example.com" || trials.saved != 1 {
 		t.Fatalf("response=%+v trials=%d", response, trials.saved)
+	}
+}
+
+func TestSignInRemovesStaleIdentityAndLinksLiveUser(t *testing.T) {
+	users := newMemUserRepo()
+	stale := seedUser(t, users, "ada@example.com", "password-ok")
+	deletedAt := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+	if err := users.SoftDelete(context.Background(), stale.ID(), mangledDeletedEmail(stale.ID().Value(), deletedAt), deletedAt); err != nil {
+		t.Fatal(err)
+	}
+	live := seedUser(t, users, "ada@example.com", "password-ok")
+
+	identities := &memIdentities{rows: []domainIdentity.ExternalIdentity{{
+		UserID:   stale.ID().Value(),
+		Provider: "google",
+		Subject:  "sub-stale",
+		Email:    "ada@example.com",
+	}}}
+	trials := &fakeTrials{}
+	uc := NewSignInWithProviderUseCase(
+		fakeVerifier{identity: VerifiedSignIn{Provider: "google", Subject: "sub-stale", Email: "ada@example.com", EmailVerified: true}},
+		users,
+		identities,
+		domainIdentity.NewUserService(users),
+		fakeSessions{},
+		trials,
+	)
+
+	response, err := uc.Execute(context.Background(), SignInWithProviderRequest{Provider: "google", IDToken: "token", Nonce: "nonce"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.UserID != live.ID().Value() {
+		t.Fatalf("expected live user %d, got %d", live.ID().Value(), response.UserID)
+	}
+	if trials.saved != 0 {
+		t.Fatalf("expected no new trial, got %d", trials.saved)
+	}
+	if len(identities.rows) != 1 {
+		t.Fatalf("expected one identity, got %d", len(identities.rows))
+	}
+	got := identities.rows[0]
+	if got.UserID != live.ID().Value() || got.Provider != "google" || got.Subject != "sub-stale" {
+		t.Fatalf("identity = %+v", got)
 	}
 }

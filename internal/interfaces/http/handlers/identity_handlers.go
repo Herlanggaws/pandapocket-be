@@ -1,10 +1,12 @@
 package handlers
 
 import (
+	"log"
 	"net/http"
 	"panda-pocket/internal/application/identity"
 	"strings"
 
+	"github.com/getsentry/sentry-go"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 )
@@ -145,6 +147,16 @@ func (h *IdentityHandlers) SignInWithProvider(c *gin.Context) {
 	}
 	response, err := h.signInWithProviderUseCase.Execute(c.Request.Context(), req)
 	if err != nil {
+		provider := strings.ToLower(req.Provider)
+		log.Printf("sso sign-in failed provider=%s: %v", provider, err)
+		hub := sentry.GetHubFromContext(c.Request.Context())
+		if hub == nil {
+			hub = sentry.CurrentHub()
+		}
+		hub.WithScope(func(scope *sentry.Scope) {
+			scope.SetTag("auth.provider", provider)
+			hub.CaptureException(err)
+		})
 		HandleError(c, err, http.StatusUnauthorized)
 		return
 	}

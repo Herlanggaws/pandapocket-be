@@ -129,7 +129,7 @@ func NewApp(db *gorm.DB) *App {
 	accountResetChallengeRepo := database.NewGormAccountResetChallengeRepository(db)
 	userDataWiper := database.NewGormUserDataWiper(db)
 	resetAccountDataUseCase := appIdentity.NewResetAccountDataUseCase(accountResetChallengeRepo, userDataWiper)
-	deleteAccountUseCase := appIdentity.NewDeleteAccountUseCase(userRepo, tokenService)
+	deleteAccountUseCase := appIdentity.NewDeleteAccountUseCase(userRepo, identityRepo, tokenService)
 	purgeDeletedAccountsUseCase := appIdentity.NewPurgeDeletedAccountsUseCase(userRepo, userDataWiper)
 	cleanupExpiredTokensUseCase := appIdentity.NewCleanupExpiredTokensUseCase(authTokenRepo, tokenRepo)
 	getNotificationsUseCase := appNotification.NewGetNotificationsUseCase(notificationRepo)
