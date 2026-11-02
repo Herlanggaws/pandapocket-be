@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	domainAI "panda-pocket/internal/domain/ai"
 	"panda-pocket/internal/domain/entitlement"
@@ -25,6 +26,28 @@ func (s *stubVision) CompleteVision(_ context.Context, _, _ string, mime string,
 	return s.reply, nil
 }
 
+type waitVision struct {
+	calls int
+}
+
+func (s *waitVision) CompleteVision(ctx context.Context, _, _ string, _ string, _ []byte, _ int) (string, error) {
+	s.calls++
+	<-ctx.Done()
+	return "", ctx.Err()
+}
+
+type cancelParentVision struct {
+	cancel func()
+	reply  string
+	calls  int
+}
+
+func (s *cancelParentVision) CompleteVision(_ context.Context, _, _ string, _ string, _ []byte, _ int) (string, error) {
+	s.calls++
+	s.cancel()
+	return s.reply, nil
+}
+
 func jpegBytes() []byte {
 	return []byte{0xff, 0xd8, 0xff, 0x00, 0x11}
 }
@@ -35,7 +58,7 @@ func receiptCategories() func(context.Context, int) ([]ReceiptCategory, error) {
 	}
 }
 
-func receiptUseCase(bal *domainAI.CreditBalance, vision *stubVision, checker entitlement.Checker) (*ReceiptScanUseCase, *memCredits) {
+func receiptUseCase(bal *domainAI.CreditBalance, vision VisionCompleter, checker entitlement.Checker) (*ReceiptScanUseCase, *memCredits) {
 	repo := &memCredits{balance: bal}
 	credits := NewCreditService(repo, emptySubs{})
 	return NewReceiptScanUseCase(credits, checker, receiptCategories(), vision), repo
@@ -114,5 +137,42 @@ func TestReceiptScanUpstreamDoesNotDebit(t *testing.T) {
 	}
 	if repo.balance.IncludedUsed != 0 {
 		t.Fatalf("used=%d", repo.balance.IncludedUsed)
+	}
+}
+
+func TestReceiptScanTimeoutReturnsErrReceiptTimeout(t *testing.T) {
+	prev := receiptScanTimeout
+	receiptScanTimeout = 20 * time.Millisecond
+	defer func() { receiptScanTimeout = prev }()
+
+	vision := &waitVision{}
+	uc, repo := receiptUseCase(domainAI.NewCreditBalance(1, false), vision, alwaysPro{})
+
+	_, err := uc.Execute(context.Background(), 1, jpegBytes())
+	if !errors.Is(err, ErrReceiptTimeout) {
+		t.Fatalf("err=%v", err)
+	}
+	if errors.Is(err, domainAI.ErrUpstream) {
+		t.Fatal("timeout must not wrap as ErrUpstream")
+	}
+	if vision.calls != 1 || repo.balance.IncludedUsed != 0 {
+		t.Fatalf("calls=%d used=%d", vision.calls, repo.balance.IncludedUsed)
+	}
+}
+
+func TestReceiptScanClientCancelSkipsDebit(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	vision := &cancelParentVision{
+		cancel: cancel,
+		reply:  `{"merchant":"Indomaret","amount":18500}`,
+	}
+	uc, repo := receiptUseCase(domainAI.NewCreditBalance(1, false), vision, alwaysPro{})
+
+	_, err := uc.Execute(ctx, 1, jpegBytes())
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err=%v", err)
+	}
+	if vision.calls != 1 || repo.balance.IncludedUsed != 0 {
+		t.Fatalf("calls=%d used=%d", vision.calls, repo.balance.IncludedUsed)
 	}
 }

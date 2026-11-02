@@ -2230,7 +2230,7 @@ Uses `PAAS_AI_VISION_MODEL=qwen3.7-flash` (chat stays on `PAAS_AI_MODEL`).
 
 `date`, `category_id`, and `currency_code` are omitted when unknown. `category_id` is set only when the model returns one of the user's expense category names.
 
-Errors: `403 PREMIUM_REQUIRED`, `402 AI_CREDITS_REQUIRED` (no model call), `400 RECEIPT_INVALID` (missing file, wrong type, or over 4MB; no debit), `422 RECEIPT_UNREADABLE` (no total; no debit), `502 RECEIPT_SCAN_ERROR` (upstream; no debit), `500 AI_NOT_CONFIGURED` (vision model unset; no debit).
+Errors: `403 PREMIUM_REQUIRED`, `402 AI_CREDITS_REQUIRED` (no model call), `400 RECEIPT_INVALID` (missing file, wrong type, or over 4MB; no debit), `422 RECEIPT_UNREADABLE` (no total; no debit), `504 RECEIPT_SCAN_TIMEOUT` (vision call exceeded 45s; no debit), `502 RECEIPT_SCAN_ERROR` (upstream; no debit), `500 AI_NOT_CONFIGURED` (vision model unset; no debit). Client disconnect mid-scan returns **499** and does not debit.
 
 ---
 
@@ -2814,6 +2814,10 @@ Keep this file in sync with the running API. When routes, request/response shape
 ---
 
 ## Version History
+
+- **v2.62.0**: **Receipt scan vision timeout**
+  - Vision call bounded to 45s; `504 RECEIPT_SCAN_TIMEOUT` when exceeded (no debit)
+  - Client disconnect mid-scan returns **499** and skips debit; no longer logged as upstream 502
 
 - **v2.61.0**: **Expense create `source` for PostHog**
   - Optional `source` on `POST /api/expenses` (`manual` | `foto_struk`) for `first_expense_added` only

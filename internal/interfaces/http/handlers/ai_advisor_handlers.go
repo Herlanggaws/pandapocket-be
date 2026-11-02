@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -259,6 +260,14 @@ func (h *AIAdvisorHandlers) mapReceiptErr(c *gin.Context, err error) {
 	}
 	if errors.Is(err, appAI.ErrReceiptUnreadable) {
 		SendErrorResponse(c, http.StatusUnprocessableEntity, "RECEIPT_UNREADABLE", "Could not read a total from this receipt")
+		return
+	}
+	if errors.Is(err, appAI.ErrReceiptTimeout) {
+		SendErrorResponse(c, http.StatusGatewayTimeout, "RECEIPT_SCAN_TIMEOUT", "Receipt scan timed out")
+		return
+	}
+	if errors.Is(err, context.Canceled) {
+		c.AbortWithStatus(499)
 		return
 	}
 	if errors.Is(err, domainAI.ErrNotConfigured) {

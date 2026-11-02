@@ -15,14 +15,18 @@ import (
 )
 
 const (
-	receiptScanMaxTokens = 4096
+	receiptScanMaxTokens = 1024
 	ReceiptMaxImageBytes = 4 << 20
 	receiptMerchantMax   = 120
 )
 
+// receiptScanTimeout bounds the vision call. Package-level so tests can shorten it.
+var receiptScanTimeout = 45 * time.Second
+
 var (
 	ErrReceiptInvalid    = errors.New("receipt image invalid")
 	ErrReceiptUnreadable = errors.New("receipt unreadable")
+	ErrReceiptTimeout    = errors.New("receipt scan timed out")
 )
 
 type ReceiptCategory struct {
@@ -88,16 +92,27 @@ func (uc *ReceiptScanUseCase) Execute(ctx context.Context, userID int, image []b
 		}
 	}
 
-	reply, err := uc.vision.CompleteVision(ctx, receiptScanPrompt(), receiptUserText(categories), mime, image, receiptScanMaxTokens)
+	visionCtx, cancel := context.WithTimeout(ctx, receiptScanTimeout)
+	defer cancel()
+	reply, err := uc.vision.CompleteVision(visionCtx, receiptScanPrompt(), receiptUserText(categories), mime, image, receiptScanMaxTokens)
 	if err != nil {
 		if strings.Contains(err.Error(), "not configured") {
 			return nil, domainAI.ErrNotConfigured
+		}
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(visionCtx.Err(), context.DeadlineExceeded) {
+			return nil, ErrReceiptTimeout
 		}
 		return nil, fmt.Errorf("%w: %s", domainAI.ErrUpstream, err.Error())
 	}
 
 	draft, err := parseReceiptDraft(reply, categories)
 	if err != nil {
+		return nil, err
+	}
+	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	creditsAfter, err := uc.credits.SpendOne(ctx, userID, domainAI.SpendSourceReceiptScan)
