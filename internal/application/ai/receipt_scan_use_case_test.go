@@ -86,6 +86,28 @@ func TestReceiptScanDebitsAfterUsableAmount(t *testing.T) {
 	}
 }
 
+func TestParseReceiptDraftStripsLeadingThinkEnd(t *testing.T) {
+	reply := `</think>{"merchant":"Indomaret","amount":21000,"date":"2026-11-02","category_name":"Groceries","currency_code":""}`
+	draft, err := parseReceiptDraft(reply, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if draft.Amount != 21000 || draft.Date != "2026-11-02" || draft.Merchant != "Indomaret" {
+		t.Fatalf("draft=%+v", draft)
+	}
+}
+
+func TestParseReceiptDraftStripsLeadingThinkEndBeforeFence(t *testing.T) {
+	reply := "</think>```json\n{\"merchant\":\"Indomaret\",\"amount\":21000,\"date\":\"2026-11-02\",\"category_name\":\"Groceries\",\"currency_code\":\"\"}\n```"
+	draft, err := parseReceiptDraft(reply, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if draft.Amount != 21000 || draft.Date != "2026-11-02" || draft.Merchant != "Indomaret" {
+		t.Fatalf("draft=%+v", draft)
+	}
+}
+
 func TestReceiptScanUnreadableDoesNotDebit(t *testing.T) {
 	vision := &stubVision{reply: `{"merchant":"","amount":0}`}
 	uc, repo := receiptUseCase(domainAI.NewCreditBalance(1, false), vision, alwaysPro{})

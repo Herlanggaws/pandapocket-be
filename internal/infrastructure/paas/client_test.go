@@ -132,6 +132,9 @@ func TestCompleteVisionUsesImagePartsAndVisionModel(t *testing.T) {
 		if raw["enable_thinking"] != false {
 			t.Errorf("enable_thinking=%v", raw["enable_thinking"])
 		}
+		if raw["reasoning_effort"] != "none" {
+			t.Errorf("reasoning_effort=%v", raw["reasoning_effort"])
+		}
 		encoded, _ := json.Marshal(raw["messages"])
 		if !strings.Contains(string(encoded), base64.StdEncoding.EncodeToString(image)) {
 			t.Errorf("image missing from request")

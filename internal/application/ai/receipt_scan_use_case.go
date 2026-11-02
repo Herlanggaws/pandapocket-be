@@ -164,7 +164,7 @@ func receiptUserText(categories []ReceiptCategory) string {
 }
 
 func parseReceiptDraft(raw string, categories []ReceiptCategory) (*ReceiptScanResponse, error) {
-	text := stripJSONFence(raw)
+	text := stripJSONFence(stripLeadingThinkEnd(raw))
 	start := strings.Index(text, "{")
 	end := strings.LastIndex(text, "}")
 	if start < 0 || end <= start {
@@ -190,6 +190,17 @@ func parseReceiptDraft(raw string, categories []ReceiptCategory) (*ReceiptScanRe
 		CurrencyCode: validCurrencyCode(parsed.CurrencyCode),
 	}
 	return draft, nil
+}
+
+// With reasoning_effort "none", qwen3.7-flash still prefixes the visible reply
+// with a literal </think> (sometimes before a markdown fence).
+func stripLeadingThinkEnd(raw string) string {
+	text := strings.TrimSpace(raw)
+	const marker = "</think>"
+	if !strings.HasPrefix(text, marker) {
+		return text
+	}
+	return strings.TrimSpace(strings.TrimPrefix(text, marker))
 }
 
 func stripJSONFence(raw string) string {

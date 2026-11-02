@@ -67,11 +67,12 @@ type visionMessage struct {
 }
 
 type visionChatRequest struct {
-	Model          string          `json:"model"`
-	Messages       []visionMessage `json:"messages"`
-	Stream         bool            `json:"stream"`
-	MaxTokens      *int            `json:"max_tokens,omitempty"`
-	EnableThinking *bool           `json:"enable_thinking,omitempty"`
+	Model           string          `json:"model"`
+	Messages        []visionMessage `json:"messages"`
+	Stream          bool            `json:"stream"`
+	MaxTokens       *int            `json:"max_tokens,omitempty"`
+	EnableThinking  *bool           `json:"enable_thinking,omitempty"`
+	ReasoningEffort string          `json:"reasoning_effort,omitempty"`
 }
 
 type Client struct {
@@ -134,9 +135,9 @@ func (c *Client) CompleteVision(ctx context.Context, systemPrompt, userText, mim
 	if limit < minVisibleMaxTokens {
 		limit = minVisibleMaxTokens
 	}
-	// qwen3.7-flash spends the wait on reasoning_content unless this is false.
-	// The receipt JSON then never arrives and the scan returns 502. Chat keeps
-	// omitting the field because glm-5.3-flash rejects false.
+	// PAAS ignores enable_thinking for qwen3.7-flash; reasoning_effort "none"
+	// is what stops the reasoning. Keep enable_thinking false (harmless). Chat
+	// keeps omitting both fields because glm-5.3-flash rejects false.
 	thinking := false
 	dataURL := "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(image)
 	body, err := json.Marshal(visionChatRequest{
@@ -148,9 +149,10 @@ func (c *Client) CompleteVision(ctx context.Context, systemPrompt, userText, mim
 				{Type: "image_url", ImageURL: &visionImageURL{URL: dataURL}},
 			}},
 		},
-		Stream:         true,
-		MaxTokens:      &limit,
-		EnableThinking: &thinking,
+		Stream:          true,
+		MaxTokens:       &limit,
+		EnableThinking:  &thinking,
+		ReasoningEffort: "none",
 	})
 	if err != nil {
 		return "", err
