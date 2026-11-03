@@ -13,6 +13,7 @@ import (
 	"time"
 
 	domainBilling "panda-pocket/internal/domain/billing"
+	"panda-pocket/internal/infrastructure/analytics"
 )
 
 type fixedPublicIDs struct{}
@@ -94,6 +95,20 @@ func TestHandleDoitWebhookPaymentPaid(t *testing.T) {
 	t.Setenv("DOIT_WEBHOOK_SECRET", secret)
 	t.Setenv("APP_URL", "https://berbudget.com")
 
+	var captures []struct {
+		userID int
+		event  string
+		props  map[string]interface{}
+	}
+	analytics.SetTestCapture(func(userID int, event string, properties map[string]interface{}) {
+		captures = append(captures, struct {
+			userID int
+			event  string
+			props  map[string]interface{}
+		}{userID, event, properties})
+	})
+	t.Cleanup(func() { analytics.SetTestCapture(nil) })
+
 	events := &memoryWebhookEvents{}
 	subs := &memorySubs{}
 	uc := NewHandleDoitWebhookUseCase(events, subs, nil, &memoryPending{}, fixedPublicIDs{})
@@ -126,6 +141,12 @@ func TestHandleDoitWebhookPaymentPaid(t *testing.T) {
 	if !sub.IsPro(time.Date(2026, 9, 21, 12, 0, 0, 0, time.UTC)) {
 		t.Fatal("expected Pro after payment.paid")
 	}
+	if len(captures) != 1 || captures[0].event != "subscription_started" || captures[0].userID != 42 {
+		t.Fatalf("expected one subscription_started, got %+v", captures)
+	}
+	if captures[0].props["plan"] != "pro" || captures[0].props["interval"] != "monthly" {
+		t.Fatalf("unexpected properties: %+v", captures[0].props)
+	}
 
 	// duplicate must succeed without re-extending incorrectly beyond first activate
 	firstEnd := *sub.CurrentPeriodEnd()
@@ -135,6 +156,9 @@ func TestHandleDoitWebhookPaymentPaid(t *testing.T) {
 	sub2, _ := subs.FindByUserID(context.Background(), 42)
 	if !sub2.CurrentPeriodEnd().Equal(firstEnd) {
 		t.Fatal("duplicate event must not change period end")
+	}
+	if len(captures) != 1 {
+		t.Fatalf("duplicate webhook must not re-capture subscription_started, got %d", len(captures))
 	}
 }
 
