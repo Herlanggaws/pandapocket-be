@@ -8,6 +8,7 @@ import (
 
 	"panda-pocket/internal/domain/entitlement"
 	"panda-pocket/internal/domain/finance"
+	"panda-pocket/internal/infrastructure/analytics"
 )
 
 type AssetResponse struct {
@@ -806,6 +807,10 @@ func (uc *RecordLiabilityPaymentUseCase) Execute(
 		if tx.ID == 0 {
 			return nil, errors.New("created expense is missing id")
 		}
+		analytics.Capture(userID, "expense_added", map[string]interface{}{
+			"source":      "debt",
+			"category_id": categoryID,
+		})
 		id := tx.ID
 		expenseID = &id
 	}

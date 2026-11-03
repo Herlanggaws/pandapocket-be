@@ -89,15 +89,22 @@ func (s *WalletService) GetDefaultWallet(ctx context.Context, userID UserID) (*W
 	return s.walletRepo.FindDefaultByUserID(ctx, userID)
 }
 
-func (s *WalletService) EnsureDefaultWallet(ctx context.Context, userID UserID, currencyID CurrencyID) (*Wallet, error) {
+// EnsureDefaultWallet returns the user's default wallet, creating a Cash wallet when missing.
+// The bool is true only when a new wallet was created in this call.
+func (s *WalletService) EnsureDefaultWallet(ctx context.Context, userID UserID, currencyID CurrencyID) (*Wallet, bool, error) {
 	_, err := s.walletRepo.FindDefaultByUserID(ctx, userID)
 	if err == nil {
 		if syncErr := s.SyncDefaultWalletCurrency(ctx, userID, currencyID); syncErr != nil {
-			return nil, syncErr
+			return nil, false, syncErr
 		}
-		return s.GetDefaultWallet(ctx, userID)
+		wallet, getErr := s.GetDefaultWallet(ctx, userID)
+		return wallet, false, getErr
 	}
-	return s.CreateWallet(ctx, userID, "Cash", WalletTypeCash, currencyID, 0, true)
+	wallet, createErr := s.CreateWallet(ctx, userID, "Cash", WalletTypeCash, currencyID, 0, true)
+	if createErr != nil {
+		return nil, false, createErr
+	}
+	return wallet, true, nil
 }
 
 func (s *WalletService) ResolveUsableWallet(ctx context.Context, userID UserID, walletID *int) (*Wallet, error) {
@@ -112,7 +119,7 @@ func (s *WalletService) ResolveUsableWallet(ctx context.Context, userID UserID, 
 			if cerr != nil {
 				return nil, errors.New("default wallet not found")
 			}
-			wallet, err = s.EnsureDefaultWallet(ctx, userID, primary.ID())
+			wallet, _, err = s.EnsureDefaultWallet(ctx, userID, primary.ID())
 		}
 	}
 	if err != nil {

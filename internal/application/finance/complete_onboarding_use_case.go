@@ -7,6 +7,7 @@ import (
 	"panda-pocket/internal/domain/entitlement"
 	"panda-pocket/internal/domain/finance"
 	domainIdentity "panda-pocket/internal/domain/identity"
+	"panda-pocket/internal/infrastructure/analytics"
 	"strings"
 	"time"
 
@@ -238,10 +239,11 @@ func (uc *CompleteOnboardingUseCase) Execute(ctx context.Context, userID int, re
 	}
 
 	primaryCurrencyID := prefs.PrimaryCurrencyID()
-	_, err = uc.walletService.EnsureDefaultWallet(ctx, finance.NewUserID(userID), finance.NewCurrencyID(primaryCurrencyID))
+	wallet, walletCreated, err := uc.walletService.EnsureDefaultWallet(ctx, finance.NewUserID(userID), finance.NewCurrencyID(primaryCurrencyID))
 	if err != nil {
 		return nil, err
 	}
+	emitOnboardingDefaultWalletCreated(userID, wallet, walletCreated)
 
 	now := time.Now()
 	today := now.Format("2006-01-02")
@@ -358,4 +360,16 @@ func (uc *CompleteOnboardingUseCase) Execute(ctx context.Context, userID int, re
 		HealthScore: health,
 		Message:     "Onboarding completed",
 	}, nil
+}
+
+// emitOnboardingDefaultWalletCreated records wallet_created only when EnsureDefaultWallet
+// actually created the Cash default (not when one already existed).
+func emitOnboardingDefaultWalletCreated(userID int, wallet *finance.Wallet, created bool) {
+	if !created || wallet == nil {
+		return
+	}
+	analytics.Capture(userID, "wallet_created", map[string]interface{}{
+		"source":      "onboarding_default",
+		"wallet_type": string(wallet.Type()),
+	})
 }

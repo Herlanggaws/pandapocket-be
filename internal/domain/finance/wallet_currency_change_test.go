@@ -42,11 +42,12 @@ func (r *memCurrencyRepo) GetUserDefaultCurrency(ctx context.Context, userID Use
 }
 
 type memWalletRepo struct {
-	wallets           map[int]*Wallet
-	hasTx             map[int]bool
-	savedCurrency     map[int]int
-	alignedPending    map[int]int
-	alignedRecurring  map[int]int
+	wallets          map[int]*Wallet
+	hasTx            map[int]bool
+	savedCurrency    map[int]int
+	alignedPending   map[int]int
+	alignedRecurring map[int]int
+	nextID           int
 }
 
 func newMemWalletRepo(wallets ...*Wallet) *memWalletRepo {
@@ -59,11 +60,18 @@ func newMemWalletRepo(wallets ...*Wallet) *memWalletRepo {
 	}
 	for _, w := range wallets {
 		r.wallets[w.ID().Value()] = w
+		if w.ID().Value() >= r.nextID {
+			r.nextID = w.ID().Value() + 1
+		}
 	}
 	return r
 }
 
 func (r *memWalletRepo) Save(ctx context.Context, wallet *Wallet) error {
+	if wallet.ID().Value() == 0 {
+		r.nextID++
+		wallet.AssignID(NewWalletID(r.nextID))
+	}
 	r.wallets[wallet.ID().Value()] = wallet
 	r.savedCurrency[wallet.ID().Value()] = wallet.CurrencyID().Value()
 	return nil

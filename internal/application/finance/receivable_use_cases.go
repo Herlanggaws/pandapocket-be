@@ -8,6 +8,7 @@ import (
 
 	"panda-pocket/internal/domain/entitlement"
 	"panda-pocket/internal/domain/finance"
+	"panda-pocket/internal/infrastructure/analytics"
 )
 
 type ReceivableResponse struct {
@@ -229,6 +230,10 @@ func (uc *CreateReceivableUseCase) Execute(ctx context.Context, userID int, req 
 		if tx.ID == 0 {
 			return nil, errors.New("created expense is missing id")
 		}
+		analytics.Capture(userID, "expense_added", map[string]interface{}{
+			"source":      "receivable",
+			"category_id": categoryID,
+		})
 		receivable, err = uc.receivableService.AttachCreateExpenseID(
 			ctx,
 			finance.NewUserID(userID),
