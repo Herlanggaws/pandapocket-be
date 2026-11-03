@@ -234,10 +234,33 @@ func (uc *HandleDoitWebhookUseCase) activatePro(ctx context.Context, userID int,
 		"plan":     "pro",
 		"interval": string(interval),
 	})
+	if plan, priceIDR, ok := activatedPlanProps(interval); ok {
+		analytics.Capture(userID, "subscription_activated", map[string]interface{}{
+			"plan":      plan,
+			"price_idr": priceIDR,
+		})
+	}
 	if uc.aiCredits != nil {
 		_ = uc.aiCredits.UnlockFullIncluded(ctx, userID)
 	}
 	return nil
+}
+
+func activatedPlanProps(interval domainBilling.BillingInterval) (plan string, priceIDR int, ok bool) {
+	priceIDR, ok = domainBilling.PriceForInterval(interval)
+	if !ok {
+		return "", 0, false
+	}
+	switch interval {
+	case domainBilling.IntervalMonthly:
+		return "monthly", priceIDR, true
+	case domainBilling.IntervalSemiannual:
+		return "six_month", priceIDR, true
+	case domainBilling.IntervalYearly:
+		return "yearly", priceIDR, true
+	default:
+		return "", 0, false
+	}
 }
 
 // shouldSkipStagingBoundPayment avoids writing staging Doit payments into the prod DB

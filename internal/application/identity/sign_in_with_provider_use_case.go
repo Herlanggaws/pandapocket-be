@@ -131,7 +131,7 @@ func (uc *SignInWithProviderUseCase) linkOrRegister(ctx context.Context, verifie
 	if !isMissingUser(err) {
 		return nil, err
 	}
-	return uc.registerWithoutPassword(ctx, email)
+	return uc.registerWithoutPassword(ctx, email, verified.Provider)
 }
 
 func isMissingUser(err error) bool {
@@ -142,7 +142,7 @@ func isMissingUser(err error) bool {
 	return message == "not found" || message == "record not found"
 }
 
-func (uc *SignInWithProviderUseCase) registerWithoutPassword(ctx context.Context, email domainIdentity.Email) (*domainIdentity.User, error) {
+func (uc *SignInWithProviderUseCase) registerWithoutPassword(ctx context.Context, email domainIdentity.Email, method string) (*domainIdentity.User, error) {
 	user, err := uc.userService.RegisterUser(ctx, email, domainIdentity.NewPasswordHash(""))
 	if err != nil {
 		return nil, err
@@ -154,8 +154,13 @@ func (uc *SignInWithProviderUseCase) registerWithoutPassword(ctx context.Context
 	if err := uc.subscriptionRepo.Save(ctx, sub); err != nil {
 		return nil, errors.New("failed to create subscription")
 	}
-	analytics.Capture(user.ID().Value(), "trial_started", map[string]interface{}{
-		"plan": "pro",
+	userID := user.ID().Value()
+	analytics.Capture(userID, "signup_completed", map[string]interface{}{
+		"method": method,
+	})
+	analytics.Capture(userID, "trial_started", map[string]interface{}{
+		"plan":       "pro",
+		"trial_days": billing.TrialDurationDays,
 	})
 	return user, nil
 }

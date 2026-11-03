@@ -141,11 +141,20 @@ func TestHandleDoitWebhookPaymentPaid(t *testing.T) {
 	if !sub.IsPro(time.Date(2026, 9, 21, 12, 0, 0, 0, time.UTC)) {
 		t.Fatal("expected Pro after payment.paid")
 	}
-	if len(captures) != 1 || captures[0].event != "subscription_started" || captures[0].userID != 42 {
-		t.Fatalf("expected one subscription_started, got %+v", captures)
+	if len(captures) != 2 {
+		t.Fatalf("expected subscription_started and subscription_activated, got %+v", captures)
+	}
+	if captures[0].event != "subscription_started" || captures[0].userID != 42 {
+		t.Fatalf("expected subscription_started first, got %+v", captures[0])
 	}
 	if captures[0].props["plan"] != "pro" || captures[0].props["interval"] != "monthly" {
-		t.Fatalf("unexpected properties: %+v", captures[0].props)
+		t.Fatalf("unexpected subscription_started properties: %+v", captures[0].props)
+	}
+	if captures[1].event != "subscription_activated" || captures[1].userID != 42 {
+		t.Fatalf("expected subscription_activated second, got %+v", captures[1])
+	}
+	if captures[1].props["plan"] != "monthly" || captures[1].props["price_idr"] != 19000 {
+		t.Fatalf("unexpected subscription_activated properties: %+v", captures[1].props)
 	}
 
 	// duplicate must succeed without re-extending incorrectly beyond first activate
@@ -157,8 +166,8 @@ func TestHandleDoitWebhookPaymentPaid(t *testing.T) {
 	if !sub2.CurrentPeriodEnd().Equal(firstEnd) {
 		t.Fatal("duplicate event must not change period end")
 	}
-	if len(captures) != 1 {
-		t.Fatalf("duplicate webhook must not re-capture subscription_started, got %d", len(captures))
+	if len(captures) != 2 {
+		t.Fatalf("duplicate webhook must not re-capture subscription events, got %d", len(captures))
 	}
 }
 

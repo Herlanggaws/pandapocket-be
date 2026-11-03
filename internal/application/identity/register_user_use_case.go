@@ -74,11 +74,16 @@ func (uc *RegisterUserUseCase) Execute(ctx context.Context, req RegisterUserRequ
 	if err := uc.subscriptionRepo.Save(ctx, sub); err != nil {
 		return nil, errors.New("failed to create subscription")
 	}
-	analytics.Capture(user.ID().Value(), "trial_started", map[string]interface{}{
-		"plan": "pro",
+	userID := user.ID().Value()
+	analytics.Capture(userID, "signup_completed", map[string]interface{}{
+		"method": "password",
+	})
+	analytics.Capture(userID, "trial_started", map[string]interface{}{
+		"plan":       "pro",
+		"trial_days": billing.TrialDurationDays,
 	})
 
-	token, refreshToken, err := uc.tokenService.GenerateToken(ctx, user.ID().Value(), user.Email().Value(), user.Role().Value())
+	token, refreshToken, err := uc.tokenService.GenerateToken(ctx, userID, user.Email().Value(), user.Role().Value())
 	if err != nil {
 		return nil, errors.New("failed to generate token")
 	}

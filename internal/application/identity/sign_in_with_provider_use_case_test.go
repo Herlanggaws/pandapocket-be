@@ -7,6 +7,7 @@ import (
 
 	"panda-pocket/internal/domain/billing"
 	domainIdentity "panda-pocket/internal/domain/identity"
+	"panda-pocket/internal/infrastructure/analytics"
 )
 
 type fakeVerifier struct {
@@ -77,6 +78,12 @@ func (m *memIdentities) DeleteByUserID(_ context.Context, userID int) error {
 }
 
 func TestSignInLinksExistingEmail(t *testing.T) {
+	var captures []string
+	analytics.SetTestCapture(func(_ int, event string, _ map[string]interface{}) {
+		captures = append(captures, event)
+	})
+	t.Cleanup(func() { analytics.SetTestCapture(nil) })
+
 	users := newMemUserRepo()
 	existing := seedUser(t, users, "ada@example.com", "password-ok")
 	identities := &memIdentities{}
@@ -100,9 +107,26 @@ func TestSignInLinksExistingEmail(t *testing.T) {
 	if trials.saved != 0 || len(identities.rows) != 1 {
 		t.Fatalf("trials=%d identities=%d", trials.saved, len(identities.rows))
 	}
+	if len(captures) != 0 {
+		t.Fatalf("existing-user login must not fire signup/trial events, got %v", captures)
+	}
 }
 
 func TestSignInRegistersWithoutPassword(t *testing.T) {
+	var captures []struct {
+		userID int
+		event  string
+		props  map[string]interface{}
+	}
+	analytics.SetTestCapture(func(userID int, event string, properties map[string]interface{}) {
+		captures = append(captures, struct {
+			userID int
+			event  string
+			props  map[string]interface{}
+		}{userID, event, properties})
+	})
+	t.Cleanup(func() { analytics.SetTestCapture(nil) })
+
 	users := newMemUserRepo()
 	identities := &memIdentities{}
 	trials := &fakeTrials{}
@@ -121,6 +145,18 @@ func TestSignInRegistersWithoutPassword(t *testing.T) {
 	}
 	if response.HasPassword || response.Email != "new@example.com" || trials.saved != 1 {
 		t.Fatalf("response=%+v trials=%d", response, trials.saved)
+	}
+	if len(captures) != 2 {
+		t.Fatalf("expected signup_completed and trial_started, got %+v", captures)
+	}
+	if captures[0].event != "signup_completed" || captures[0].userID != response.UserID {
+		t.Fatalf("expected signup_completed, got %+v", captures[0])
+	}
+	if captures[0].props["method"] != "google" {
+		t.Fatalf("unexpected signup method: %+v", captures[0].props)
+	}
+	if captures[1].event != "trial_started" || captures[1].props["trial_days"] != billing.TrialDurationDays {
+		t.Fatalf("unexpected trial_started: %+v", captures[1])
 	}
 }
 
