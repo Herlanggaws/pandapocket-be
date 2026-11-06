@@ -147,8 +147,14 @@ func TestHandleDoitWebhookPaymentPaid(t *testing.T) {
 	if captures[0].event != "subscription_started" || captures[0].userID != 42 {
 		t.Fatalf("expected subscription_started first, got %+v", captures[0])
 	}
-	if captures[0].props["plan"] != "pro" || captures[0].props["interval"] != "monthly" {
+	// Legacy path (no pending_payment) → best-effort is_renewal=true.
+	if captures[0].props["plan"] != "monthly" ||
+		captures[0].props["is_renewal"] != true ||
+		captures[0].props["amount_bucket"] != "lt_50k" {
 		t.Fatalf("unexpected subscription_started properties: %+v", captures[0].props)
+	}
+	if _, hasExact := captures[0].props["price_idr"]; hasExact {
+		t.Fatal("subscription_started must not include exact amount")
 	}
 	if captures[1].event != "subscription_activated" || captures[1].userID != 42 {
 		t.Fatalf("expected subscription_activated second, got %+v", captures[1])
@@ -168,6 +174,123 @@ func TestHandleDoitWebhookPaymentPaid(t *testing.T) {
 	}
 	if len(captures) != 2 {
 		t.Fatalf("duplicate webhook must not re-capture subscription events, got %d", len(captures))
+	}
+}
+
+func TestSubscriptionStartedCapturedOncePerPaidWebhook(t *testing.T) {
+	secret := "whsec_test"
+	t.Setenv("DOIT_WEBHOOK_SECRET", secret)
+	t.Setenv("APP_URL", "https://bearbudget.id")
+
+	var started []map[string]interface{}
+	analytics.SetTestCapture(func(_ int, event string, properties map[string]interface{}) {
+		if event == "subscription_started" {
+			started = append(started, properties)
+		}
+	})
+	t.Cleanup(func() { analytics.SetTestCapture(nil) })
+
+	pending := &memoryPending{}
+	if err := pending.Save(context.Background(), domainBilling.PendingPayment{
+		PaymentID: "pay_track_1",
+		UserID:    7,
+		Kind:      domainBilling.KindPro,
+		Interval:  "semiannual",
+		Amount:    99000,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	events := &memoryWebhookEvents{}
+	uc := NewHandleDoitWebhookUseCase(events, &memorySubs{}, nil, pending, fixedPublicIDs{})
+
+	payload := map[string]interface{}{
+		"id":   "evt_track_1",
+		"type": "payment.paid",
+		"data": map[string]interface{}{
+			"id":        "pay_track_1",
+			"amount":    99000,
+			"reference": "user:7:semiannual",
+			"metadata":  map[string]interface{}{"user_id": 7},
+		},
+	}
+	body, _ := json.Marshal(payload)
+	header := signBody(secret, body)
+
+	if err := uc.Execute(context.Background(), header, body); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(started) != 1 {
+		t.Fatalf("subscription_started count=%d, want 1", len(started))
+	}
+	if started[0]["plan"] != "6month" ||
+		started[0]["is_renewal"] != false ||
+		started[0]["amount_bucket"] != "50k_150k" {
+		t.Fatalf("unexpected props: %+v", started[0])
+	}
+
+	if err := uc.Execute(context.Background(), header, body); err != nil {
+		t.Fatalf("duplicate webhook error: %v", err)
+	}
+	if len(started) != 1 {
+		t.Fatalf("dedup should not re-capture subscription_started, got %d", len(started))
+	}
+}
+
+func TestSubscriptionStartedMarksRenewalWhenPriorPaidPeriod(t *testing.T) {
+	secret := "whsec_test"
+	t.Setenv("DOIT_WEBHOOK_SECRET", secret)
+	t.Setenv("APP_URL", "https://bearbudget.id")
+
+	var started []map[string]interface{}
+	analytics.SetTestCapture(func(_ int, event string, properties map[string]interface{}) {
+		if event == "subscription_started" {
+			started = append(started, properties)
+		}
+	})
+	t.Cleanup(func() { analytics.SetTestCapture(nil) })
+
+	priorEnd := time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)
+	interval := domainBilling.IntervalMonthly
+	existing, err := domainBilling.NewFreeSubscription(7, "pub-7")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := existing.ActivatePro(interval, priorEnd.AddDate(0, 0, -30)); err != nil {
+		t.Fatal(err)
+	}
+
+	pending := &memoryPending{}
+	_ = pending.Save(context.Background(), domainBilling.PendingPayment{
+		PaymentID: "pay_renew",
+		UserID:    7,
+		Kind:      domainBilling.KindPro,
+		Interval:  "yearly",
+		Amount:    149000,
+	})
+	subs := &memorySubs{byUser: map[int]*domainBilling.Subscription{7: existing}}
+	uc := NewHandleDoitWebhookUseCase(&memoryWebhookEvents{}, subs, nil, pending, fixedPublicIDs{})
+
+	payload := map[string]interface{}{
+		"id":   "evt_renew",
+		"type": "payment.paid",
+		"data": map[string]interface{}{
+			"id":        "pay_renew",
+			"amount":    149000,
+			"reference": "user:7:yearly",
+			"metadata":  map[string]interface{}{"user_id": 7},
+		},
+	}
+	body, _ := json.Marshal(payload)
+	if err := uc.Execute(context.Background(), signBody(secret, body), body); err != nil {
+		t.Fatal(err)
+	}
+	if len(started) != 1 {
+		t.Fatalf("subscription_started count=%d", len(started))
+	}
+	if started[0]["plan"] != "yearly" ||
+		started[0]["is_renewal"] != true ||
+		started[0]["amount_bucket"] != "gte_150k" {
+		t.Fatalf("unexpected props: %+v", started[0])
 	}
 }
 

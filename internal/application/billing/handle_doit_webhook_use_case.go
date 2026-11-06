@@ -171,7 +171,7 @@ func (uc *HandleDoitWebhookUseCase) applyRecordedPayment(ctx context.Context, pa
 		if _, priceOK := domainBilling.PriceForInterval(interval); !priceOK {
 			return ErrWebhookPaymentMismatch
 		}
-		return uc.activatePro(ctx, recorded.UserID, interval, paidAt(payment))
+		return uc.activatePro(ctx, recorded.UserID, interval, paidAt(payment), true)
 	case domainBilling.KindAICredits:
 		if _, _, err := domainAI.PackCredits(recorded.Pack); err != nil {
 			return ErrWebhookPaymentMismatch
@@ -194,7 +194,7 @@ func (uc *HandleDoitWebhookUseCase) applyLegacyPayment(ctx context.Context, paym
 		if !priceOK || amount != price {
 			return ErrWebhookPaymentMismatch
 		}
-		return uc.activatePro(ctx, userID, interval, paidAt(payment))
+		return uc.activatePro(ctx, userID, interval, paidAt(payment), false)
 	}
 	if userID, pack, ok := legacyCreditReference(payment.Reference); ok {
 		_, price, err := domainAI.PackCredits(pack)
@@ -209,7 +209,7 @@ func (uc *HandleDoitWebhookUseCase) applyLegacyPayment(ctx context.Context, paym
 	return ErrWebhookPaymentMismatch
 }
 
-func (uc *HandleDoitWebhookUseCase) activatePro(ctx context.Context, userID int, interval domainBilling.BillingInterval, paidAt time.Time) error {
+func (uc *HandleDoitWebhookUseCase) activatePro(ctx context.Context, userID int, interval domainBilling.BillingInterval, paidAt time.Time, hadPending bool) error {
 	sub, err := uc.subs.FindByUserID(ctx, userID)
 	if err != nil {
 		if !errors.Is(err, domainBilling.ErrNotFound) {
@@ -224,16 +224,20 @@ func (uc *HandleDoitWebhookUseCase) activatePro(ctx context.Context, userID int,
 			return err
 		}
 	}
+	hadPaidPeriod := sub.CurrentPeriodEnd() != nil
 	if err := sub.ActivatePro(interval, paidAt); err != nil {
 		return err
 	}
 	if err := uc.subs.Save(ctx, sub); err != nil {
 		return err
 	}
-	analytics.Capture(userID, "subscription_started", map[string]interface{}{
-		"plan":     "pro",
-		"interval": string(interval),
-	})
+	if plan, bucket, ok := subscriptionStartedProps(interval); ok {
+		analytics.Capture(userID, "subscription_started", map[string]interface{}{
+			"plan":          plan,
+			"is_renewal":    !hadPending || hadPaidPeriod,
+			"amount_bucket": bucket,
+		})
+	}
 	if plan, priceIDR, ok := activatedPlanProps(interval); ok {
 		analytics.Capture(userID, "subscription_activated", map[string]interface{}{
 			"plan":      plan,
@@ -244,6 +248,36 @@ func (uc *HandleDoitWebhookUseCase) activatePro(ctx context.Context, userID int,
 		_ = uc.aiCredits.UnlockFullIncluded(ctx, userID)
 	}
 	return nil
+}
+
+// subscriptionStartedProps returns PostHog plan label + coarse amount bucket (no exact IDR).
+func subscriptionStartedProps(interval domainBilling.BillingInterval) (plan string, amountBucket string, ok bool) {
+	priceIDR, ok := domainBilling.PriceForInterval(interval)
+	if !ok {
+		return "", "", false
+	}
+	switch interval {
+	case domainBilling.IntervalMonthly:
+		plan = "monthly"
+	case domainBilling.IntervalSemiannual:
+		plan = "6month"
+	case domainBilling.IntervalYearly:
+		plan = "yearly"
+	default:
+		return "", "", false
+	}
+	return plan, amountBucketIDR(priceIDR), true
+}
+
+func amountBucketIDR(amount int) string {
+	switch {
+	case amount < 50000:
+		return "lt_50k"
+	case amount < 120000:
+		return "50k_150k"
+	default:
+		return "gte_150k"
+	}
 }
 
 func activatedPlanProps(interval domainBilling.BillingInterval) (plan string, priceIDR int, ok bool) {
