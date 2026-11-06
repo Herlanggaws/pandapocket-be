@@ -1,11 +1,11 @@
 ## Prod read-only metrics (`prod-read.sh`)
 
-Fixed read-only count queries against prod via SSH → `psql` on the deploy host (same connection path as [`doc/ops/deploy-prod.md`](../../doc/ops/deploy-prod.md): SSH in, then psql as the DB role). Counts only — no emails, amounts, or free-form SQL.
+Fixed read-only count queries against prod via SSH → `psql` on the deploy host (same connection path as [`doc/ops/deploy-prod.md`](../../doc/ops/deploy-prod.md): SSH in, then psql as the DB role). Counts only — no emails or free-form SQL. Prefer the SELECT-only role below for `PROD_DB_USER`.
 
 ```bash
 export PROD_SSH='nark@HOST'          # from your local secret store; never commit
 export PROD_DB_NAME='pandapocket'
-export PROD_DB_USER='nark'
+export PROD_DB_USER='pandapocket_readonly'   # or nark; see create_readonly_role.sql
 
 ./scripts/prod-read.sh users-summary
 ./scripts/prod-read.sh tx-today
@@ -15,7 +15,25 @@ export PROD_DB_USER='nark'
 ./scripts/prod-read.sh --help
 ```
 
-Subcommands: `users-summary` (totals / non-internal if `users.is_internal` exists / activated within 7d of signup / weekly active), `tx-today` (today + prior 3 days Asia/Jakarta), `google-onboarding` (Google-auth users since a date: zero wallets, zero txs, onboarding completed), `subs-summary` (one SELECT over `subscriptions` + successful `billing_webhook_events`/`pending_payments`: trial active now; paid Pro active by `billing_interval` monthly/semiannual/yearly; new paid Pro + total paid IDR this calendar month Asia/Jakarta; Pro expired/canceled this month; trial started this month and conversions to paid). Internal exclusion: `users.is_internal = false` when the column exists, else email patterns (`herlangga%`, single-letter local, `^abc`, `^123…@mail.com`, `+test` plus-address) — same patterns as `mark_internal_users.sql` on the internal-users branch (users-summary itself only reports `n/a` when the column is missing). Every query runs with `default_transaction_read_only=on` inside `BEGIN READ ONLY` … `ROLLBACK`. The script never reads credential files and never embeds passwords (SSH key / peer auth on the host).
+### SELECT-only role (`scripts/sql/create_readonly_role.sql`)
+
+Creates role `pandapocket_readonly`: `LOGIN`, `CONNECT` on DB, `USAGE` on `public`, `SELECT` on all current tables, default privileges for future tables, and `default_transaction_read_only = on`. Password is passed only via psql `-v readonly_password=…` — never stored in the file. **Do not execute this script from an agent unless an operator explicitly asks.**
+
+```bash
+# On the deploy host as a superuser (example; operator-run only):
+sudo -u postgres psql -d pandapocket -v ON_ERROR_STOP=1 \
+  -v readonly_password='…' \
+  -f scripts/sql/create_readonly_role.sql
+```
+
+`prod-read.sh` already accepts whatever role you set in `PROD_DB_USER`. Each query still wraps SQL in `SET default_transaction_read_only=on` + `BEGIN READ ONLY` … `ROLLBACK`. The script never reads credential files and never embeds passwords (SSH key / peer auth on the host).
+
+### Subcommands
+
+- `users-summary` — totals / non-internal (`users.is_internal = false`, `deleted_at IS NULL`) / activated within 7d of signup / weekly active. If `is_internal` is missing, `non_internal_users` is `n/a`.
+- `tx-today` — today + prior 3 days Asia/Jakarta.
+- `google-onboarding` — Google-auth users since a date: zero wallets, zero txs, onboarding completed.
+- `subs-summary` — one SELECT over `subscriptions` + successful `billing_webhook_events`/`pending_payments`, excluding `users.is_internal` / soft-deleted: trial active now; paid Pro active by `billing_interval` monthly/semiannual/yearly; new paid Pro + total paid IDR this calendar month Asia/Jakarta; `pro_expired_or_canceled_this_month_est` (estimate from `subscriptions.updated_at` in the month for `canceled` or paid-`expired`); `trial_started_this_month` from `subscriptions.created_at` where `trial_ends_at IS NOT NULL` (trial row created at registration); conversions among those starts.
 
 ## Foreign keys (D1)
 
