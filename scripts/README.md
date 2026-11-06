@@ -1,3 +1,21 @@
+## Prod read-only metrics (`prod-read.sh`)
+
+Fixed read-only count queries against prod via SSH → `psql` on the deploy host (same connection path as [`doc/ops/deploy-prod.md`](../../doc/ops/deploy-prod.md): SSH in, then psql as the DB role). Counts only — no emails, amounts, or free-form SQL.
+
+```bash
+export PROD_SSH='nark@HOST'          # from your local secret store; never commit
+export PROD_DB_NAME='pandapocket'
+export PROD_DB_USER='nark'
+
+./scripts/prod-read.sh users-summary
+./scripts/prod-read.sh tx-today
+./scripts/prod-read.sh google-onboarding
+./scripts/prod-read.sh google-onboarding --since 2026-10-01
+./scripts/prod-read.sh --help
+```
+
+Subcommands: `users-summary` (totals / non-internal if `users.is_internal` exists / activated within 7d of signup / weekly active), `tx-today` (today + prior 3 days Asia/Jakarta), `google-onboarding` (Google-auth users since a date: zero wallets, zero txs, onboarding completed). Every query runs with `default_transaction_read_only=on` inside `BEGIN READ ONLY` … `ROLLBACK`. The script never reads credential files and never embeds passwords (SSH key / peer auth on the host).
+
 ## Foreign keys (D1)
 
 Idempotent script: [`add_foreign_keys.sql`](add_foreign_keys.sql).
