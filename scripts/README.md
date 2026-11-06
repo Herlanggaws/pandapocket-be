@@ -11,10 +11,11 @@ export PROD_DB_USER='nark'
 ./scripts/prod-read.sh tx-today
 ./scripts/prod-read.sh google-onboarding
 ./scripts/prod-read.sh google-onboarding --since 2026-10-01
+./scripts/prod-read.sh subs-summary
 ./scripts/prod-read.sh --help
 ```
 
-Subcommands: `users-summary` (totals / non-internal if `users.is_internal` exists / activated within 7d of signup / weekly active), `tx-today` (today + prior 3 days Asia/Jakarta), `google-onboarding` (Google-auth users since a date: zero wallets, zero txs, onboarding completed). Every query runs with `default_transaction_read_only=on` inside `BEGIN READ ONLY` … `ROLLBACK`. The script never reads credential files and never embeds passwords (SSH key / peer auth on the host).
+Subcommands: `users-summary` (totals / non-internal if `users.is_internal` exists / activated within 7d of signup / weekly active), `tx-today` (today + prior 3 days Asia/Jakarta), `google-onboarding` (Google-auth users since a date: zero wallets, zero txs, onboarding completed), `subs-summary` (one SELECT over `subscriptions` + successful `billing_webhook_events`/`pending_payments`: trial active now; paid Pro active by `billing_interval` monthly/semiannual/yearly; new paid Pro + total paid IDR this calendar month Asia/Jakarta; Pro expired/canceled this month; trial started this month and conversions to paid). Internal exclusion: `users.is_internal = false` when the column exists, else email patterns (`herlangga%`, single-letter local, `^abc`, `^123…@mail.com`, `+test` plus-address) — same patterns as `mark_internal_users.sql` on the internal-users branch (users-summary itself only reports `n/a` when the column is missing). Every query runs with `default_transaction_read_only=on` inside `BEGIN READ ONLY` … `ROLLBACK`. The script never reads credential files and never embeds passwords (SSH key / peer auth on the host).
 
 ## Foreign keys (D1)
 

@@ -16,6 +16,7 @@ Subcommands:
   users-summary       total / non-internal / activated / weekly-active user counts
   tx-today            expense+income counts and distinct users for today and prior 3 days (Asia/Jakarta)
   google-onboarding   Google-auth users since a date: totals, 0 wallets, 0 txs, onboarding done
+  subs-summary        trial/Pro counts, month paid Pro + revenue (WIB), trial starts/conversions
 
 Options:
   --since YYYY-MM-DD  only for google-onboarding (default: 2026-10-01)
@@ -284,6 +285,170 @@ SELECT
 SQL
 }
 
+cmd_subs_summary() {
+  # Internal exclusion: prefer users.is_internal when present on prod.
+  # Otherwise use the email patterns from mark_internal_users.sql (users-summary
+  # only reports n/a when the column is missing; this metric still excludes).
+  local non_internal_pred exclusion_label
+  if column_exists users is_internal; then
+    non_internal_pred='COALESCE(u.is_internal, false) = false'
+    exclusion_label='users.is_internal=false'
+  else
+    non_internal_pred="$(cat <<'PRED'
+NOT (
+  lower(u.email) LIKE 'herlangga%'
+  OR lower(u.email) ~ '^[a-z]@'
+  OR lower(u.email) ~ '^abc'
+  OR lower(u.email) ~ '^123[^@]*@mail\.com$'
+  OR lower(u.email) ~ '\+test[^@]*@'
+)
+PRED
+)"
+    exclusion_label='email_patterns_mark_internal_users'
+  fi
+
+  run_readonly_sql <<SQL
+\\pset format aligned
+\\pset tuples_only off
+
+WITH bounds AS (
+  SELECT
+    date_trunc('month', (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Jakarta')) AS month_start_jkt,
+    (date_trunc('month', (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Jakarta'))
+      + INTERVAL '1 month') AS month_end_jkt
+),
+month_utc AS (
+  SELECT
+    (b.month_start_jkt AT TIME ZONE 'Asia/Jakarta') AS month_start,
+    (b.month_end_jkt AT TIME ZONE 'Asia/Jakarta') AS month_end
+  FROM bounds b
+),
+eligible_users AS (
+  SELECT u.id
+  FROM users u
+  WHERE u.deleted_at IS NULL
+    AND (${non_internal_pred})
+),
+subs AS (
+  SELECT s.*
+  FROM subscriptions s
+  INNER JOIN eligible_users eu ON eu.id = s.user_id
+),
+paid_pro_now AS (
+  SELECT s.billing_interval
+  FROM subs s
+  WHERE s.billing_interval IS NOT NULL
+    AND (
+      (
+        s.current_period_end IS NOT NULL
+        AND s.current_period_end > NOW()
+        AND s.status IN ('active', 'canceled')
+      )
+      OR (
+        s.status = 'past_due'
+        AND s.grace_ends_at IS NOT NULL
+        AND s.grace_ends_at > NOW()
+      )
+    )
+),
+successful_payments AS (
+  SELECT
+    pp.user_id,
+    pp.kind,
+    pp.amount,
+    COALESCE(
+      CASE
+        WHEN (e.payload::json->'data'->>'paid_at') ~ '^[0-9]{4}-'
+          THEN (e.payload::json->'data'->>'paid_at')::timestamptz
+        ELSE NULL
+      END,
+      e.received_at
+    ) AS paid_at
+  FROM billing_webhook_events e
+  INNER JOIN pending_payments pp
+    ON pp.payment_id = (e.payload::json->'data'->>'id')
+  INNER JOIN eligible_users eu ON eu.id = pp.user_id
+  WHERE e.payload::json->>'type' = 'payment.paid'
+    AND COALESCE(e.payload::json->'data'->>'return_url', '')
+      NOT ILIKE '%stg.berbudget.com%'
+),
+month_payments AS (
+  SELECT sp.*
+  FROM successful_payments sp
+  CROSS JOIN month_utc m
+  WHERE sp.paid_at >= m.month_start
+    AND sp.paid_at < m.month_end
+),
+trials_started_month AS (
+  SELECT s.user_id,
+    s.billing_interval,
+    s.current_period_end
+  FROM subs s
+  CROSS JOIN month_utc m
+  WHERE s.trial_ends_at IS NOT NULL
+    AND (s.trial_ends_at - INTERVAL '14 days') >= m.month_start
+    AND (s.trial_ends_at - INTERVAL '14 days') < m.month_end
+)
+SELECT
+  '${exclusion_label}'::text AS internal_exclusion,
+  (
+    SELECT COUNT(*)::bigint
+    FROM subs s
+    WHERE s.status = 'trialing'
+      AND s.trial_ends_at IS NOT NULL
+      AND s.trial_ends_at > NOW()
+  ) AS trial_active_now,
+  (
+    SELECT COUNT(*)::bigint
+    FROM paid_pro_now p
+    WHERE p.billing_interval = 'monthly'
+  ) AS pro_active_monthly,
+  (
+    SELECT COUNT(*)::bigint
+    FROM paid_pro_now p
+    WHERE p.billing_interval = 'semiannual'
+  ) AS pro_active_semiannual,
+  (
+    SELECT COUNT(*)::bigint
+    FROM paid_pro_now p
+    WHERE p.billing_interval = 'yearly'
+  ) AS pro_active_yearly,
+  (
+    SELECT COUNT(DISTINCT mp.user_id)::bigint
+    FROM month_payments mp
+    WHERE mp.kind = 'pro'
+  ) AS new_paid_pro_this_month,
+  (
+    SELECT COUNT(*)::bigint
+    FROM subs s
+    CROSS JOIN month_utc m
+    WHERE s.updated_at >= m.month_start
+      AND s.updated_at < m.month_end
+      AND (
+        s.status = 'canceled'
+        OR (
+          s.status = 'expired'
+          AND s.billing_interval IS NOT NULL
+        )
+      )
+  ) AS pro_expired_or_canceled_this_month,
+  (
+    SELECT COALESCE(SUM(mp.amount), 0)::bigint
+    FROM month_payments mp
+  ) AS total_paid_amount_idr_this_month,
+  (
+    SELECT COUNT(*)::bigint
+    FROM trials_started_month
+  ) AS trial_started_this_month,
+  (
+    SELECT COUNT(*)::bigint
+    FROM trials_started_month t
+    WHERE t.billing_interval IS NOT NULL
+       OR t.current_period_end IS NOT NULL
+  ) AS trial_started_converted_to_paid;
+SQL
+}
+
 main() {
   if [[ $# -lt 1 ]]; then
     usage
@@ -334,6 +499,10 @@ main() {
       validate_since "$since"
       require_env
       cmd_google_onboarding "$since"
+      ;;
+    subs-summary)
+      require_env
+      cmd_subs_summary
       ;;
     *)
       echo "error: unknown subcommand: $subcommand" >&2
