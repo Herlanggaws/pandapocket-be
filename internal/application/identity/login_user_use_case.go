@@ -3,7 +3,9 @@ package identity
 import (
 	"context"
 	"errors"
+	"log"
 	"panda-pocket/internal/domain/identity"
+	"time"
 
 	"golang.org/x/crypto/bcrypt"
 )
@@ -26,13 +28,15 @@ type LoginUserResponse struct {
 // LoginUserUseCase handles user login
 type LoginUserUseCase struct {
 	userService  *identity.UserService
+	userRepo     identity.UserRepository
 	tokenService TokenService
 }
 
 // NewLoginUserUseCase creates a new login user use case
-func NewLoginUserUseCase(userService *identity.UserService, tokenService TokenService) *LoginUserUseCase {
+func NewLoginUserUseCase(userService *identity.UserService, userRepo identity.UserRepository, tokenService TokenService) *LoginUserUseCase {
 	return &LoginUserUseCase{
 		userService:  userService,
+		userRepo:     userRepo,
 		tokenService: tokenService,
 	}
 }
@@ -65,6 +69,8 @@ func (uc *LoginUserUseCase) Execute(ctx context.Context, req LoginUserRequest) (
 		return nil, errors.New("failed to generate token")
 	}
 
+	recordLastLogin(ctx, uc.userRepo, user.ID())
+
 	return &LoginUserResponse{
 		UserID:       user.ID().Value(),
 		Email:        user.Email().Value(),
@@ -72,4 +78,13 @@ func (uc *LoginUserUseCase) Execute(ctx context.Context, req LoginUserRequest) (
 		RefreshToken: refreshToken,
 		HasPassword:  user.PasswordHash().IsSet(),
 	}, nil
+}
+
+func recordLastLogin(ctx context.Context, users identity.UserRepository, userID identity.UserID) {
+	if users == nil {
+		return
+	}
+	if err := users.UpdateLastLoginAt(ctx, userID, time.Now().UTC()); err != nil {
+		log.Printf("failed to update last_login_at user_id=%d: %v", userID.Value(), err)
+	}
 }

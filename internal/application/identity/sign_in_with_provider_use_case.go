@@ -75,6 +75,7 @@ func (uc *SignInWithProviderUseCase) Execute(ctx context.Context, req SignInWith
 	if err != nil {
 		return nil, errors.New("failed to generate token")
 	}
+	recordLastLogin(ctx, uc.users, user.ID())
 	return &LoginUserResponse{
 		UserID:       user.ID().Value(),
 		Email:        user.Email().Value(),

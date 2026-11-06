@@ -110,6 +110,9 @@ func TestSignInLinksExistingEmail(t *testing.T) {
 	if len(captures) != 0 {
 		t.Fatalf("existing-user login must not fire signup/trial events, got %v", captures)
 	}
+	if _, ok := users.lastLoginAt[existing.ID().Value()]; !ok {
+		t.Fatal("expected last_login_at on SSO login for existing user")
+	}
 }
 
 func TestSignInRegistersWithoutPassword(t *testing.T) {
@@ -157,6 +160,9 @@ func TestSignInRegistersWithoutPassword(t *testing.T) {
 	}
 	if captures[1].event != "trial_started" || captures[1].props["trial_days"] != billing.TrialDurationDays {
 		t.Fatalf("unexpected trial_started: %+v", captures[1])
+	}
+	if _, ok := users.lastLoginAt[response.UserID]; !ok {
+		t.Fatal("expected last_login_at on SSO signup")
 	}
 }
 

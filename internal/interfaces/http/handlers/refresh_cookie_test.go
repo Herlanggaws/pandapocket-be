@@ -74,6 +74,9 @@ func (r *cookieUserRepo) Save(context.Context, *domainIdentity.User) error { ret
 func (r *cookieUserRepo) Update(context.Context, *domainIdentity.User) error {
 	return nil
 }
+func (r *cookieUserRepo) UpdateLastLoginAt(context.Context, domainIdentity.UserID, time.Time) error {
+	return nil
+}
 func (r *cookieUserRepo) FindByID(_ context.Context, id domainIdentity.UserID) (*domainIdentity.User, error) {
 	user, ok := r.users[id.Value()]
 	if !ok {

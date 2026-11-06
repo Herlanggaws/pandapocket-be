@@ -106,7 +106,7 @@ func NewApp(db *gorm.DB) *App {
 	emailService := notification.NewSMTPEmailService()
 	notificationHelper := appNotification.NewCreateNotificationHelper(notificationRepo)
 	registerUserUseCase := appIdentity.NewRegisterUserUseCase(userService, tokenService, subscriptionRepo)
-	loginUserUseCase := appIdentity.NewLoginUserUseCase(userService, tokenService)
+	loginUserUseCase := appIdentity.NewLoginUserUseCase(userService, userRepo, tokenService)
 	signInWithProviderUseCase := appIdentity.NewSignInWithProviderUseCase(
 		appIdentity.NewOAuthTokenVerifier(oauth.NewIDTokenVerifier()),
 		userRepo,

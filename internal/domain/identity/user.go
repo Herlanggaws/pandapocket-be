@@ -150,6 +150,13 @@ func (u *User) CreatedAt() time.Time {
 	return u.createdAt
 }
 
+// AssignCreatedAt restores the persisted created_at when loading a row.
+func (u *User) AssignCreatedAt(createdAt time.Time) {
+	if !createdAt.IsZero() {
+		u.createdAt = createdAt
+	}
+}
+
 func (u *User) Role() Role {
 	return u.role
 }

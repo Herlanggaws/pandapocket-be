@@ -38,6 +38,7 @@ func toDomainUser(userModel User) (*identity.User, error) {
 
 	user := identity.NewUser(userID, emailVO, passwordHashVO, roleVO)
 	user.AssignPublicID(userModel.PublicID)
+	user.AssignCreatedAt(userModel.CreatedAt)
 	if userModel.DeletedAt != nil {
 		user.MarkDeleted(*userModel.DeletedAt)
 	}
@@ -52,24 +53,44 @@ func (r *GormUserRepository) Save(ctx context.Context, user *identity.User) erro
 		user.AssignPublicID(publicID)
 	}
 
-	userModel := &User{
-		PublicID:     publicID,
-		Email:        user.Email().Value(),
-		PasswordHash: passwordHashPointer(user.PasswordHash().Value()),
-		Role:         user.Role().Value(),
-		DeletedAt:    user.DeletedAt(),
+	createdAt := user.CreatedAt()
+	if createdAt.IsZero() {
+		createdAt = time.Now().UTC()
+		user.AssignCreatedAt(createdAt)
 	}
 
-	if user.ID().Value() != 0 {
-		userModel.ID = uint(user.ID().Value())
+	if user.ID().Value() == 0 {
+		userModel := &User{
+			PublicID:     publicID,
+			Email:        user.Email().Value(),
+			PasswordHash: passwordHashPointer(user.PasswordHash().Value()),
+			Role:         user.Role().Value(),
+			DeletedAt:    user.DeletedAt(),
+			CreatedAt:    createdAt,
+		}
+		if err := r.db.WithContext(ctx).Create(userModel).Error; err != nil {
+			return err
+		}
+		user.AssignID(identity.NewUserID(int(userModel.ID)))
+		user.AssignPublicID(userModel.PublicID)
+		return nil
 	}
 
-	if err := r.db.WithContext(ctx).Save(userModel).Error; err != nil {
-		return err
+	// Targeted update so Save never overwrites created_at / last_login_at with zero values.
+	updates := map[string]interface{}{
+		"public_id":     publicID,
+		"email":         user.Email().Value(),
+		"password_hash": passwordHashPointer(user.PasswordHash().Value()),
+		"role":          user.Role().Value(),
+		"deleted_at":    user.DeletedAt(),
 	}
-
-	user.AssignID(identity.NewUserID(int(userModel.ID)))
-	user.AssignPublicID(userModel.PublicID)
+	result := r.db.WithContext(ctx).Model(&User{}).Where("id = ?", user.ID().Value()).Updates(updates)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
 	return nil
 }
 
@@ -92,6 +113,20 @@ func (r *GormUserRepository) PublicID(ctx context.Context, userID int) (string, 
 // Update updates a user in the database
 func (r *GormUserRepository) Update(ctx context.Context, user *identity.User) error {
 	return r.Save(ctx, user)
+}
+
+// UpdateLastLoginAt records the most recent successful password or SSO login.
+func (r *GormUserRepository) UpdateLastLoginAt(ctx context.Context, id identity.UserID, at time.Time) error {
+	result := r.db.WithContext(ctx).Model(&User{}).
+		Where("id = ? AND deleted_at IS NULL", id.Value()).
+		Update("last_login_at", at.UTC())
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }
 
 // FindByID finds an active user by ID

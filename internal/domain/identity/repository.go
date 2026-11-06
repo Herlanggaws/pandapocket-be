@@ -9,6 +9,7 @@ import (
 type UserRepository interface {
 	Save(ctx context.Context, user *User) error
 	Update(ctx context.Context, user *User) error
+	UpdateLastLoginAt(ctx context.Context, id UserID, at time.Time) error
 	FindByID(ctx context.Context, id UserID) (*User, error)
 	FindByEmail(ctx context.Context, email Email) (*User, error)
 	FindByEmailFolded(ctx context.Context, email Email) (*User, error)

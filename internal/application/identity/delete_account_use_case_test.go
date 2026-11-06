@@ -12,19 +12,22 @@ import (
 )
 
 type memUserRepo struct {
-	mu      sync.Mutex
-	users   map[int]*domainIdentity.User
-	emails  map[string]int
-	deleted map[int]time.Time
-	nextID  int
+	mu            sync.Mutex
+	users         map[int]*domainIdentity.User
+	emails        map[string]int
+	deleted       map[int]time.Time
+	lastLoginAt   map[int]time.Time
+	failLastLogin bool
+	nextID        int
 }
 
 func newMemUserRepo() *memUserRepo {
 	return &memUserRepo{
-		users:   map[int]*domainIdentity.User{},
-		emails:  map[string]int{},
-		deleted: map[int]time.Time{},
-		nextID:  1,
+		users:       map[int]*domainIdentity.User{},
+		emails:      map[string]int{},
+		deleted:     map[int]time.Time{},
+		lastLoginAt: map[int]time.Time{},
+		nextID:      1,
 	}
 }
 
@@ -44,6 +47,25 @@ func (r *memUserRepo) Save(ctx context.Context, user *domainIdentity.User) error
 
 func (r *memUserRepo) Update(ctx context.Context, user *domainIdentity.User) error {
 	return r.Save(ctx, user)
+}
+
+func (r *memUserRepo) UpdateLastLoginAt(_ context.Context, id domainIdentity.UserID, at time.Time) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.failLastLogin {
+		return errors.New("last login update failed")
+	}
+	if _, deleted := r.deleted[id.Value()]; deleted {
+		return errors.New("not found")
+	}
+	if _, ok := r.users[id.Value()]; !ok {
+		return errors.New("not found")
+	}
+	if r.lastLoginAt == nil {
+		r.lastLoginAt = map[int]time.Time{}
+	}
+	r.lastLoginAt[id.Value()] = at
+	return nil
 }
 
 func (r *memUserRepo) FindByID(ctx context.Context, id domainIdentity.UserID) (*domainIdentity.User, error) {
