@@ -67,7 +67,7 @@ func (uc *SignInWithProviderUseCase) Execute(ctx context.Context, req SignInWith
 	if err != nil {
 		return nil, err
 	}
-	user, err := uc.resolveUser(ctx, verified)
+	user, isNew, err := uc.resolveUser(ctx, verified)
 	if err != nil {
 		return nil, err
 	}
@@ -82,32 +82,33 @@ func (uc *SignInWithProviderUseCase) Execute(ctx context.Context, req SignInWith
 		Token:        token,
 		RefreshToken: refreshToken,
 		HasPassword:  user.PasswordHash().IsSet(),
+		IsNewUser:    isNew,
 	}, nil
 }
 
-func (uc *SignInWithProviderUseCase) resolveUser(ctx context.Context, verified VerifiedSignIn) (*domainIdentity.User, error) {
+func (uc *SignInWithProviderUseCase) resolveUser(ctx context.Context, verified VerifiedSignIn) (*domainIdentity.User, bool, error) {
 	existing, err := uc.identities.FindByProviderSubject(ctx, verified.Provider, verified.Subject)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if existing != nil {
 		user, findErr := uc.users.FindByID(ctx, domainIdentity.NewUserID(existing.UserID))
 		if findErr == nil {
-			return user, nil
+			return user, false, nil
 		}
 		if !isMissingUser(findErr) {
-			return nil, findErr
+			return nil, false, findErr
 		}
 		if err := uc.identities.DeleteByProviderSubject(ctx, verified.Provider, verified.Subject); err != nil {
-			return nil, err
+			return nil, false, err
 		}
 	}
 	if verified.Email == "" || !verified.EmailVerified {
-		return nil, errors.New("verified email is required")
+		return nil, false, errors.New("verified email is required")
 	}
-	user, err := uc.linkOrRegister(ctx, verified)
+	user, isNew, err := uc.linkOrRegister(ctx, verified)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if err := uc.identities.Save(ctx, domainIdentity.ExternalIdentity{
 		UserID:   user.ID().Value(),
@@ -115,24 +116,28 @@ func (uc *SignInWithProviderUseCase) resolveUser(ctx context.Context, verified V
 		Subject:  verified.Subject,
 		Email:    verified.Email,
 	}); err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	return user, nil
+	return user, isNew, nil
 }
 
-func (uc *SignInWithProviderUseCase) linkOrRegister(ctx context.Context, verified VerifiedSignIn) (*domainIdentity.User, error) {
+func (uc *SignInWithProviderUseCase) linkOrRegister(ctx context.Context, verified VerifiedSignIn) (*domainIdentity.User, bool, error) {
 	email, err := domainIdentity.NewEmail(verified.Email)
 	if err != nil {
-		return nil, errors.New("invalid email format")
+		return nil, false, errors.New("invalid email format")
 	}
 	user, err := uc.users.FindByEmailFolded(ctx, email)
 	if err == nil {
-		return user, nil
+		return user, false, nil
 	}
 	if !isMissingUser(err) {
-		return nil, err
+		return nil, false, err
 	}
-	return uc.registerWithoutPassword(ctx, email, verified.Provider)
+	user, err = uc.registerWithoutPassword(ctx, email, verified.Provider)
+	if err != nil {
+		return nil, false, err
+	}
+	return user, true, nil
 }
 
 func isMissingUser(err error) bool {

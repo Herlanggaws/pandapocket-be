@@ -105,6 +105,7 @@ func (h *IdentityHandlers) Register(c *gin.Context) {
 	SuccessResponse(c, http.StatusCreated, gin.H{
 		"token":         response.Token,
 		"refresh_token": response.RefreshToken,
+		"is_new_user":   response.IsNewUser,
 		"user": gin.H{
 			"id":           response.UserID,
 			"email":        response.Email,
@@ -131,6 +132,7 @@ func (h *IdentityHandlers) Login(c *gin.Context) {
 	SuccessResponse(c, http.StatusOK, gin.H{
 		"token":         response.Token,
 		"refresh_token": response.RefreshToken,
+		"is_new_user":   response.IsNewUser,
 		"user": gin.H{
 			"id":           response.UserID,
 			"email":        response.Email,
@@ -164,6 +166,7 @@ func (h *IdentityHandlers) SignInWithProvider(c *gin.Context) {
 	SuccessResponse(c, http.StatusOK, gin.H{
 		"token":         response.Token,
 		"refresh_token": response.RefreshToken,
+		"is_new_user":   response.IsNewUser,
 		"user": gin.H{
 			"id":           response.UserID,
 			"email":        response.Email,

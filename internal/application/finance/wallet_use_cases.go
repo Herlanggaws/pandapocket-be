@@ -149,6 +149,29 @@ func NewGetWalletsUseCase(walletService *finance.WalletService) *GetWalletsUseCa
 	return &GetWalletsUseCase{walletService: walletService}
 }
 
+// EnsureDefaultResponse is the idempotent default-wallet ensure payload.
+type EnsureDefaultResponse struct {
+	Wallet  WalletResponse `json:"wallet"`
+	Created bool           `json:"created"`
+}
+
+// EnsureDefault creates "Dompet utama" when the user has no default wallet.
+func (uc *GetWalletsUseCase) EnsureDefault(ctx context.Context, userID int) (*EnsureDefaultResponse, error) {
+	user := finance.NewUserID(userID)
+	wallet, created, err := uc.walletService.EnsureDefaultWalletForUser(ctx, user)
+	if err != nil {
+		return nil, err
+	}
+	breakdown, balErr := uc.walletService.GetBalance(ctx, user, wallet.ID())
+	var balance *float64
+	if balErr == nil {
+		b := breakdown.Balance
+		balance = &b
+	}
+	resp := toWalletResponse(wallet, balance)
+	return &EnsureDefaultResponse{Wallet: resp, Created: created}, nil
+}
+
 func (uc *GetWalletsUseCase) Execute(ctx context.Context, userID int, includeArchived bool) ([]WalletResponse, error) {
 	user := finance.NewUserID(userID)
 	wallets, err := uc.walletService.GetWallets(ctx, user, includeArchived)
