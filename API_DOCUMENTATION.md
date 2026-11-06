@@ -154,6 +154,7 @@ Allowed origins (canonical first): `https://bearbudget.id`, `https://www.bearbud
 | POST | `/api/pending-transactions/:id/confirm` | Yes | Confirm pending → create real expense/income |
 | POST | `/api/pending-transactions/:id/reject` | Yes | Reject pending (no transaction) |
 | GET/POST | `/api/wallets` | Yes | List/create wallets (`include_archived` query on GET) |
+| POST | `/api/wallets/ensure-default` | Yes | Idempotent create of Dompet utama when missing |
 | GET | `/api/wallets/summary` | Yes | Liquid net worth (primary currency) |
 | GET/PUT | `/api/wallets/:id` | Yes | Get/update wallet |
 | POST | `/api/wallets/:id/default` | Yes | Set default wallet |
@@ -301,6 +302,7 @@ Login to get access and refresh tokens. The access token expires in 15 minutes. 
   "data": {
     "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
     "refresh_token": "...",
+    "is_new_user": false,
     "user": {
       "id": 1,
       "email": "user@example.com",
@@ -310,6 +312,8 @@ Login to get access and refresh tokens. The access token expires in 15 minutes. 
   "error": null
 }
 ```
+
+`is_new_user` is `true` only for brand-new accounts (register always; SSO only when this call created the user). Use with FE `signup` analytics (`method`: `email` | `google`). After session establish, clients should still read `GET /preferences.needs_onboarding` for the post-login redirect.
 
 ### POST /api/auth/sso
 
@@ -330,7 +334,7 @@ Lookup order: existing `(provider, subject)`, then a verified email already on a
 
 `provider` is `google` or `apple`.
 
-**Response:** same shape as login, including `user.has_password` (`false` when the account has no password yet).
+**Response:** same shape as login, including `user.has_password` (`false` when the account has no password yet) and `is_new_user` (`true` only when this call registered a new account).
 
 ### POST /api/auth/refresh
 
@@ -1947,6 +1951,12 @@ Authenticated. Marks onboarding complete, updates preferences, and seeds baselin
 
 Returns the authenticated user's preferences. Creates defaults on first access.
 
+Also includes onboarding gate flags (no wallet side effects):
+- `has_wallet` — true when the user has at least one non-archived wallet
+- `needs_onboarding` — true when `onboarding_completed` is not true **or** `has_wallet` is false
+
+Clients should send users with `needs_onboarding: true` to `/onboarding` after any login path.
+
 ### PUT /api/preferences
 
 Partial update. Accepts any of:
@@ -2627,6 +2637,22 @@ List wallets for the authenticated user. Each item includes computed `balance`.
 `type`: `cash` | `bank` | `e_wallet`
 
 Free plan: max **1** non-archived wallet. Additional creates return **403** `PREMIUM_REQUIRED` (`feature`: `wallets`, `limit`: 1). Pro (trial / paid / grace) is unlimited.
+
+### POST /api/wallets/ensure-default
+
+Idempotent. Returns the user's default wallet, creating **Dompet utama** (`cash`, opening 0, default) when missing. Race-safe under concurrent calls.
+
+```json
+{
+  "status": "success",
+  "data": {
+    "wallet": { "id": 1, "name": "Dompet utama", "type": "cash", "is_default": true },
+    "created": true
+  }
+}
+```
+
+`created` is true only when this call inserted the wallet.
 
 ### GET /api/wallets/summary
 

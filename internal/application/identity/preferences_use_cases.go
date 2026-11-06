@@ -12,24 +12,31 @@ import (
 
 // PreferencesResponse is the API shape for user preferences
 type PreferencesResponse struct {
-	ID                 int             `json:"id"`
-	UserID             int             `json:"user_id"`
-	PrimaryCurrencyID  int             `json:"primary_currency_id"`
-	EmailNotifications bool            `json:"email_notifications"`
-	BudgetAlerts       bool            `json:"budget_alerts"`
-	RecurringReminders bool            `json:"recurring_reminders"`
-	GoalDeadlineAlerts bool            `json:"goal_deadline_alerts"`
-	Language           string          `json:"language"`
-	Onboarding         json.RawMessage `json:"onboarding"`
-	Goal               interface{}     `json:"goal,omitempty"`
-	Topics             interface{}     `json:"topics,omitempty"`
-	Cadence            interface{}     `json:"cadence,omitempty"`
-	StartPath          interface{}     `json:"start_path,omitempty"`
-	OnboardingCompleted interface{}    `json:"onboarding_completed,omitempty"`
+	ID                  int             `json:"id"`
+	UserID              int             `json:"user_id"`
+	PrimaryCurrencyID   int             `json:"primary_currency_id"`
+	EmailNotifications  bool            `json:"email_notifications"`
+	BudgetAlerts        bool            `json:"budget_alerts"`
+	RecurringReminders  bool            `json:"recurring_reminders"`
+	GoalDeadlineAlerts  bool            `json:"goal_deadline_alerts"`
+	Language            string          `json:"language"`
+	Onboarding          json.RawMessage `json:"onboarding"`
+	Goal                interface{}     `json:"goal,omitempty"`
+	Topics              interface{}     `json:"topics,omitempty"`
+	Cadence             interface{}     `json:"cadence,omitempty"`
+	StartPath           interface{}     `json:"start_path,omitempty"`
+	OnboardingCompleted interface{}     `json:"onboarding_completed,omitempty"`
+	HasWallet           bool            `json:"has_wallet"`
+	NeedsOnboarding     bool            `json:"needs_onboarding"`
 }
 
 type preferencesDefaultCurrencyFinder interface {
 	FindDefaultCurrencyID(ctx context.Context) (int, error)
+}
+
+// activeWalletCounter reports whether the user already has a non-archived wallet.
+type activeWalletCounter interface {
+	CountActiveByUserID(ctx context.Context, userID int) (int64, error)
 }
 
 // primaryCurrencyWalletSyncer aligns default wallet currency when primary changes.
@@ -41,13 +48,19 @@ type primaryCurrencyWalletSyncer interface {
 type GetPreferencesUseCase struct {
 	prefsRepo      domainIdentity.PreferencesRepository
 	currencyFinder preferencesDefaultCurrencyFinder
+	walletCounter  activeWalletCounter
 }
 
 func NewGetPreferencesUseCase(
 	prefsRepo domainIdentity.PreferencesRepository,
 	currencyFinder preferencesDefaultCurrencyFinder,
+	walletCounter activeWalletCounter,
 ) *GetPreferencesUseCase {
-	return &GetPreferencesUseCase{prefsRepo: prefsRepo, currencyFinder: currencyFinder}
+	return &GetPreferencesUseCase{
+		prefsRepo:      prefsRepo,
+		currencyFinder: currencyFinder,
+		walletCounter:  walletCounter,
+	}
 }
 
 func (uc *GetPreferencesUseCase) Execute(ctx context.Context, userID int) (*PreferencesResponse, error) {
@@ -70,7 +83,28 @@ func (uc *GetPreferencesUseCase) Execute(ctx context.Context, userID int) (*Pref
 			return nil, err
 		}
 	}
-	return toPreferencesResponse(prefs), nil
+	resp := toPreferencesResponse(prefs)
+	applyOnboardingGate(ctx, uc.walletCounter, userID, resp)
+	return resp, nil
+}
+
+func applyOnboardingGate(ctx context.Context, counter activeWalletCounter, userID int, resp *PreferencesResponse) {
+	completed := false
+	switch v := resp.OnboardingCompleted.(type) {
+	case bool:
+		completed = v
+	case string:
+		completed = v == "true" || v == "1"
+	}
+	hasWallet := false
+	if counter != nil {
+		count, err := counter.CountActiveByUserID(ctx, userID)
+		if err == nil {
+			hasWallet = count > 0
+		}
+	}
+	resp.HasWallet = hasWallet
+	resp.NeedsOnboarding = !completed || !hasWallet
 }
 
 // UpdatePreferencesRequest accepts flat onboarding fields and preference flags

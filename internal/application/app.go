@@ -120,7 +120,11 @@ func NewApp(db *gorm.DB) *App {
 	resetPasswordUseCase := appIdentity.NewResetPasswordUseCase(userRepo, tokenRepo, tokenService)
 	refreshTokenUseCase := appIdentity.NewRefreshTokenUseCase(userService, tokenService)
 	changePasswordUseCase := appIdentity.NewChangePasswordUseCase(userRepo, tokenService)
-	getPreferencesUseCase := appIdentity.NewGetPreferencesUseCase(prefsRepo, prefsRepo)
+	getPreferencesUseCase := appIdentity.NewGetPreferencesUseCase(
+		prefsRepo,
+		prefsRepo,
+		&activeWalletCountAdapter{walletRepo: walletRepo},
+	)
 	updatePreferencesUseCase := appIdentity.NewUpdatePreferencesUseCase(
 		prefsRepo,
 		prefsRepo,
@@ -699,6 +703,7 @@ func (app *App) SetupRoutes() *gin.Engine {
 
 			protected.GET("/wallets", app.FinanceHandlers.GetWallets)
 			protected.POST("/wallets", app.FinanceHandlers.CreateWallet)
+			protected.POST("/wallets/ensure-default", app.FinanceHandlers.EnsureDefaultWallet)
 			protected.GET("/wallets/summary", app.FinanceHandlers.GetWalletSummary)
 			protected.GET("/wallets/:id", app.FinanceHandlers.GetWallet)
 			protected.PUT("/wallets/:id", app.FinanceHandlers.UpdateWallet)
@@ -839,6 +844,14 @@ func (app *App) StartBackgroundJobs(ctx context.Context) {
 			}
 		}
 	}()
+}
+
+type activeWalletCountAdapter struct {
+	walletRepo domainFinance.WalletRepository
+}
+
+func (a *activeWalletCountAdapter) CountActiveByUserID(ctx context.Context, userID int) (int64, error) {
+	return a.walletRepo.CountActiveByUserID(ctx, domainFinance.NewUserID(userID))
 }
 
 type primaryWalletCurrencySyncAdapter struct {

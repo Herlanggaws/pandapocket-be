@@ -1009,6 +1009,16 @@ func (h *FinanceHandlers) CreateWallet(c *gin.Context) {
 	SuccessResponse(c, http.StatusCreated, gin.H{"wallet": response})
 }
 
+func (h *FinanceHandlers) EnsureDefaultWallet(c *gin.Context) {
+	userID := c.GetInt("user_id")
+	response, err := h.getWalletsUseCase.EnsureDefault(c.Request.Context(), userID)
+	if err != nil {
+		HandleError(c, err, http.StatusBadRequest)
+		return
+	}
+	SuccessResponse(c, http.StatusOK, response)
+}
+
 func (h *FinanceHandlers) GetWallets(c *gin.Context) {
 	userID := c.GetInt("user_id")
 	includeArchived := c.Query("include_archived") == "true" || c.Query("include_archived") == "1"

@@ -101,7 +101,7 @@ func TestSignInLinksExistingEmail(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if response.UserID != existing.ID().Value() || !response.HasPassword {
+	if response.UserID != existing.ID().Value() || !response.HasPassword || response.IsNewUser {
 		t.Fatalf("linked user = %+v", response)
 	}
 	if trials.saved != 0 || len(identities.rows) != 1 {
@@ -146,7 +146,7 @@ func TestSignInRegistersWithoutPassword(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if response.HasPassword || response.Email != "new@example.com" || trials.saved != 1 {
+	if response.HasPassword || response.Email != "new@example.com" || trials.saved != 1 || !response.IsNewUser {
 		t.Fatalf("response=%+v trials=%d", response, trials.saved)
 	}
 	if len(captures) != 2 {

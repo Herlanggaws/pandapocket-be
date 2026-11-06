@@ -89,8 +89,21 @@ func (s *WalletService) GetDefaultWallet(ctx context.Context, userID UserID) (*W
 	return s.walletRepo.FindDefaultByUserID(ctx, userID)
 }
 
-// EnsureDefaultWallet returns the user's default wallet, creating a Cash wallet when missing.
+// DefaultWalletName is the idempotent first wallet created for new users.
+const DefaultWalletName = "Dompet utama"
+
+// EnsureDefaultWalletForUser resolves the user's primary currency then ensures a default wallet.
+func (s *WalletService) EnsureDefaultWalletForUser(ctx context.Context, userID UserID) (*Wallet, bool, error) {
+	primary, err := s.currencyRepo.GetUserDefaultCurrency(ctx, userID)
+	if err != nil {
+		return nil, false, err
+	}
+	return s.EnsureDefaultWallet(ctx, userID, primary.ID())
+}
+
+// EnsureDefaultWallet returns the user's default wallet, creating "Dompet utama" when missing.
 // The bool is true only when a new wallet was created in this call.
+// Concurrent creates are race-safe: a create failure re-reads any wallet the other caller made.
 func (s *WalletService) EnsureDefaultWallet(ctx context.Context, userID UserID, currencyID CurrencyID) (*Wallet, bool, error) {
 	_, err := s.walletRepo.FindDefaultByUserID(ctx, userID)
 	if err == nil {
@@ -100,8 +113,15 @@ func (s *WalletService) EnsureDefaultWallet(ctx context.Context, userID UserID, 
 		wallet, getErr := s.GetDefaultWallet(ctx, userID)
 		return wallet, false, getErr
 	}
-	wallet, createErr := s.CreateWallet(ctx, userID, "Cash", WalletTypeCash, currencyID, 0, true)
+	wallet, createErr := s.CreateWallet(ctx, userID, DefaultWalletName, WalletTypeCash, currencyID, 0, true)
 	if createErr != nil {
+		if existing, findErr := s.walletRepo.FindDefaultByUserID(ctx, userID); findErr == nil {
+			return existing, false, nil
+		}
+		wallets, listErr := s.walletRepo.FindByUserID(ctx, userID, false)
+		if listErr == nil && len(wallets) > 0 {
+			return wallets[0], false, nil
+		}
 		return nil, false, createErr
 	}
 	return wallet, true, nil

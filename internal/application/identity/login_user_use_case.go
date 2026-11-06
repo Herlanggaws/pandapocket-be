@@ -23,6 +23,7 @@ type LoginUserResponse struct {
 	Token        string `json:"token"`
 	RefreshToken string `json:"refresh_token"`
 	HasPassword  bool   `json:"has_password"`
+	IsNewUser    bool   `json:"is_new_user"`
 }
 
 // LoginUserUseCase handles user login
