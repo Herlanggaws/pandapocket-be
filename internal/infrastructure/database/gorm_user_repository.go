@@ -39,6 +39,7 @@ func toDomainUser(userModel User) (*identity.User, error) {
 	user := identity.NewUser(userID, emailVO, passwordHashVO, roleVO)
 	user.AssignPublicID(userModel.PublicID)
 	user.AssignCreatedAt(userModel.CreatedAt)
+	user.AssignIsInternal(userModel.IsInternal)
 	if userModel.DeletedAt != nil {
 		user.MarkDeleted(*userModel.DeletedAt)
 	}
@@ -65,6 +66,7 @@ func (r *GormUserRepository) Save(ctx context.Context, user *identity.User) erro
 			Email:        user.Email().Value(),
 			PasswordHash: passwordHashPointer(user.PasswordHash().Value()),
 			Role:         user.Role().Value(),
+			IsInternal:   user.IsInternal(),
 			DeletedAt:    user.DeletedAt(),
 			CreatedAt:    createdAt,
 		}
@@ -82,6 +84,7 @@ func (r *GormUserRepository) Save(ctx context.Context, user *identity.User) erro
 		"email":         user.Email().Value(),
 		"password_hash": passwordHashPointer(user.PasswordHash().Value()),
 		"role":          user.Role().Value(),
+		"is_internal":   user.IsInternal(),
 		"deleted_at":    user.DeletedAt(),
 	}
 	result := r.db.WithContext(ctx).Model(&User{}).Where("id = ?", user.ID().Value()).Updates(updates)

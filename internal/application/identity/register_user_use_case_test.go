@@ -47,6 +47,34 @@ func (m *memoryTrialSubs) ListAll(context.Context) ([]*billing.Subscription, err
 	return nil, nil
 }
 
+func TestRegisterUserMarksInternalFromPlusTest(t *testing.T) {
+	t.Setenv("INTERNAL_EMAIL_DOMAINS", "")
+	users := newMemUserRepo()
+	uc := NewRegisterUserUseCase(
+		domainIdentity.NewUserService(users),
+		stubTokenService{},
+		&memoryTrialSubs{},
+	)
+
+	response, err := uc.Execute(context.Background(), RegisterUserRequest{
+		Email:    "dev+test@example.com",
+		Password: "password-ok",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !response.IsInternal {
+		t.Fatal("expected is_internal true for +test local part")
+	}
+	stored, err := users.FindByID(context.Background(), domainIdentity.NewUserID(response.UserID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !stored.IsInternal() {
+		t.Fatal("expected persisted is_internal true")
+	}
+}
+
 func TestRegisterUserCapturesSignupAndTrial(t *testing.T) {
 	var captures []struct {
 		userID int

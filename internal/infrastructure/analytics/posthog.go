@@ -53,6 +53,39 @@ func Close() {
 	}
 }
 
+var testIdentify func(userID int, properties map[string]interface{})
+
+// SetTestIdentify installs a hook used by unit tests. Pass nil to clear.
+func SetTestIdentify(fn func(userID int, properties map[string]interface{})) {
+	mu.Lock()
+	defer mu.Unlock()
+	testIdentify = fn
+}
+
+// Identify sets person properties for the user (PostHog $set). Never include email or amounts.
+func Identify(userID int, properties map[string]interface{}) {
+	mu.Lock()
+	c := client
+	hook := testIdentify
+	mu.Unlock()
+	if hook != nil {
+		hook(userID, properties)
+	}
+	if c == nil || userID <= 0 {
+		return
+	}
+	props := posthog.NewProperties()
+	for key, value := range properties {
+		props.Set(key, value)
+	}
+	if err := c.Enqueue(posthog.Identify{
+		DistinctId: strconv.Itoa(userID),
+		Properties: props,
+	}); err != nil {
+		log.Printf("posthog identify: %v", err)
+	}
+}
+
 // Capture sends a product event for the user. Never include amounts, notes, or email.
 func Capture(userID int, event string, properties map[string]interface{}) {
 	mu.Lock()

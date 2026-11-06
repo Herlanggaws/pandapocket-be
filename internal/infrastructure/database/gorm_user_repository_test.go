@@ -82,6 +82,25 @@ func TestUpdatePreservesCreatedAtAndLastLoginAt(t *testing.T) {
 	}
 }
 
+func TestSavePersistsIsInternal(t *testing.T) {
+	db := openUserRepoTestDB(t)
+	repo := NewGormUserRepository(db)
+	user := newTestUser(t, "internal-flag@example.com")
+	user.MarkInternal()
+
+	if err := repo.Save(context.Background(), user); err != nil {
+		t.Fatal(err)
+	}
+
+	loaded, err := repo.FindByID(context.Background(), user.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !loaded.IsInternal() {
+		t.Fatal("expected is_internal true after save/load")
+	}
+}
+
 func TestUpdateLastLoginAt(t *testing.T) {
 	db := openUserRepoTestDB(t)
 	repo := NewGormUserRepository(db)

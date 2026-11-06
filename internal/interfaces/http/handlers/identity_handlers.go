@@ -109,6 +109,7 @@ func (h *IdentityHandlers) Register(c *gin.Context) {
 			"id":           response.UserID,
 			"email":        response.Email,
 			"has_password": response.HasPassword,
+			"is_internal":  response.IsInternal,
 		},
 	})
 }
@@ -135,6 +136,7 @@ func (h *IdentityHandlers) Login(c *gin.Context) {
 			"id":           response.UserID,
 			"email":        response.Email,
 			"has_password": response.HasPassword,
+			"is_internal":  response.IsInternal,
 		},
 	})
 }
@@ -168,6 +170,7 @@ func (h *IdentityHandlers) SignInWithProvider(c *gin.Context) {
 			"id":           response.UserID,
 			"email":        response.Email,
 			"has_password": response.HasPassword,
+			"is_internal":  response.IsInternal,
 		},
 	})
 }

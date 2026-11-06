@@ -76,12 +76,16 @@ func (uc *SignInWithProviderUseCase) Execute(ctx context.Context, req SignInWith
 		return nil, errors.New("failed to generate token")
 	}
 	recordLastLogin(ctx, uc.users, user.ID())
+	analytics.Identify(user.ID().Value(), map[string]interface{}{
+		"is_internal": user.IsInternal(),
+	})
 	return &LoginUserResponse{
 		UserID:       user.ID().Value(),
 		Email:        user.Email().Value(),
 		Token:        token,
 		RefreshToken: refreshToken,
 		HasPassword:  user.PasswordHash().IsSet(),
+		IsInternal:   user.IsInternal(),
 	}, nil
 }
 
