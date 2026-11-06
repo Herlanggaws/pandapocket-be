@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"panda-pocket/internal/domain/finance"
+	"time"
 
 	"gorm.io/gorm"
 )
@@ -17,30 +18,54 @@ func NewGormCategoryRepository(db *gorm.DB) *GormCategoryRepository {
 	return &GormCategoryRepository{db: db}
 }
 
+func categoryUserIDPtr(category *finance.Category) *uint {
+	if category.UserID() == nil || category.UserID().Value() == 0 {
+		return nil
+	}
+	userID := uint(category.UserID().Value())
+	return &userID
+}
+
 // Save saves a category to the database
 func (r *GormCategoryRepository) Save(ctx context.Context, category *finance.Category) error {
-	// Convert domain category to GORM model
-	categoryModel := &Category{
-		Name:         category.Name(),
-		Color:        category.Color(),
-		IsDefault:    category.IsDefault(),
-		CategoryType: string(category.Type()),
+	createdAt := category.CreatedAt()
+	if createdAt.IsZero() {
+		createdAt = time.Now().UTC()
+		category.AssignCreatedAt(createdAt)
 	}
 
-	if category.ID().Value() != 0 {
-		categoryModel.ID = uint(category.ID().Value())
+	name := category.Name()
+	color := category.Color()
+	isDefault := category.IsDefault()
+	categoryType := string(category.Type())
+	userID := categoryUserIDPtr(category)
+
+	if category.ID().Value() == 0 {
+		categoryModel := &Category{
+			UserID:       userID,
+			Name:         name,
+			Color:        color,
+			IsDefault:    isDefault,
+			CategoryType: categoryType,
+			CreatedAt:    createdAt,
+		}
+		return r.db.WithContext(ctx).Create(categoryModel).Error
 	}
 
-	if category.UserID().Value() != 0 {
-		userID := uint(category.UserID().Value())
-		categoryModel.UserID = &userID
+	updates := map[string]interface{}{
+		"user_id":       userID,
+		"name":          name,
+		"color":         color,
+		"is_default":    isDefault,
+		"category_type": categoryType,
 	}
-
-	// Save using GORM
-	if err := r.db.WithContext(ctx).Save(categoryModel).Error; err != nil {
-		return err
+	result := r.db.WithContext(ctx).Model(&Category{}).Where("id = ?", category.ID().Value()).Updates(updates)
+	if result.Error != nil {
+		return result.Error
 	}
-
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
 	return nil
 }
 
@@ -56,27 +81,30 @@ func (r *GormCategoryRepository) FindByID(ctx context.Context, id finance.Catego
 		return nil, err
 	}
 
-	// Convert GORM model to domain category
-	categoryID := finance.NewCategoryID(int(categoryModel.ID))
+	return categoryFromModel(categoryModel)
+}
+
+func categoryFromModel(model Category) (*finance.Category, error) {
+	categoryID := finance.NewCategoryID(int(model.ID))
 	var userID *finance.UserID
-	if categoryModel.UserID != nil {
-		userIDVal := finance.NewUserID(int(*categoryModel.UserID))
+	if model.UserID != nil {
+		userIDVal := finance.NewUserID(int(*model.UserID))
 		userID = &userIDVal
 	}
-	categoryType := finance.CategoryType(categoryModel.CategoryType)
+	categoryType := finance.CategoryType(model.CategoryType)
 
 	category, err := finance.NewCategory(
 		categoryID,
 		userID,
-		categoryModel.Name,
-		categoryModel.Color,
-		categoryModel.IsDefault,
+		model.Name,
+		model.Color,
+		model.IsDefault,
 		categoryType,
 	)
 	if err != nil {
 		return nil, err
 	}
-
+	category.AssignCreatedAt(model.CreatedAt)
 	return category, nil
 }
 
@@ -89,25 +117,9 @@ func (r *GormCategoryRepository) FindByUserID(ctx context.Context, userID financ
 		return nil, err
 	}
 
-	// Convert GORM models to domain categories
 	var categories []*finance.Category
 	for _, model := range categoryModels {
-		categoryID := finance.NewCategoryID(int(model.ID))
-		var userID *finance.UserID
-		if model.UserID != nil {
-			userIDVal := finance.NewUserID(int(*model.UserID))
-			userID = &userIDVal
-		}
-		categoryType := finance.CategoryType(model.CategoryType)
-
-		category, err := finance.NewCategory(
-			categoryID,
-			userID,
-			model.Name,
-			model.Color,
-			model.IsDefault,
-			categoryType,
-		)
+		category, err := categoryFromModel(model)
 		if err != nil {
 			return nil, err
 		}
@@ -126,24 +138,9 @@ func (r *GormCategoryRepository) FindByUserIDAndType(ctx context.Context, userID
 		return nil, err
 	}
 
-	// Convert GORM models to domain categories
 	var categories []*finance.Category
 	for _, model := range categoryModels {
-		categoryID := finance.NewCategoryID(int(model.ID))
-		var userID *finance.UserID
-		if model.UserID != nil {
-			userIDVal := finance.NewUserID(int(*model.UserID))
-			userID = &userIDVal
-		}
-
-		category, err := finance.NewCategory(
-			categoryID,
-			userID,
-			model.Name,
-			model.Color,
-			model.IsDefault,
-			categoryType,
-		)
+		category, err := categoryFromModel(model)
 		if err != nil {
 			return nil, err
 		}
@@ -178,25 +175,9 @@ func (r *GormCategoryRepository) FindDefaultCategories(ctx context.Context) ([]*
 		return nil, err
 	}
 
-	// Convert GORM models to domain categories
 	var categories []*finance.Category
 	for _, model := range categoryModels {
-		categoryID := finance.NewCategoryID(int(model.ID))
-		var userID *finance.UserID
-		if model.UserID != nil {
-			userIDVal := finance.NewUserID(int(*model.UserID))
-			userID = &userIDVal
-		}
-		categoryType := finance.CategoryType(model.CategoryType)
-
-		category, err := finance.NewCategory(
-			categoryID,
-			userID,
-			model.Name,
-			model.Color,
-			model.IsDefault,
-			categoryType,
-		)
+		category, err := categoryFromModel(model)
 		if err != nil {
 			return nil, err
 		}

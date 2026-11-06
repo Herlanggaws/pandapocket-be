@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"panda-pocket/internal/domain/billing"
+	"time"
 
 	"gorm.io/gorm"
 )
@@ -47,6 +48,15 @@ func (r *GormSubscriptionRepository) toModel(sub *billing.Subscription) *Subscri
 		interval = &value
 	}
 
+	createdAt := sub.CreatedAt()
+	if createdAt.IsZero() {
+		createdAt = time.Now().UTC()
+	}
+	updatedAt := sub.UpdatedAt()
+	if updatedAt.IsZero() {
+		updatedAt = time.Now().UTC()
+	}
+
 	model := &Subscription{
 		UserID:             uint(sub.UserID()),
 		Plan:               sub.Plan().String(),
@@ -58,6 +68,8 @@ func (r *GormSubscriptionRepository) toModel(sub *billing.Subscription) *Subscri
 		DoitSubscriptionID: sub.DoitSubscriptionID(),
 		DoitCustomerRef:    sub.DoitCustomerRef(),
 		CancelAtPeriodEnd:  sub.CancelAtPeriodEnd(),
+		CreatedAt:          createdAt,
+		UpdatedAt:          updatedAt,
 	}
 	if sub.ID().Value() != 0 {
 		model.ID = uint(sub.ID().Value())
@@ -67,13 +79,35 @@ func (r *GormSubscriptionRepository) toModel(sub *billing.Subscription) *Subscri
 
 func (r *GormSubscriptionRepository) Save(ctx context.Context, sub *billing.Subscription) error {
 	model := r.toModel(sub)
-	if sub.ID().Value() != 0 {
-		return r.db.WithContext(ctx).Save(model).Error
+	if sub.ID().Value() == 0 {
+		if err := r.db.WithContext(ctx).Create(model).Error; err != nil {
+			return err
+		}
+		sub.AssignID(billing.NewSubscriptionID(int(model.ID)))
+		return nil
 	}
-	if err := r.db.WithContext(ctx).Create(model).Error; err != nil {
-		return err
+
+	// Targeted update so Save never overwrites created_at with a zero value.
+	updates := map[string]interface{}{
+		"user_id":              model.UserID,
+		"plan":                 model.Plan,
+		"billing_interval":     model.BillingInterval,
+		"status":               model.Status,
+		"trial_ends_at":        model.TrialEndsAt,
+		"current_period_end":   model.CurrentPeriodEnd,
+		"grace_ends_at":        model.GraceEndsAt,
+		"doit_subscription_id": model.DoitSubscriptionID,
+		"doit_customer_ref":    model.DoitCustomerRef,
+		"cancel_at_period_end": model.CancelAtPeriodEnd,
+		"updated_at":           time.Now().UTC(),
 	}
-	sub.AssignID(billing.NewSubscriptionID(int(model.ID)))
+	result := r.db.WithContext(ctx).Model(&Subscription{}).Where("id = ?", model.ID).Updates(updates)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
 	return nil
 }
 

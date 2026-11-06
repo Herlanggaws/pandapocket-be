@@ -193,6 +193,11 @@ func (t *Transaction) CreatedAt() time.Time {
 	return t.createdAt
 }
 
+// AssignCreatedAt restores the persisted created_at when loading a row.
+func (t *Transaction) AssignCreatedAt(createdAt time.Time) {
+	t.createdAt = createdAt
+}
+
 // UpdateAmount updates the transaction amount
 func (t *Transaction) UpdateAmount(newAmount Money) error {
 	if newAmount.Currency() != t.currencyID {

@@ -74,6 +74,12 @@ func (r *GormBudgetRepository) Save(ctx context.Context, budget *finance.Budget)
 		return r.db.WithContext(ctx).Model(&Budget{}).Where("id = ?", budgetModel.ID).Updates(updates).Error
 	}
 
+	createdAt := budget.CreatedAt()
+	if createdAt.IsZero() {
+		createdAt = time.Now().UTC()
+	}
+	budgetModel.CreatedAt = createdAt
+
 	if err := r.db.WithContext(ctx).Create(budgetModel).Error; err != nil {
 		return err
 	}

@@ -81,6 +81,11 @@ func (c *Category) CreatedAt() time.Time {
 	return c.createdAt
 }
 
+// AssignCreatedAt restores the persisted created_at when loading a row.
+func (c *Category) AssignCreatedAt(createdAt time.Time) {
+	c.createdAt = createdAt
+}
+
 // UpdateName updates the category name
 func (c *Category) UpdateName(name string) error {
 	if name == "" {

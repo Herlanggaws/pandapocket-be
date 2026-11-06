@@ -21,57 +21,80 @@ func NewGormTransactionRepository(db *gorm.DB) *GormTransactionRepository {
 
 // Save saves a transaction to the database
 func (r *GormTransactionRepository) Save(ctx context.Context, transaction *finance.Transaction) error {
-	// Convert domain transaction to GORM model
-	var transactionModel interface{}
+	createdAt := transaction.CreatedAt()
+	if createdAt.IsZero() {
+		createdAt = time.Now().UTC()
+		transaction.AssignCreatedAt(createdAt)
+	}
+
 	walletID := uint(transaction.WalletID().Value())
 	walletIDPtr := &walletID
+	userID := uint(transaction.UserID().Value())
+	categoryID := uint(transaction.CategoryID().Value())
+	currencyID := uint(transaction.CurrencyID().Value())
+	amount := transaction.Amount().Amount()
+	description := transaction.Description()
+	date := transaction.Date()
 
-	if transaction.Type() == finance.TransactionTypeExpense {
-		expenseModel := &Expense{
-			UserID:      uint(transaction.UserID().Value()),
-			WalletID:    walletIDPtr,
-			CategoryID:  uint(transaction.CategoryID().Value()),
-			CurrencyID:  uint(transaction.CurrencyID().Value()),
-			Amount:      transaction.Amount().Amount(),
-			Description: transaction.Description(),
-			Date:        transaction.Date(),
+	if transaction.ID().Value() == 0 {
+		if transaction.Type() == finance.TransactionTypeExpense {
+			expenseModel := &Expense{
+				UserID:      userID,
+				WalletID:    walletIDPtr,
+				CategoryID:  categoryID,
+				CurrencyID:  currencyID,
+				Amount:      amount,
+				Description: description,
+				Date:        date,
+				CreatedAt:   createdAt,
+			}
+			if err := r.db.WithContext(ctx).Create(expenseModel).Error; err != nil {
+				return err
+			}
+			transaction.AssignID(finance.NewTransactionID(int(expenseModel.ID)))
+			return nil
 		}
 
-		if transaction.ID().Value() != 0 {
-			expenseModel.ID = uint(transaction.ID().Value())
-		}
-
-		transactionModel = expenseModel
-	} else {
 		incomeModel := &Income{
-			UserID:      uint(transaction.UserID().Value()),
+			UserID:      userID,
 			WalletID:    walletIDPtr,
-			CategoryID:  uint(transaction.CategoryID().Value()),
-			CurrencyID:  uint(transaction.CurrencyID().Value()),
-			Amount:      transaction.Amount().Amount(),
-			Description: transaction.Description(),
-			Date:        transaction.Date(),
+			CategoryID:  categoryID,
+			CurrencyID:  currencyID,
+			Amount:      amount,
+			Description: description,
+			Date:        date,
+			CreatedAt:   createdAt,
 		}
-
-		if transaction.ID().Value() != 0 {
-			incomeModel.ID = uint(transaction.ID().Value())
+		if err := r.db.WithContext(ctx).Create(incomeModel).Error; err != nil {
+			return err
 		}
-
-		transactionModel = incomeModel
+		transaction.AssignID(finance.NewTransactionID(int(incomeModel.ID)))
+		return nil
 	}
 
-	// Save using GORM
-	if err := r.db.WithContext(ctx).Save(transactionModel).Error; err != nil {
-		return err
+	// Targeted update so Save never overwrites created_at with a zero value.
+	updates := map[string]interface{}{
+		"user_id":     userID,
+		"wallet_id":   walletIDPtr,
+		"category_id": categoryID,
+		"currency_id": currencyID,
+		"amount":      amount,
+		"description": description,
+		"date":        date,
 	}
 
-	switch model := transactionModel.(type) {
-	case *Expense:
-		transaction.AssignID(finance.NewTransactionID(int(model.ID)))
-	case *Income:
-		transaction.AssignID(finance.NewTransactionID(int(model.ID)))
+	var result *gorm.DB
+	if transaction.Type() == finance.TransactionTypeExpense {
+		result = r.db.WithContext(ctx).Model(&Expense{}).Where("id = ?", transaction.ID().Value()).Updates(updates)
+	} else {
+		result = r.db.WithContext(ctx).Model(&Income{}).Where("id = ?", transaction.ID().Value()).Updates(updates)
 	}
-
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
 	return nil
 }
 
@@ -481,6 +504,7 @@ func (r *GormTransactionRepository) expenseToTransaction(expense *Expense) *fina
 		expense.Date,
 		finance.TransactionTypeExpense,
 	)
+	transaction.AssignCreatedAt(expense.CreatedAt)
 	return transaction
 }
 
@@ -508,6 +532,7 @@ func (r *GormTransactionRepository) incomeToTransaction(income *Income) *finance
 		income.Date,
 		finance.TransactionTypeIncome,
 	)
+	transaction.AssignCreatedAt(income.CreatedAt)
 	return transaction
 }
 
