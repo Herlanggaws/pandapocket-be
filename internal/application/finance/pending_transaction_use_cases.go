@@ -191,6 +191,14 @@ func (uc *ConfirmPendingTransactionUseCase) Execute(ctx context.Context, userID,
 		return nil, err
 	}
 
+	if pending.Type() == domainFinance.TransactionTypeExpense {
+		source := "pending"
+		if pending.RecurringTransactionID().Value() > 0 {
+			source = "recurring"
+		}
+		trackExpenseCreated(ctx, uc.transactionService, userID, source)
+	}
+
 	if err := pending.Confirm(); err != nil {
 		return nil, err
 	}

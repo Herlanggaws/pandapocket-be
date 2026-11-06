@@ -5,7 +5,6 @@ import (
 	"errors"
 	"panda-pocket/internal/domain/entitlement"
 	"panda-pocket/internal/domain/finance"
-	"panda-pocket/internal/infrastructure/analytics"
 	"time"
 )
 
@@ -17,16 +16,21 @@ type CreateTransactionRequest struct {
 	Description string  `json:"description"`
 	Date        string  `json:"date" binding:"required"`
 	Type        string  `json:"type"`
-	// Source is analytics-only (first_expense_added). Not persisted.
+	// Source is analytics-only (expense_added / first_expense_added). Not persisted.
 	Source string `json:"source"`
+	// SkipExpenseAnalytics skips the shared helper when the caller emits its own
+	// expense_added (debt / receivable) to avoid double counting.
+	SkipExpenseAnalytics bool `json:"-"`
 }
 
 // normalizeExpenseSource keeps only known client sources for PostHog.
 func normalizeExpenseSource(source string) string {
-	if source == "foto_struk" {
-		return "foto_struk"
+	switch source {
+	case "foto_struk", "tanya_ai", "manual":
+		return source
+	default:
+		return "manual"
 	}
-	return "manual"
 }
 
 // CreateTransactionResponse represents the response after creating a transaction
@@ -113,18 +117,8 @@ func (uc *CreateTransactionUseCase) Execute(ctx context.Context, userID int, req
 		return nil, err
 	}
 
-	if finance.TransactionType(req.Type) == finance.TransactionTypeExpense {
-		expenseType := finance.TransactionTypeExpense
-		_, expenseCount, countErr := uc.transactionService.GetTransactionsByUserWithFilters(
-			ctx,
-			finance.NewUserID(userID),
-			finance.TransactionFilters{TransactionType: &expenseType, Limit: 1},
-		)
-		if countErr == nil && expenseCount == 1 {
-			analytics.Capture(userID, "first_expense_added", map[string]interface{}{
-				"source": normalizeExpenseSource(req.Source),
-			})
-		}
+	if finance.TransactionType(req.Type) == finance.TransactionTypeExpense && !req.SkipExpenseAnalytics {
+		trackExpenseCreated(ctx, uc.transactionService, userID, normalizeExpenseSource(req.Source))
 	}
 
 	return &CreateTransactionResponse{

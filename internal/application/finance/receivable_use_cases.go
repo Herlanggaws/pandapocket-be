@@ -217,12 +217,13 @@ func (uc *CreateReceivableUseCase) Execute(ctx context.Context, userID int, req 
 			date = asOf.Format("2006-01-02")
 		}
 		tx, txErr := uc.createTransactionUseCase.Execute(ctx, userID, CreateTransactionRequest{
-			CategoryID:  categoryID,
-			WalletID:    req.WalletID,
-			Amount:      req.CurrentBalance,
-			Description: description,
-			Date:        date,
-			Type:        "expense",
+			CategoryID:           categoryID,
+			WalletID:             req.WalletID,
+			Amount:               req.CurrentBalance,
+			Description:          description,
+			Date:                 date,
+			Type:                 "expense",
+			SkipExpenseAnalytics: true,
 		})
 		if txErr != nil {
 			return nil, txErr

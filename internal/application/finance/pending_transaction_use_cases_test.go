@@ -185,7 +185,19 @@ func (r *memTxRepo) FindByUserIDAndCategory(ctx context.Context, userID domainFi
 	return nil, nil
 }
 func (r *memTxRepo) FindByUserIDWithFilters(ctx context.Context, userID domainFinance.UserID, filters domainFinance.TransactionFilters) ([]*domainFinance.Transaction, int64, error) {
-	return nil, 0, nil
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var matched []*domainFinance.Transaction
+	for _, tx := range r.saved {
+		if tx.UserID().Value() != userID.Value() {
+			continue
+		}
+		if filters.TransactionType != nil && tx.Type() != *filters.TransactionType {
+			continue
+		}
+		matched = append(matched, tx)
+	}
+	return matched, int64(len(matched)), nil
 }
 func (r *memTxRepo) Delete(ctx context.Context, id domainFinance.TransactionID) error {
 	return nil

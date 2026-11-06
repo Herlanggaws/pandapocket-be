@@ -683,7 +683,7 @@ Create a new expense transaction.
 }
 ```
 
-`source` is optional and analytics-only (`first_expense_added`). Allowed values: `manual`, `foto_struk`. Empty or any other value is treated as `manual`. It is not stored on the transaction and is not returned in the response.
+`source` is optional and analytics-only (`expense_added` / `first_expense_added`). Allowed values: `manual`, `foto_struk`, `tanya_ai`. Empty or any other value is treated as `manual`. It is not stored on the transaction and is not returned in the response. The API also emits these events for other expense paths (e.g. confirming a pending/recurring item uses `pending` or `recurring`).
 
 **Response:**
 ```json
@@ -2814,6 +2814,11 @@ Keep this file in sync with the running API. When routes, request/response shape
 ---
 
 ## Version History
+
+- **v2.63.0**: **API emits `expense_added` / `first_expense_added` for every expense path**
+  - `POST /api/expenses` `source` also accepts `tanya_ai`; both events fire from the API (not only the first)
+  - Confirming pending/recurring expenses emits with source `pending` or `recurring`
+  - Debt/receivable side-effect expenses keep their existing `expense_added` shape (with `category_id`)
 
 - **v2.62.0**: **Receipt scan vision timeout**
   - Vision call bounded to 45s; `504 RECEIPT_SCAN_TIMEOUT` when exceeded (no debit)

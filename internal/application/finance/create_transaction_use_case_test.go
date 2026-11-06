@@ -17,6 +17,7 @@ func TestNormalizeExpenseSource(t *testing.T) {
 		want string
 	}{
 		{"foto_struk", "foto_struk"},
+		{"tanya_ai", "tanya_ai"},
 		{"manual", "manual"},
 		{"", "manual"},
 		{"receipt", "manual"},
@@ -226,6 +227,33 @@ func newCreateTransactionUseCase(t *testing.T) *CreateTransactionUseCase {
 	return NewCreateTransactionUseCase(txService, walletService, entitlement.StaticChecker{Pro: true})
 }
 
+type analyticsCapture struct {
+	event string
+	props map[string]interface{}
+}
+
+func collectAnalyticsCaptures(t *testing.T) *[]analyticsCapture {
+	t.Helper()
+	captures := &[]analyticsCapture{}
+	analytics.SetTestCapture(func(userID int, event string, properties map[string]interface{}) {
+		*captures = append(*captures, analyticsCapture{event: event, props: properties})
+	})
+	t.Cleanup(func() { analytics.SetTestCapture(nil) })
+	return captures
+}
+
+func eventSources(captures []analyticsCapture, event string) []string {
+	var sources []string
+	for _, c := range captures {
+		if c.event != event {
+			continue
+		}
+		src, _ := c.props["source"].(string)
+		sources = append(sources, src)
+	}
+	return sources
+}
+
 func TestCreateTransaction_FirstExpenseSource(t *testing.T) {
 	cases := []struct {
 		name       string
@@ -233,19 +261,14 @@ func TestCreateTransaction_FirstExpenseSource(t *testing.T) {
 		wantSource string
 	}{
 		{"foto_struk", "foto_struk", "foto_struk"},
+		{"tanya_ai", "tanya_ai", "tanya_ai"},
 		{"empty defaults to manual", "", "manual"},
 		{"unknown defaults to manual", "receipt_ocr", "manual"},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			var capturedEvent string
-			var capturedProps map[string]interface{}
-			analytics.SetTestCapture(func(userID int, event string, properties map[string]interface{}) {
-				capturedEvent = event
-				capturedProps = properties
-			})
-			t.Cleanup(func() { analytics.SetTestCapture(nil) })
+			captures := collectAnalyticsCaptures(t)
 
 			uc := newCreateTransactionUseCase(t)
 			_, err := uc.Execute(context.Background(), 1, CreateTransactionRequest{
@@ -258,19 +281,161 @@ func TestCreateTransaction_FirstExpenseSource(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Execute: %v", err)
 			}
-			if capturedEvent != "first_expense_added" {
-				t.Fatalf("event=%q, want first_expense_added", capturedEvent)
+
+			expenseAdded := eventSources(*captures, "expense_added")
+			firstExpense := eventSources(*captures, "first_expense_added")
+			if len(expenseAdded) != 1 || expenseAdded[0] != tc.wantSource {
+				t.Fatalf("expense_added=%v, want [%q]", expenseAdded, tc.wantSource)
 			}
-			got, _ := capturedProps["source"].(string)
-			if got != tc.wantSource {
-				t.Fatalf("source=%q, want %q", got, tc.wantSource)
+			if len(firstExpense) != 1 || firstExpense[0] != tc.wantSource {
+				t.Fatalf("first_expense_added=%v, want [%q]", firstExpense, tc.wantSource)
 			}
-			if _, ok := capturedProps["amount"]; ok {
-				t.Fatal("amount must not be in analytics properties")
-			}
-			if _, ok := capturedProps["description"]; ok {
-				t.Fatal("description must not be in analytics properties")
+			for _, c := range *captures {
+				if _, ok := c.props["amount"]; ok {
+					t.Fatal("amount must not be in analytics properties")
+				}
+				if _, ok := c.props["description"]; ok {
+					t.Fatal("description must not be in analytics properties")
+				}
 			}
 		})
+	}
+}
+
+func TestCreateTransaction_SecondExpenseOnlyExpenseAdded(t *testing.T) {
+	uc := newCreateTransactionUseCase(t)
+	_, err := uc.Execute(context.Background(), 1, CreateTransactionRequest{
+		CategoryID: 1,
+		Amount:     10000,
+		Date:       "2024-01-15",
+		Type:       "expense",
+		Source:     "manual",
+	})
+	if err != nil {
+		t.Fatalf("first Execute: %v", err)
+	}
+
+	captures := collectAnalyticsCaptures(t)
+	_, err = uc.Execute(context.Background(), 1, CreateTransactionRequest{
+		CategoryID: 1,
+		Amount:     20000,
+		Date:       "2024-01-16",
+		Type:       "expense",
+		Source:     "manual",
+	})
+	if err != nil {
+		t.Fatalf("second Execute: %v", err)
+	}
+
+	if got := eventSources(*captures, "expense_added"); len(got) != 1 || got[0] != "manual" {
+		t.Fatalf("expense_added=%v, want [manual]", got)
+	}
+	if got := eventSources(*captures, "first_expense_added"); len(got) != 0 {
+		t.Fatalf("first_expense_added=%v, want none", got)
+	}
+}
+
+func TestConfirmPending_FirstExpenseAnalytics(t *testing.T) {
+	pendingRepo := newMemPendingRepo()
+	txRepo := &memTxRepo{}
+	amount, _ := domainFinance.NewMoney(99, domainFinance.NewCurrencyID(1))
+	pt, err := domainFinance.NewPendingTransaction(
+		domainFinance.NewUserID(1),
+		domainFinance.NewWalletID(1),
+		domainFinance.NewRecurringTransactionID(5),
+		time.Now(),
+		amount,
+		"Gym",
+		domainFinance.TransactionTypeExpense,
+		domainFinance.NewCategoryID(1),
+		domainFinance.NewCurrencyID(1),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = pendingRepo.Save(context.Background(), pt)
+
+	captures := collectAnalyticsCaptures(t)
+	txService := domainFinance.NewTransactionService(txRepo, &stubCategoryRepo{}, &stubCurrencyRepo{}, &stubWalletRepo{})
+	uc := NewConfirmPendingTransactionUseCase(pendingRepo, txService)
+	_, err = uc.Execute(context.Background(), 1, pt.ID().Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got := eventSources(*captures, "expense_added"); len(got) != 1 || got[0] != "recurring" {
+		t.Fatalf("expense_added=%v, want [recurring]", got)
+	}
+	if got := eventSources(*captures, "first_expense_added"); len(got) != 1 || got[0] != "recurring" {
+		t.Fatalf("first_expense_added=%v, want [recurring]", got)
+	}
+}
+
+func TestCreateReceivable_DoesNotDoubleCountExpenseAdded(t *testing.T) {
+	createTx, categoryService := newSideEffectCreateTxStack(t)
+	receivableRepo := &sideEffectReceivableRepo{}
+	uc := NewCreateReceivableUseCase(
+		domainFinance.NewReceivableService(receivableRepo, &sideEffectCollectionRepo{}),
+		createTx,
+		categoryService,
+		entitlement.StaticChecker{Pro: true},
+	)
+
+	captures := collectAnalyticsCaptures(t)
+	_, err := uc.Execute(context.Background(), 1, CreateReceivableRequest{
+		Name:           "Friend loan",
+		Type:           "personal_loan",
+		CurrencyID:     1,
+		CurrentBalance: 50000,
+		CreateExpense:  true,
+		CategoryID:     intPtr(1),
+	})
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+
+	expenseAdded := eventSources(*captures, "expense_added")
+	if len(expenseAdded) != 1 || expenseAdded[0] != "receivable" {
+		t.Fatalf("expense_added=%v, want [receivable] once", expenseAdded)
+	}
+}
+
+func TestRecordLiabilityPayment_DoesNotDoubleCountExpenseAdded(t *testing.T) {
+	createTx, categoryService := newSideEffectCreateTxStack(t)
+	principal := 100000.0
+	liability := domainFinance.ReconstituteLiability(
+		domainFinance.NewLiabilityID(10),
+		domainFinance.NewUserID(1),
+		"Bank loan",
+		domainFinance.LiabilityTypeLoan,
+		domainFinance.NewCurrencyID(1),
+		100000,
+		"",
+		false,
+		nil,
+		time.Now(),
+		domainFinance.LiabilityDebtDetails{OriginalPrincipal: &principal, MinimumPayment: 10000},
+	)
+	liabilityRepo := &sideEffectLiabilityRepo{byID: map[int]*domainFinance.Liability{10: liability}}
+	uc := NewRecordLiabilityPaymentUseCase(
+		domainFinance.NewLiabilityService(liabilityRepo, &sideEffectPaymentRepo{}),
+		createTx,
+		categoryService,
+	)
+
+	captures := collectAnalyticsCaptures(t)
+	_, err := uc.Execute(context.Background(), 1, 10, RecordLiabilityPaymentRequest{
+		Amount:        10000,
+		PaidAt:        "2024-06-01",
+		CreateExpense: true,
+		CategoryID:    intPtr(1),
+	})
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+
+	expenseAdded := eventSources(*captures, "expense_added")
+	if len(expenseAdded) != 1 || expenseAdded[0] != "debt" {
+		t.Fatalf("expense_added=%v, want [debt] once", expenseAdded)
 	}
 }

@@ -679,12 +679,13 @@ func (uc *RecordGoalContributionUseCase) Execute(
 			return nil, cErr
 		}
 		tx, txErr := uc.createTransactionUseCase.Execute(ctx, userID, CreateTransactionRequest{
-			CategoryID:  categoryID,
-			WalletID:    req.FromWalletID,
-			Amount:      req.Amount,
-			Description: description,
-			Date:        req.ContributedAt,
-			Type:        "expense",
+			CategoryID:           categoryID,
+			WalletID:             req.FromWalletID,
+			Amount:               req.Amount,
+			Description:          description,
+			Date:                 req.ContributedAt,
+			Type:                 "expense",
+			SkipExpenseAnalytics: true,
 		})
 		if txErr != nil {
 			return nil, txErr

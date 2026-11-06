@@ -794,12 +794,13 @@ func (uc *RecordLiabilityPaymentUseCase) Execute(
 			description = fmt.Sprintf("Debt payment (%s)", liabilityForExpense.Name())
 		}
 		tx, txErr := uc.createTransactionUseCase.Execute(ctx, userID, CreateTransactionRequest{
-			CategoryID:  categoryID,
-			WalletID:    req.WalletID,
-			Amount:      req.Amount,
-			Description: description,
-			Date:        req.PaidAt,
-			Type:        "expense",
+			CategoryID:           categoryID,
+			WalletID:             req.WalletID,
+			Amount:               req.Amount,
+			Description:          description,
+			Date:                 req.PaidAt,
+			Type:                 "expense",
+			SkipExpenseAnalytics: true,
 		})
 		if txErr != nil {
 			return nil, txErr
