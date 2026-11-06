@@ -24,6 +24,7 @@ type RegisterUserResponse struct {
 	RefreshToken string `json:"refresh_token"`
 	HasPassword  bool   `json:"has_password"`
 	IsNewUser    bool   `json:"is_new_user"`
+	IsInternal   bool   `json:"is_internal"`
 }
 
 // RegisterUserUseCase handles user registration
@@ -76,6 +77,9 @@ func (uc *RegisterUserUseCase) Execute(ctx context.Context, req RegisterUserRequ
 		return nil, errors.New("failed to create subscription")
 	}
 	userID := user.ID().Value()
+	analytics.Identify(userID, map[string]interface{}{
+		"is_internal": user.IsInternal(),
+	})
 	analytics.Capture(userID, "signup_completed", map[string]interface{}{
 		"method": "password",
 	})
@@ -96,5 +100,6 @@ func (uc *RegisterUserUseCase) Execute(ctx context.Context, req RegisterUserRequ
 		RefreshToken: refreshToken,
 		HasPassword:  true,
 		IsNewUser:    true,
+		IsInternal:   user.IsInternal(),
 	}, nil
 }

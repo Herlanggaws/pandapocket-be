@@ -13,6 +13,7 @@ type User struct {
 	Email        string     `gorm:"uniqueIndex;not null" json:"email"`
 	PasswordHash *string    `json:"-"`
 	Role         string     `gorm:"default:'user';check:role IN ('user', 'admin', 'super_admin')" json:"role"`
+	IsInternal   bool       `gorm:"not null;default:false" json:"is_internal"`
 	LastLoginAt  *time.Time `json:"last_login_at,omitempty"`
 	DeletedAt    *time.Time `gorm:"index" json:"deleted_at,omitempty"`
 	CreatedAt    time.Time  `json:"created_at"`

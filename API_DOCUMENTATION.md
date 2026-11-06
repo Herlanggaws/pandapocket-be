@@ -276,12 +276,16 @@ The access token expires in 15 minutes. The response still includes `refresh_tok
     "refresh_token": "...",
     "user": {
       "id": 1,
-      "email": "user@example.com"
+      "email": "user@example.com",
+      "has_password": true,
+      "is_internal": false
     }
   },
   "error": null
 }
 ```
+
+`user.is_internal` is true for staff/test accounts (auto-set on signup when the email local part contains `+test`, or the domain is listed in `INTERNAL_EMAIL_DOMAINS`).
 
 ### POST /api/auth/login
 
@@ -306,7 +310,8 @@ Login to get access and refresh tokens. The access token expires in 15 minutes. 
     "user": {
       "id": 1,
       "email": "user@example.com",
-      "has_password": true
+      "has_password": true,
+      "is_internal": false
     }
   },
   "error": null
@@ -334,7 +339,7 @@ Lookup order: existing `(provider, subject)`, then a verified email already on a
 
 `provider` is `google` or `apple`.
 
-**Response:** same shape as login, including `user.has_password` (`false` when the account has no password yet) and `is_new_user` (`true` only when this call registered a new account).
+**Response:** same shape as login, including `user.has_password` (`false` when the account has no password yet), `is_new_user` (`true` only when this call registered a new account), and `user.is_internal`.
 
 ### POST /api/auth/refresh
 

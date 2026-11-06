@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"panda-pocket/internal/domain/identity"
+	"panda-pocket/internal/infrastructure/analytics"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -24,6 +25,7 @@ type LoginUserResponse struct {
 	RefreshToken string `json:"refresh_token"`
 	HasPassword  bool   `json:"has_password"`
 	IsNewUser    bool   `json:"is_new_user"`
+	IsInternal   bool   `json:"is_internal"`
 }
 
 // LoginUserUseCase handles user login
@@ -71,6 +73,9 @@ func (uc *LoginUserUseCase) Execute(ctx context.Context, req LoginUserRequest) (
 	}
 
 	recordLastLogin(ctx, uc.userRepo, user.ID())
+	analytics.Identify(user.ID().Value(), map[string]interface{}{
+		"is_internal": user.IsInternal(),
+	})
 
 	return &LoginUserResponse{
 		UserID:       user.ID().Value(),
@@ -78,6 +83,7 @@ func (uc *LoginUserUseCase) Execute(ctx context.Context, req LoginUserRequest) (
 		Token:        token,
 		RefreshToken: refreshToken,
 		HasPassword:  user.PasswordHash().IsSet(),
+		IsInternal:   user.IsInternal(),
 	}, nil
 }
 

@@ -10,13 +10,14 @@ import (
 
 // User represents a user in the identity domain
 type User struct {
-	id        UserID
-	publicID  string
-	email     Email
-	password  PasswordHash
-	role      Role
-	createdAt time.Time
-	deletedAt *time.Time
+	id         UserID
+	publicID   string
+	email      Email
+	password   PasswordHash
+	role       Role
+	isInternal bool
+	createdAt  time.Time
+	deletedAt  *time.Time
 }
 
 // UserID is a value object representing a user identifier
@@ -159,6 +160,20 @@ func (u *User) AssignCreatedAt(createdAt time.Time) {
 
 func (u *User) Role() Role {
 	return u.role
+}
+
+func (u *User) IsInternal() bool {
+	return u.isInternal
+}
+
+// MarkInternal flags the account as internal (test / staff traffic).
+func (u *User) MarkInternal() {
+	u.isInternal = true
+}
+
+// AssignIsInternal restores the persisted is_internal flag when loading a row.
+func (u *User) AssignIsInternal(isInternal bool) {
+	u.isInternal = isInternal
 }
 
 func (u *User) DeletedAt() *time.Time {
