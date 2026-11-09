@@ -13,6 +13,8 @@ type BudgetReport struct {
 	TotalSpent     float64 `json:"total_spent"`
 	Remaining      float64 `json:"remaining"`
 	PercentageUsed float64 `json:"percentage_used"`
+	PeriodStart    string  `json:"period_start"`
+	PeriodEnd      string  `json:"period_end"`
 }
 
 // BudgetResponse represents a budget in API responses
@@ -83,11 +85,12 @@ func calculateBudgetReport(
 	transactionService *finance.TransactionService,
 	budget *finance.Budget,
 ) (*BudgetReport, error) {
+	windowStart, windowEnd := finance.EffectiveBudgetWindow(budget, time.Now())
 	transactions, err := transactionService.GetTransactionsByUserAndDateRange(
 		ctx,
 		budget.UserID(),
-		budget.StartDate(),
-		budget.EndDate(),
+		windowStart,
+		windowEnd,
 	)
 	if err != nil {
 		return nil, err
@@ -121,6 +124,8 @@ func calculateBudgetReport(
 		TotalSpent:     totalSpent,
 		Remaining:      remaining,
 		PercentageUsed: math.Round(percentageUsed*100) / 100,
+		PeriodStart:    windowStart.Format("2006-01-02"),
+		PeriodEnd:      windowEnd.Format("2006-01-02"),
 	}, nil
 }
 
@@ -139,11 +144,12 @@ func toBudgetResponse(
 	effectiveAmount := budget.Amount().Amount()
 	var report *BudgetReport
 	if transactionService != nil {
+		windowStart, windowEnd := finance.EffectiveBudgetWindow(budget, time.Now())
 		transactions, txErr := transactionService.GetTransactionsByUserAndDateRange(
 			ctx,
 			budget.UserID(),
-			budget.StartDate(),
-			budget.EndDate(),
+			windowStart,
+			windowEnd,
 		)
 		if txErr == nil {
 			periodIncome := sumIncomeForBudget(transactions, budget)

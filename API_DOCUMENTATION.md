@@ -1201,9 +1201,11 @@ Export transactions for the authenticated user as a **CSV** or **PDF** file down
 
 Budgets are limited to **expense** categories. Date windows are inclusive. Create auto-calculates `end_date` from `period` + `start_date` (weekly = 7 days, monthly/yearly = calendar period minus one day). Overlapping budgets for the same user and category are rejected. Spending reports only sum expenses in the budget's currency.
 
+**Rolling report window:** `report` spent / income / % use the inclusive intersection of the stored `start_date`–`end_date` with the **current calendar period** for `period` (weekly = Monday–Sunday, monthly = calendar month, yearly = calendar year). Stored dates are not rewritten. If that intersection is empty (expired or not yet started), the report falls back to the full stored range. `report.period_start` / `report.period_end` are the effective window used for the report (clients should use these for “days left” and mutation deep-links).
+
 **Limit types:**
 - `fixed` (default): cap is `amount`
-- `percent`: cap is `percent`% of **income** in the budget date range (same currency). Stored `amount` is `0`; use `effective_amount` for the resolved limit. If period income is `0`, `effective_amount` is `0` (exceeded only if spent > 0).
+- `percent`: cap is `percent`% of **income** in the **report window** (same currency). Stored `amount` is `0`; use `effective_amount` for the resolved limit. If period income is `0`, `effective_amount` is `0` (exceeded only if spent > 0).
 
 Report fields (`percentage_used`, `remaining`, `is_on_track`) are computed against `effective_amount`. Budget alerts (≥80%) also use `effective_amount`.
 
@@ -1236,7 +1238,9 @@ Get all budgets for the authenticated user.
         "is_on_track": true,
         "total_spent": 120.5,
         "remaining": 379.5,
-        "percentage_used": 24.1
+        "percentage_used": 24.1,
+        "period_start": "2024-01-01",
+        "period_end": "2024-01-31"
       }
     }
   ],
@@ -1250,21 +1254,23 @@ Get all budgets for the authenticated user.
 - `amount` (number): Stored fixed amount (`0` when `limit_type` is `percent`)
 - `limit_type` (string): `fixed` or `percent`
 - `percent` (number, optional): 1–100 when `limit_type` is `percent`
-- `effective_amount` (number): Resolved spending cap for the period
+- `effective_amount` (number): Resolved spending cap for the report window
 - `period` (string): Budget period (`weekly`, `monthly`, `yearly`)
-- `start_date` (string): Budget start date (YYYY-MM-DD)
-- `end_date` (string): Budget end date (YYYY-MM-DD), inclusive
+- `start_date` (string): Stored budget start date (YYYY-MM-DD)
+- `end_date` (string): Stored budget end date (YYYY-MM-DD), inclusive
 - `created_at` (string): Budget creation timestamp (ISO 8601)
 - `category` (object, optional): Category information
   - `id` (integer): Category ID
   - `name` (string): Category name
   - `color` (string): Category color (hex code)
   - `type` (string): Category type (`expense`)
-- `report` (object, optional): Spending vs budget for the window
+- `report` (object, optional): Spending vs budget for the rolling window
   - `is_on_track` (boolean): `true` when spent ≤ effective amount
   - `total_spent` (number): Expense total in the same currency
   - `remaining` (number): Effective amount minus total spent
   - `percentage_used` (number): Percent of effective amount used
+  - `period_start` (string): Effective report window start (YYYY-MM-DD)
+  - `period_end` (string): Effective report window end (YYYY-MM-DD), inclusive
 
 ### POST /api/budgets
 
@@ -1320,7 +1326,9 @@ Create a new budget. `end_date` is computed server-side from `period` and `start
       "is_on_track": true,
       "total_spent": 0,
       "remaining": 500,
-      "percentage_used": 0
+      "percentage_used": 0,
+      "period_start": "2024-01-01",
+      "period_end": "2024-01-31"
     }
   },
   "error": null
@@ -2846,6 +2854,10 @@ Keep this file in sync with the running API. When routes, request/response shape
 
 ## Version History
 
+- **v2.64.0**: **Budget report rolling window (F8)**
+  - Spending / income / `%` for budget `report` use intersection of stored dates with the current calendar period (`weekly` Mon–Sun, `monthly`, `yearly`)
+  - `report.period_start` / `report.period_end` expose the effective window; stored `start_date` / `end_date` unchanged
+  - Empty intersection (expired / future) falls back to the full stored range
 - **v2.63.0**: **API emits `expense_added` / `first_expense_added` for every expense path**
   - `POST /api/expenses` `source` also accepts `tanya_ai`; both events fire from the API (not only the first)
   - Confirming pending/recurring expenses emits with source `pending` or `recurring`
