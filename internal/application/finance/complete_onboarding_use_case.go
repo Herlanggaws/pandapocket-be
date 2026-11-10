@@ -36,26 +36,50 @@ type onboardingPreferencesRepo interface {
 	Save(ctx context.Context, prefs *domainIdentity.UserPreferences) error
 }
 
+type onboardingRecurringCreator interface {
+	Execute(ctx context.Context, userID int, req CreateRecurringTransactionRequest) (*RecurringTransactionResponse, error)
+}
+
+type onboardingBudgetCreator interface {
+	Execute(ctx context.Context, userID int, req CreateBudgetRequest) (*BudgetResponse, error)
+}
+
+type onboardingDueEnqueuer interface {
+	Execute(ctx context.Context, userID int) error
+}
+
+type onboardingCategoryLookup interface {
+	GetCategoriesByUserAndType(ctx context.Context, userID finance.UserID, categoryType finance.CategoryType) ([]*finance.Category, error)
+}
+
+type onboardingWalletEnsuring interface {
+	EnsureDefaultWallet(ctx context.Context, userID finance.UserID, currencyID finance.CurrencyID) (*finance.Wallet, bool, error)
+}
+
+type onboardingPrimaryCurrencyLookup interface {
+	GetPrimaryCurrency(ctx context.Context, userID finance.UserID) (*finance.Currency, error)
+}
+
 type CompleteOnboardingUseCase struct {
 	prefsRepo              onboardingPreferencesRepo
-	walletService          *finance.WalletService
-	currencyService        *finance.CurrencyService
-	categoryService        *finance.CategoryService
-	createRecurringUseCase *CreateRecurringTransactionUseCase
-	enqueueDueRecurring    *EnqueueDueRecurringUseCase
-	createBudgetUseCase    *CreateBudgetUseCase
+	walletService          onboardingWalletEnsuring
+	currencyService        onboardingPrimaryCurrencyLookup
+	categoryService        onboardingCategoryLookup
+	createRecurringUseCase onboardingRecurringCreator
+	enqueueDueRecurring    onboardingDueEnqueuer
+	createBudgetUseCase    onboardingBudgetCreator
 	liabilityService       *finance.LiabilityService
 	getHealthScoreUseCase  *GetHealthScoreUseCase
 }
 
 func NewCompleteOnboardingUseCase(
 	prefsRepo onboardingPreferencesRepo,
-	walletService *finance.WalletService,
-	currencyService *finance.CurrencyService,
-	categoryService *finance.CategoryService,
-	createRecurringUseCase *CreateRecurringTransactionUseCase,
-	enqueueDueRecurring *EnqueueDueRecurringUseCase,
-	createBudgetUseCase *CreateBudgetUseCase,
+	walletService onboardingWalletEnsuring,
+	currencyService onboardingPrimaryCurrencyLookup,
+	categoryService onboardingCategoryLookup,
+	createRecurringUseCase onboardingRecurringCreator,
+	enqueueDueRecurring onboardingDueEnqueuer,
+	createBudgetUseCase onboardingBudgetCreator,
 	liabilityService *finance.LiabilityService,
 	getHealthScoreUseCase *GetHealthScoreUseCase,
 ) *CompleteOnboardingUseCase {
@@ -274,24 +298,11 @@ func (uc *CompleteOnboardingUseCase) Execute(ctx context.Context, userID int, re
 		}
 
 		if req.MonthlyExpense > 0 {
+			// monthly_expense is an estimate for budgeting, not a bill — do not seed a recurring/pending expense.
 			expenseCategoryID, catErr := uc.findCategoryID(ctx, userID, finance.CategoryTypeExpense, "Other", "Bills", "Food")
 			if catErr != nil {
 				return nil, catErr
 			}
-			if err := uc.seedMonthlyPending(
-				ctx,
-				userID,
-				"expense",
-				expenseCategoryID,
-				req.MonthlyExpense,
-				"Onboarding monthly expense estimate",
-				today,
-				dayOfMonth,
-			); err != nil {
-				return nil, err
-			}
-			seededPending = true
-
 			if err := uc.ensureOnboardingBudget(ctx, userID, expenseCategoryID, req.MonthlyExpense, monthStart); err != nil {
 				return nil, err
 			}

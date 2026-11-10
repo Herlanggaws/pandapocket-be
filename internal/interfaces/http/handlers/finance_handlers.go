@@ -268,7 +268,13 @@ func (h *FinanceHandlers) CreateExpense(c *gin.Context) {
 	}
 
 	if h.checkBudgetAlertsUseCase != nil {
-		h.checkBudgetAlertsUseCase.Execute(c.Request.Context(), userID, req.CategoryID)
+		h.checkBudgetAlertsUseCase.Execute(
+			c.Request.Context(),
+			userID,
+			req.CategoryID,
+			finance.BudgetAlertTriggerManualExpense,
+			"",
+		)
 	}
 
 	SuccessResponse(c, http.StatusCreated, gin.H{
@@ -565,7 +571,13 @@ func (h *FinanceHandlers) UpdateExpense(c *gin.Context) {
 	}
 
 	if h.checkBudgetAlertsUseCase != nil {
-		h.checkBudgetAlertsUseCase.Execute(c.Request.Context(), userID, req.CategoryID)
+		h.checkBudgetAlertsUseCase.Execute(
+			c.Request.Context(),
+			userID,
+			req.CategoryID,
+			finance.BudgetAlertTriggerManualExpense,
+			"",
+		)
 	}
 
 	SuccessResponse(c, http.StatusOK, gin.H{
@@ -942,8 +954,14 @@ func (h *FinanceHandlers) ConfirmPendingTransaction(c *gin.Context) {
 		HandleError(c, err, http.StatusBadRequest)
 		return
 	}
-	if h.checkBudgetAlertsUseCase != nil && response != nil {
-		h.checkBudgetAlertsUseCase.Execute(c.Request.Context(), userID, response.CategoryID)
+	if h.checkBudgetAlertsUseCase != nil && response != nil && response.Type == "expense" {
+		h.checkBudgetAlertsUseCase.Execute(
+			c.Request.Context(),
+			userID,
+			response.CategoryID,
+			finance.BudgetAlertTriggerPendingConfirm,
+			response.Description,
+		)
 	}
 	SuccessResponse(c, http.StatusOK, gin.H{
 		"message":             "Pending transaction confirmed",
