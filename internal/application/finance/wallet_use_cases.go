@@ -162,6 +162,7 @@ func (uc *GetWalletsUseCase) EnsureDefault(ctx context.Context, userID int) (*En
 	if err != nil {
 		return nil, err
 	}
+	emitWalletCreated(userID, wallet, created, "ensure_default")
 	breakdown, balErr := uc.walletService.GetBalance(ctx, user, wallet.ID())
 	var balance *float64
 	if balErr == nil {
@@ -179,9 +180,11 @@ func (uc *GetWalletsUseCase) Execute(ctx context.Context, userID int, includeArc
 		return nil, err
 	}
 	if len(wallets) == 0 {
-		if _, err := uc.walletService.ResolveUsableWallet(ctx, user, nil); err != nil {
-			return nil, err
+		wallet, created, resolveErr := uc.walletService.ResolveUsableWallet(ctx, user, nil)
+		if resolveErr != nil {
+			return nil, resolveErr
 		}
+		emitWalletCreated(userID, wallet, created, "lazy_default")
 		wallets, err = uc.walletService.GetWallets(ctx, user, includeArchived)
 		if err != nil {
 			return nil, err

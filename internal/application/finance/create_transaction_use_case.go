@@ -92,10 +92,11 @@ func (uc *CreateTransactionUseCase) Execute(ctx context.Context, userID int, req
 		return nil, err
 	}
 
-	wallet, err := uc.walletService.ResolveUsableWallet(ctx, finance.NewUserID(userID), req.WalletID)
+	wallet, walletCreated, err := uc.walletService.ResolveUsableWallet(ctx, finance.NewUserID(userID), req.WalletID)
 	if err != nil {
 		return nil, err
 	}
+	emitWalletCreated(userID, wallet, walletCreated, "lazy_default")
 
 	money, err := finance.NewMoney(req.Amount, wallet.CurrencyID())
 	if err != nil {

@@ -70,10 +70,11 @@ func (uc *CreateRecurringTransactionUseCase) Execute(ctx context.Context, userID
 		return nil, err
 	}
 
-	wallet, err := uc.walletService.ResolveUsableWallet(ctx, domainFinance.NewUserID(userID), req.WalletID)
+	wallet, walletCreated, err := uc.walletService.ResolveUsableWallet(ctx, domainFinance.NewUserID(userID), req.WalletID)
 	if err != nil {
 		return nil, err
 	}
+	emitWalletCreated(userID, wallet, walletCreated, "lazy_default")
 
 	category, err := uc.categoryService.GetCategoryByID(ctx, domainFinance.NewCategoryID(req.CategoryID))
 	if err != nil {

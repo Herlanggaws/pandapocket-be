@@ -8,7 +8,7 @@ import (
 	"panda-pocket/internal/infrastructure/analytics"
 )
 
-func TestEmitOnboardingDefaultWalletCreated(t *testing.T) {
+func TestEmitWalletCreated(t *testing.T) {
 	wallet := domainFinance.ReconstituteWallet(
 		domainFinance.NewWalletID(1),
 		domainFinance.NewUserID(7),
@@ -32,13 +32,13 @@ func TestEmitOnboardingDefaultWalletCreated(t *testing.T) {
 		})
 		t.Cleanup(func() { analytics.SetTestCapture(nil) })
 
-		emitOnboardingDefaultWalletCreated(7, wallet, true)
+		emitWalletCreated(7, wallet, true, "ensure_default")
 
 		if capturedUser != 7 || capturedEvent != "wallet_created" {
 			t.Fatalf("got user=%d event=%q", capturedUser, capturedEvent)
 		}
-		if got, _ := capturedProps["source"].(string); got != "onboarding_default" {
-			t.Fatalf("source=%q, want onboarding_default", got)
+		if got, _ := capturedProps["source"].(string); got != "ensure_default" {
+			t.Fatalf("source=%q, want ensure_default", got)
 		}
 		if got, _ := capturedProps["wallet_type"].(string); got != "cash" {
 			t.Fatalf("wallet_type=%q, want cash", got)
@@ -51,6 +51,32 @@ func TestEmitOnboardingDefaultWalletCreated(t *testing.T) {
 		}
 	})
 
+	t.Run("uses onboarding_default source", func(t *testing.T) {
+		var capturedProps map[string]interface{}
+		analytics.SetTestCapture(func(_ int, _ string, properties map[string]interface{}) {
+			capturedProps = properties
+		})
+		t.Cleanup(func() { analytics.SetTestCapture(nil) })
+
+		emitWalletCreated(7, wallet, true, "onboarding_default")
+		if got, _ := capturedProps["source"].(string); got != "onboarding_default" {
+			t.Fatalf("source=%q, want onboarding_default", got)
+		}
+	})
+
+	t.Run("uses lazy_default source", func(t *testing.T) {
+		var capturedProps map[string]interface{}
+		analytics.SetTestCapture(func(_ int, _ string, properties map[string]interface{}) {
+			capturedProps = properties
+		})
+		t.Cleanup(func() { analytics.SetTestCapture(nil) })
+
+		emitWalletCreated(7, wallet, true, "lazy_default")
+		if got, _ := capturedProps["source"].(string); got != "lazy_default" {
+			t.Fatalf("source=%q, want lazy_default", got)
+		}
+	})
+
 	t.Run("skips when already exists", func(t *testing.T) {
 		called := false
 		analytics.SetTestCapture(func(userID int, event string, properties map[string]interface{}) {
@@ -58,7 +84,7 @@ func TestEmitOnboardingDefaultWalletCreated(t *testing.T) {
 		})
 		t.Cleanup(func() { analytics.SetTestCapture(nil) })
 
-		emitOnboardingDefaultWalletCreated(7, wallet, false)
+		emitWalletCreated(7, wallet, false, "ensure_default")
 		if called {
 			t.Fatal("expected no capture when wallet already existed")
 		}
@@ -71,7 +97,7 @@ func TestEmitOnboardingDefaultWalletCreated(t *testing.T) {
 		})
 		t.Cleanup(func() { analytics.SetTestCapture(nil) })
 
-		emitOnboardingDefaultWalletCreated(7, nil, true)
+		emitWalletCreated(7, nil, true, "lazy_default")
 		if called {
 			t.Fatal("expected no capture for nil wallet")
 		}

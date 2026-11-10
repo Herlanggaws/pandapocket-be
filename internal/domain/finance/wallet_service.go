@@ -127,9 +127,12 @@ func (s *WalletService) EnsureDefaultWallet(ctx context.Context, userID UserID, 
 	return wallet, true, nil
 }
 
-func (s *WalletService) ResolveUsableWallet(ctx context.Context, userID UserID, walletID *int) (*Wallet, error) {
+// ResolveUsableWallet returns a usable wallet for the user. When walletID is nil/0 and no
+// default exists, it creates "Dompet utama". The bool is true only when that create happened.
+func (s *WalletService) ResolveUsableWallet(ctx context.Context, userID UserID, walletID *int) (*Wallet, bool, error) {
 	var wallet *Wallet
 	var err error
+	created := false
 	if walletID != nil && *walletID > 0 {
 		wallet, err = s.GetWalletForUser(ctx, userID, NewWalletID(*walletID))
 	} else {
@@ -137,18 +140,18 @@ func (s *WalletService) ResolveUsableWallet(ctx context.Context, userID UserID, 
 		if err != nil {
 			primary, cerr := s.currencyRepo.GetUserDefaultCurrency(ctx, userID)
 			if cerr != nil {
-				return nil, errors.New("default wallet not found")
+				return nil, false, errors.New("default wallet not found")
 			}
-			wallet, _, err = s.EnsureDefaultWallet(ctx, userID, primary.ID())
+			wallet, created, err = s.EnsureDefaultWallet(ctx, userID, primary.ID())
 		}
 	}
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if err := wallet.CanAcceptTransactions(); err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	return wallet, nil
+	return wallet, created, nil
 }
 
 func (s *WalletService) UpdateWallet(
