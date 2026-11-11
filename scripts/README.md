@@ -12,6 +12,9 @@ export PROD_DB_USER='pandapocket_readonly'   # or nark; see create_readonly_role
 ./scripts/prod-read.sh google-onboarding
 ./scripts/prod-read.sh google-onboarding --since 2026-10-01
 ./scripts/prod-read.sh subs-summary
+./scripts/prod-read.sh retention-input
+./scripts/prod-read.sh retention-input --min-days 30 --max-days 45
+./scripts/prod-read.sh liabilities-usage
 ./scripts/prod-read.sh --help
 ```
 
@@ -34,6 +37,8 @@ sudo -u postgres psql -d pandapocket -v ON_ERROR_STOP=1 \
 - `tx-today` — today + prior 3 days Asia/Jakarta.
 - `google-onboarding` — Google-auth users since a date: zero wallets, zero txs, onboarding completed.
 - `subs-summary` — one SELECT over `subscriptions` + successful `billing_webhook_events`/`pending_payments`, excluding `users.is_internal` / soft-deleted: trial active now; paid Pro active by `billing_interval` monthly/semiannual/yearly; new paid Pro + total paid IDR this calendar month Asia/Jakarta; `pro_expired_or_canceled_this_month_est` (estimate from `subscriptions.updated_at` in the month for `canceled` or paid-`expired`); `trial_started_this_month` from `subscriptions.created_at` where `trial_ends_at IS NOT NULL` (trial row created at registration); conversions among those starts.
+- `retention-input` — cohort = real users (`deleted_at IS NULL`, `is_internal` false) with `created_at` in `[NOW()-max_days, NOW()-min_days)` (defaults 45/30); for weeks 1–4 after signup (`floor((tx.created_at - signup)/7d)+1`), `active_users` + `median_tx_per_active_user`; plus all-real-users weekly-active count and median tx in last 7 days. Counts/medians only.
+- `liabilities-usage` — among real users: users with any/active liability or receivable (`BOOL_OR(NOT is_archived)`), weekly-active among those sets, users with both, and `real_users_weekly_active` for context.
 
 ## Foreign keys (D1)
 
