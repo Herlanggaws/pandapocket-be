@@ -685,6 +685,7 @@ func (uc *RecordGoalContributionUseCase) Execute(
 			Description:          description,
 			Date:                 req.ContributedAt,
 			Type:                 "expense",
+			Source:               "goal",
 			SkipExpenseAnalytics: true,
 		})
 		if txErr != nil {

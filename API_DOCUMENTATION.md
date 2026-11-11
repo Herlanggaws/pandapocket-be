@@ -1274,7 +1274,7 @@ Get all budgets for the authenticated user.
 
 ### POST /api/budgets
 
-Create a new budget. `end_date` is computed server-side from `period` and `start_date` (client-sent `end_date` is ignored if present).
+Create a new budget. `end_date` is computed server-side from `period` and `start_date` (client-sent `end_date` is ignored if present). On success the API emits PostHog `budget_created` with `{category_id, period}` only (no amounts or names).
 
 **Request Body (fixed):**
 ```json
@@ -2854,6 +2854,9 @@ Keep this file in sync with the running API. When routes, request/response shape
 
 ## Version History
 
+- **v2.65.0**: **PostHog `budget_created` + reliable `first_expense_added`**
+  - `POST /api/budgets` (and onboarding/bagi-gaji creates via the same use case) emit `budget_created` with `{category_id, period}` only
+  - `first_expense_added` is decided by counting expenses **before** insert (props `{source}` only), including debt/receivable/goal side-effect paths
 - **v2.64.0**: **Budget report rolling window (F8)**
   - Spending / income / `%` for budget `report` use intersection of stored dates with the current calendar period (`weekly` Mon–Sun, `monthly`, `yearly`)
   - `report.period_start` / `report.period_end` expose the effective window; stored `start_date` / `end_date` unchanged

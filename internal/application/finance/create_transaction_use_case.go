@@ -103,6 +103,12 @@ func (uc *CreateTransactionUseCase) Execute(ctx context.Context, userID int, req
 		return nil, err
 	}
 
+	isExpense := finance.TransactionType(req.Type) == finance.TransactionTypeExpense
+	isFirstExpense := false
+	if isExpense {
+		isFirstExpense = wasFirstExpense(ctx, uc.transactionService, userID)
+	}
+
 	transaction, err := uc.transactionService.CreateTransaction(
 		ctx,
 		finance.NewUserID(userID),
@@ -118,8 +124,15 @@ func (uc *CreateTransactionUseCase) Execute(ctx context.Context, userID int, req
 		return nil, err
 	}
 
-	if finance.TransactionType(req.Type) == finance.TransactionTypeExpense && !req.SkipExpenseAnalytics {
-		trackExpenseCreated(ctx, uc.transactionService, userID, normalizeExpenseSource(req.Source))
+	if isExpense && !req.SkipExpenseAnalytics {
+		trackExpenseCreated(userID, normalizeExpenseSource(req.Source), isFirstExpense)
+	} else if isExpense && req.SkipExpenseAnalytics {
+		// Side-effect callers emit their own expense_added; still attribute first expense.
+		source := req.Source
+		if source == "" {
+			source = "manual"
+		}
+		emitFirstExpenseOnly(userID, source, isFirstExpense)
 	}
 
 	return &CreateTransactionResponse{

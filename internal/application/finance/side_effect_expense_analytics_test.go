@@ -177,30 +177,42 @@ func TestCreateReceivable_ExpenseAddedAnalytics(t *testing.T) {
 			t.Fatalf("Execute: %v", err)
 		}
 
-		found := false
+		foundExpenseAdded := false
+		foundFirstExpense := false
 		for _, c := range captures {
-			if c.event != "expense_added" {
-				continue
-			}
-			found = true
-			if got, _ := c.props["source"].(string); got != "receivable" {
-				t.Fatalf("source=%q, want receivable", got)
-			}
-			if got, _ := c.props["category_id"].(int); got != 1 {
-				t.Fatalf("category_id=%v, want 1", c.props["category_id"])
-			}
-			if _, ok := c.props["amount"]; ok {
-				t.Fatal("amount must not be in analytics properties")
-			}
-			if _, ok := c.props["notes"]; ok {
-				t.Fatal("notes must not be in analytics properties")
-			}
-			if _, ok := c.props["name"]; ok {
-				t.Fatal("name must not be in analytics properties")
+			switch c.event {
+			case "expense_added":
+				foundExpenseAdded = true
+				if got, _ := c.props["source"].(string); got != "receivable" {
+					t.Fatalf("source=%q, want receivable", got)
+				}
+				if got, _ := c.props["category_id"].(int); got != 1 {
+					t.Fatalf("category_id=%v, want 1", c.props["category_id"])
+				}
+				if _, ok := c.props["amount"]; ok {
+					t.Fatal("amount must not be in analytics properties")
+				}
+				if _, ok := c.props["notes"]; ok {
+					t.Fatal("notes must not be in analytics properties")
+				}
+				if _, ok := c.props["name"]; ok {
+					t.Fatal("name must not be in analytics properties")
+				}
+			case "first_expense_added":
+				foundFirstExpense = true
+				if got, _ := c.props["source"].(string); got != "receivable" {
+					t.Fatalf("first_expense source=%q, want receivable", got)
+				}
+				if _, ok := c.props["category_id"]; ok {
+					t.Fatal("first_expense_added must not include category_id")
+				}
 			}
 		}
-		if !found {
+		if !foundExpenseAdded {
 			t.Fatal("expected expense_added capture")
+		}
+		if !foundFirstExpense {
+			t.Fatal("expected first_expense_added for first receivable expense")
 		}
 	})
 
@@ -275,27 +287,39 @@ func TestRecordLiabilityPayment_ExpenseAddedAnalytics(t *testing.T) {
 			t.Fatalf("Execute: %v", err)
 		}
 
-		found := false
+		foundExpenseAdded := false
+		foundFirstExpense := false
 		for _, c := range captures {
-			if c.event != "expense_added" {
-				continue
-			}
-			found = true
-			if got, _ := c.props["source"].(string); got != "debt" {
-				t.Fatalf("source=%q, want debt", got)
-			}
-			if got, _ := c.props["category_id"].(int); got != 1 {
-				t.Fatalf("category_id=%v, want 1", c.props["category_id"])
-			}
-			if _, ok := c.props["amount"]; ok {
-				t.Fatal("amount must not be in analytics properties")
-			}
-			if _, ok := c.props["note"]; ok {
-				t.Fatal("note must not be in analytics properties")
+			switch c.event {
+			case "expense_added":
+				foundExpenseAdded = true
+				if got, _ := c.props["source"].(string); got != "debt" {
+					t.Fatalf("source=%q, want debt", got)
+				}
+				if got, _ := c.props["category_id"].(int); got != 1 {
+					t.Fatalf("category_id=%v, want 1", c.props["category_id"])
+				}
+				if _, ok := c.props["amount"]; ok {
+					t.Fatal("amount must not be in analytics properties")
+				}
+				if _, ok := c.props["note"]; ok {
+					t.Fatal("note must not be in analytics properties")
+				}
+			case "first_expense_added":
+				foundFirstExpense = true
+				if got, _ := c.props["source"].(string); got != "debt" {
+					t.Fatalf("first_expense source=%q, want debt", got)
+				}
+				if _, ok := c.props["category_id"]; ok {
+					t.Fatal("first_expense_added must not include category_id")
+				}
 			}
 		}
-		if !found {
+		if !foundExpenseAdded {
 			t.Fatal("expected expense_added capture")
+		}
+		if !foundFirstExpense {
+			t.Fatal("expected first_expense_added for first debt expense")
 		}
 	})
 

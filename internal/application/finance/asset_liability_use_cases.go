@@ -800,6 +800,7 @@ func (uc *RecordLiabilityPaymentUseCase) Execute(
 			Description:          description,
 			Date:                 req.PaidAt,
 			Type:                 "expense",
+			Source:               "debt",
 			SkipExpenseAnalytics: true,
 		})
 		if txErr != nil {

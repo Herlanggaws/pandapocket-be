@@ -100,6 +100,8 @@ func (uc *CreateBudgetUseCase) Execute(ctx context.Context, userID int, req Crea
 		return nil, err
 	}
 
+	emitBudgetCreated(userID, req.CategoryID, req.Period)
+
 	response := toBudgetResponse(ctx, budget, uc.categoryService, uc.transactionService)
 	return &response, nil
 }

@@ -176,6 +176,11 @@ func (uc *ConfirmPendingTransactionUseCase) Execute(ctx context.Context, userID,
 		return nil, errors.New("pending transaction is already resolved")
 	}
 
+	isFirstExpense := false
+	if pending.Type() == domainFinance.TransactionTypeExpense {
+		isFirstExpense = wasFirstExpense(ctx, uc.transactionService, userID)
+	}
+
 	_, err = uc.transactionService.CreateTransaction(
 		ctx,
 		pending.UserID(),
@@ -196,7 +201,7 @@ func (uc *ConfirmPendingTransactionUseCase) Execute(ctx context.Context, userID,
 		if pending.RecurringTransactionID().Value() > 0 {
 			source = "recurring"
 		}
-		trackExpenseCreated(ctx, uc.transactionService, userID, source)
+		trackExpenseCreated(userID, source, isFirstExpense)
 	}
 
 	if err := pending.Confirm(); err != nil {

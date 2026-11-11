@@ -223,6 +223,7 @@ func (uc *CreateReceivableUseCase) Execute(ctx context.Context, userID int, req 
 			Description:          description,
 			Date:                 date,
 			Type:                 "expense",
+			Source:               "receivable",
 			SkipExpenseAnalytics: true,
 		})
 		if txErr != nil {

@@ -398,6 +398,10 @@ func TestCreateReceivable_DoesNotDoubleCountExpenseAdded(t *testing.T) {
 	if len(expenseAdded) != 1 || expenseAdded[0] != "receivable" {
 		t.Fatalf("expense_added=%v, want [receivable] once", expenseAdded)
 	}
+	firstExpense := eventSources(*captures, "first_expense_added")
+	if len(firstExpense) != 1 || firstExpense[0] != "receivable" {
+		t.Fatalf("first_expense_added=%v, want [receivable] once", firstExpense)
+	}
 }
 
 func TestRecordLiabilityPayment_DoesNotDoubleCountExpenseAdded(t *testing.T) {
@@ -437,5 +441,9 @@ func TestRecordLiabilityPayment_DoesNotDoubleCountExpenseAdded(t *testing.T) {
 	expenseAdded := eventSources(*captures, "expense_added")
 	if len(expenseAdded) != 1 || expenseAdded[0] != "debt" {
 		t.Fatalf("expense_added=%v, want [debt] once", expenseAdded)
+	}
+	firstExpense := eventSources(*captures, "first_expense_added")
+	if len(firstExpense) != 1 || firstExpense[0] != "debt" {
+		t.Fatalf("first_expense_added=%v, want [debt] once", firstExpense)
 	}
 }
