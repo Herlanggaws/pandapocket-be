@@ -5,31 +5,18 @@ import (
 	"time"
 )
 
-func TestCalculateBudgetEndDateInclusiveWindows(t *testing.T) {
+func TestCalculateBudgetEndDateLongHorizon(t *testing.T) {
 	start := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	want := time.Date(2123, 12, 31, 0, 0, 0, 0, time.UTC)
 
-	weekly, err := calculateBudgetEndDate(BudgetPeriodWeekly, start)
-	if err != nil {
-		t.Fatalf("weekly end date error: %v", err)
-	}
-	if !weekly.Equal(time.Date(2024, 1, 7, 0, 0, 0, 0, time.UTC)) {
-		t.Fatalf("expected weekly end 2024-01-07, got %s", weekly.Format("2006-01-02"))
-	}
-
-	monthly, err := calculateBudgetEndDate(BudgetPeriodMonthly, start)
-	if err != nil {
-		t.Fatalf("monthly end date error: %v", err)
-	}
-	if !monthly.Equal(time.Date(2024, 1, 31, 0, 0, 0, 0, time.UTC)) {
-		t.Fatalf("expected monthly end 2024-01-31, got %s", monthly.Format("2006-01-02"))
-	}
-
-	yearly, err := calculateBudgetEndDate(BudgetPeriodYearly, start)
-	if err != nil {
-		t.Fatalf("yearly end date error: %v", err)
-	}
-	if !yearly.Equal(time.Date(2024, 12, 31, 0, 0, 0, 0, time.UTC)) {
-		t.Fatalf("expected yearly end 2024-12-31, got %s", yearly.Format("2006-01-02"))
+	for _, period := range []BudgetPeriod{BudgetPeriodWeekly, BudgetPeriodMonthly, BudgetPeriodYearly} {
+		end, err := calculateBudgetEndDate(period, start)
+		if err != nil {
+			t.Fatalf("%s end date error: %v", period, err)
+		}
+		if !end.Equal(want) {
+			t.Fatalf("%s: expected end %s, got %s", period, want.Format("2006-01-02"), end.Format("2006-01-02"))
+		}
 	}
 }
 
@@ -97,7 +84,7 @@ func TestBudgetAssignID(t *testing.T) {
 
 func TestBudgetOverlapsWith(t *testing.T) {
 	amount, _ := NewMoney(100, NewCurrencyID(1))
-	budget, _ := NewBudget(
+	budget, err := ReconstituteBudget(
 		NewBudgetID(1),
 		NewUserID(1),
 		NewCategoryID(1),
@@ -106,7 +93,12 @@ func TestBudgetOverlapsWith(t *testing.T) {
 		nil,
 		BudgetPeriodMonthly,
 		time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+		time.Date(2024, 1, 31, 0, 0, 0, 0, time.UTC),
+		time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 	)
+	if err != nil {
+		t.Fatalf("budget: %v", err)
+	}
 
 	if !budget.OverlapsWith(
 		time.Date(2024, 1, 15, 0, 0, 0, 0, time.UTC),

@@ -67,7 +67,7 @@ func TestEffectiveBudgetWindowIntersectsLongMonthly(t *testing.T) {
 	}
 }
 
-func TestEffectiveBudgetWindowFallbackWhenExpired(t *testing.T) {
+func TestEffectiveBudgetWindowExpiredUsesCalendarPeriod(t *testing.T) {
 	amount, _ := NewMoney(100, NewCurrencyID(1))
 	budget, err := ReconstituteBudget(
 		NewBudgetID(1),
@@ -87,10 +87,38 @@ func TestEffectiveBudgetWindowFallbackWhenExpired(t *testing.T) {
 
 	now := time.Date(2026, 11, 9, 0, 0, 0, 0, time.UTC)
 	start, end := EffectiveBudgetWindow(budget, now)
-	if !start.Equal(time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)) {
-		t.Fatalf("fallback start: got %s", start.Format("2006-01-02"))
+	if !start.Equal(time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)) {
+		t.Fatalf("expired start: got %s", start.Format("2006-01-02"))
 	}
-	if !end.Equal(time.Date(2026, 9, 30, 0, 0, 0, 0, time.UTC)) {
-		t.Fatalf("fallback end: got %s", end.Format("2006-01-02"))
+	if !end.Equal(time.Date(2026, 11, 30, 0, 0, 0, 0, time.UTC)) {
+		t.Fatalf("expired end: got %s", end.Format("2006-01-02"))
+	}
+}
+
+func TestEffectiveBudgetWindowNotStartedKeepsStored(t *testing.T) {
+	amount, _ := NewMoney(100, NewCurrencyID(1))
+	budget, err := ReconstituteBudget(
+		NewBudgetID(1),
+		NewUserID(1),
+		NewCategoryID(1),
+		amount,
+		BudgetLimitFixed,
+		nil,
+		BudgetPeriodMonthly,
+		time.Date(2026, 12, 1, 0, 0, 0, 0, time.UTC),
+		time.Date(2027, 11, 30, 0, 0, 0, 0, time.UTC),
+		time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC),
+	)
+	if err != nil {
+		t.Fatalf("budget: %v", err)
+	}
+
+	now := time.Date(2026, 11, 9, 0, 0, 0, 0, time.UTC)
+	start, end := EffectiveBudgetWindow(budget, now)
+	if !start.Equal(time.Date(2026, 12, 1, 0, 0, 0, 0, time.UTC)) {
+		t.Fatalf("not-started start: got %s", start.Format("2006-01-02"))
+	}
+	if !end.Equal(time.Date(2027, 11, 30, 0, 0, 0, 0, time.UTC)) {
+		t.Fatalf("not-started end: got %s", end.Format("2006-01-02"))
 	}
 }

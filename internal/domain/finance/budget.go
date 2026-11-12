@@ -60,14 +60,12 @@ func (b BudgetID) Value() int {
 	return b.value
 }
 
+// calculateBudgetEndDate returns a long inclusive horizon so create treats the
+// budget as a recurring template. Report windows roll via EffectiveBudgetWindow.
 func calculateBudgetEndDate(period BudgetPeriod, startDate time.Time) (time.Time, error) {
 	switch period {
-	case BudgetPeriodWeekly:
-		return startDate.AddDate(0, 0, 6), nil
-	case BudgetPeriodMonthly:
-		return startDate.AddDate(0, 1, 0).AddDate(0, 0, -1), nil
-	case BudgetPeriodYearly:
-		return startDate.AddDate(1, 0, 0).AddDate(0, 0, -1), nil
+	case BudgetPeriodWeekly, BudgetPeriodMonthly, BudgetPeriodYearly:
+		return startDate.AddDate(100, 0, 0).AddDate(0, 0, -1), nil
 	default:
 		return time.Time{}, errors.New("invalid budget period")
 	}

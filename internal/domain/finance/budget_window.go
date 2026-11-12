@@ -44,15 +44,20 @@ func IntersectInclusive(aStart, aEnd, bStart, bEnd time.Time) (time.Time, time.T
 }
 
 // EffectiveBudgetWindow is the date range used for spending reports.
-// Prefer intersection of the stored range with the current calendar period;
-// if they do not overlap (expired / not started), fall back to the stored range.
+// Prefer intersection of the stored range with the current calendar period.
+// If the budget has expired (now after stored end), use the current calendar
+// period so recurring budgets keep rolling. If not yet started, keep the stored range.
 func EffectiveBudgetWindow(budget *Budget, now time.Time) (time.Time, time.Time) {
 	storedStart := dateOnly(budget.StartDate())
 	storedEnd := dateOnly(budget.EndDate())
 	periodStart, periodEnd := CalendarPeriodWindow(budget.Period(), now)
+	today := dateOnly(now)
 
 	if start, end, ok := IntersectInclusive(storedStart, storedEnd, periodStart, periodEnd); ok {
 		return start, end
+	}
+	if today.After(storedEnd) {
+		return periodStart, periodEnd
 	}
 	return storedStart, storedEnd
 }

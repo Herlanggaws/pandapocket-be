@@ -1199,9 +1199,9 @@ Export transactions for the authenticated user as a **CSV** or **PDF** file down
 
 ## Budgets
 
-Budgets are limited to **expense** categories. Date windows are inclusive. Create auto-calculates `end_date` from `period` + `start_date` (weekly = 7 days, monthly/yearly = calendar period minus one day). Overlapping budgets for the same user and category are rejected. Spending reports only sum expenses in the budget's currency.
+Budgets are limited to **expense** categories. Date windows are inclusive. Create auto-calculates a long-lived inclusive `end_date` (~100 years from `start_date`) so the budget acts as a recurring template; `period` drives the rolling report window. Overlapping budgets for the same user and category are rejected. Spending reports only sum expenses in the budget's currency.
 
-**Rolling report window:** `report` spent / income / % use the inclusive intersection of the stored `start_date`–`end_date` with the **current calendar period** for `period` (weekly = Monday–Sunday, monthly = calendar month, yearly = calendar year). Stored dates are not rewritten. If that intersection is empty (expired or not yet started), the report falls back to the full stored range. `report.period_start` / `report.period_end` are the effective window used for the report (clients should use these for “days left” and mutation deep-links).
+**Rolling report window:** `report` spent / income / % use the inclusive intersection of the stored `start_date`–`end_date` with the **current calendar period** for `period` (weekly = Monday–Sunday, monthly = calendar month, yearly = calendar year). Stored dates are not rewritten each period. If the budget has **expired** (`now` after `end_date`), the report uses the current calendar period (so short legacy rows keep rolling). If **not yet started**, the report keeps the full stored range. `report.period_start` / `report.period_end` are the effective window used for the report (clients should use these for “days left” and mutation deep-links).
 
 **Limit types:**
 - `fixed` (default): cap is `amount`
@@ -1274,7 +1274,7 @@ Get all budgets for the authenticated user.
 
 ### POST /api/budgets
 
-Create a new budget. `end_date` is computed server-side from `period` and `start_date` (client-sent `end_date` is ignored if present). On success the API emits PostHog `budget_created` with `{category_id, period}` only (no amounts or names).
+Create a new budget. `end_date` is computed server-side as a long horizon from `start_date` (client-sent `end_date` is ignored if present). On success the API emits PostHog `budget_created` with `{category_id, period}` only (no amounts or names).
 
 **Request Body (fixed):**
 ```json
@@ -2854,13 +2854,17 @@ Keep this file in sync with the running API. When routes, request/response shape
 
 ## Version History
 
+- **v2.66.0**: **Budget recurring window fix (F8 follow-up)**
+  - Create `end_date` is a ~100-year horizon from `start_date` (recurring template; `period` still drives the report window)
+  - Expired budgets (`now` after stored `end_date`): `report` uses the current calendar period instead of the dead stored range
+  - Not-yet-started budgets still keep the stored range when intersection is empty
 - **v2.65.0**: **PostHog `budget_created` + reliable `first_expense_added`**
   - `POST /api/budgets` (and onboarding/bagi-gaji creates via the same use case) emit `budget_created` with `{category_id, period}` only
   - `first_expense_added` is decided by counting expenses **before** insert (props `{source}` only), including debt/receivable/goal side-effect paths
 - **v2.64.0**: **Budget report rolling window (F8)**
   - Spending / income / `%` for budget `report` use intersection of stored dates with the current calendar period (`weekly` Mon–Sun, `monthly`, `yearly`)
   - `report.period_start` / `report.period_end` expose the effective window; stored `start_date` / `end_date` unchanged
-  - Empty intersection (expired / future) falls back to the full stored range
+  - Empty intersection (expired / future) falls back to the full stored range (superseded for expired by v2.66.0)
 - **v2.63.0**: **API emits `expense_added` / `first_expense_added` for every expense path**
   - `POST /api/expenses` `source` also accepts `tanya_ai`; both events fire from the API (not only the first)
   - Confirming pending/recurring expenses emits with source `pending` or `recurring`
