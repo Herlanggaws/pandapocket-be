@@ -17,9 +17,13 @@ Subcommands:
   tx-today            expense+income counts and distinct users for today and prior 3 days (Asia/Jakarta)
   google-onboarding   Google-auth users since a date: totals, 0 wallets, 0 txs, onboarding done
   subs-summary        trial/Pro counts, month paid Pro + revenue (WIB), trial starts/conversions
+  retention-input     cohort retention weeks 1–4 + all-real-users weekly-active median
+  liabilities-usage   liability/receivable adoption among real users (+ weekly-active)
 
 Options:
   --since YYYY-MM-DD  only for google-onboarding (default: 2026-10-01)
+  --min-days N        only for retention-input; cohort newer bound (default: 30)
+  --max-days N        only for retention-input; cohort older bound (default: 45)
   -h, --help          show this help
 
 Required env (no credentials in this script):
@@ -53,6 +57,15 @@ validate_since() {
   local value="$1"
   if [[ ! "$value" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
     echo "error: --since must be YYYY-MM-DD (got: $value)" >&2
+    exit 1
+  fi
+}
+
+validate_positive_int() {
+  local name="$1"
+  local value="$2"
+  if [[ ! "$value" =~ ^[1-9][0-9]*$ ]]; then
+    echo "error: $name must be a positive integer (got: $value)" >&2
     exit 1
   fi
 }
@@ -433,6 +446,183 @@ SELECT
 SQL
 }
 
+cmd_retention_input() {
+  local min_days="$1"
+  local max_days="$2"
+  validate_positive_int "--min-days" "$min_days"
+  validate_positive_int "--max-days" "$max_days"
+  if [[ "$max_days" -le "$min_days" ]]; then
+    echo "error: --max-days must be greater than --min-days" >&2
+    exit 1
+  fi
+
+  local is_internal_clause="true"
+  if column_exists users is_internal; then
+    is_internal_clause="COALESCE(u.is_internal, false) = false"
+  fi
+
+  run_readonly_sql <<SQL
+\\pset format aligned
+\\pset tuples_only off
+
+WITH real_users AS (
+  SELECT u.id, u.created_at
+  FROM users u
+  WHERE u.deleted_at IS NULL
+    AND ${is_internal_clause}
+),
+cohort AS (
+  SELECT ru.id, ru.created_at
+  FROM real_users ru
+  WHERE ru.created_at >= NOW() - INTERVAL '${max_days} days'
+    AND ru.created_at < NOW() - INTERVAL '${min_days} days'
+),
+tx AS (
+  SELECT e.user_id, e.created_at
+  FROM expenses e
+  UNION ALL
+  SELECT i.user_id, i.created_at
+  FROM incomes i
+),
+cohort_tx AS (
+  SELECT
+    c.id AS user_id,
+    (
+      FLOOR(
+        EXTRACT(EPOCH FROM (t.created_at - c.created_at))
+        / EXTRACT(EPOCH FROM INTERVAL '7 days')
+      )::int + 1
+    ) AS week_n
+  FROM cohort c
+  INNER JOIN tx t ON t.user_id = c.id
+  WHERE t.created_at >= c.created_at
+),
+week_user_counts AS (
+  SELECT
+    ct.week_n,
+    ct.user_id,
+    COUNT(*)::bigint AS tx_count
+  FROM cohort_tx ct
+  WHERE ct.week_n BETWEEN 1 AND 4
+  GROUP BY ct.week_n, ct.user_id
+),
+weeks AS (
+  SELECT generate_series(1, 4) AS week_n
+)
+SELECT
+  (SELECT COUNT(*)::bigint FROM cohort) AS cohort_users,
+  w.week_n,
+  COUNT(wuc.user_id)::bigint AS active_users,
+  percentile_cont(0.5) WITHIN GROUP (ORDER BY wuc.tx_count::double precision)
+    AS median_tx_per_active_user
+FROM weeks w
+LEFT JOIN week_user_counts wuc ON wuc.week_n = w.week_n
+GROUP BY w.week_n
+ORDER BY w.week_n;
+
+WITH real_users AS (
+  SELECT u.id
+  FROM users u
+  WHERE u.deleted_at IS NULL
+    AND ${is_internal_clause}
+),
+tx AS (
+  SELECT e.user_id, e.created_at
+  FROM expenses e
+  UNION ALL
+  SELECT i.user_id, i.created_at
+  FROM incomes i
+),
+weekly_active AS (
+  SELECT t.user_id, COUNT(*)::bigint AS tx_count
+  FROM tx t
+  INNER JOIN real_users ru ON ru.id = t.user_id
+  WHERE t.created_at >= NOW() - INTERVAL '7 days'
+  GROUP BY t.user_id
+)
+SELECT
+  COUNT(*)::bigint AS real_users_weekly_active,
+  percentile_cont(0.5) WITHIN GROUP (ORDER BY wa.tx_count::double precision)
+    AS median_tx_last_7_days
+FROM weekly_active wa;
+SQL
+}
+
+cmd_liabilities_usage() {
+  local is_internal_clause="true"
+  if column_exists users is_internal; then
+    is_internal_clause="COALESCE(u.is_internal, false) = false"
+  fi
+
+  run_readonly_sql <<SQL
+\\pset format aligned
+\\pset tuples_only off
+
+WITH real_users AS (
+  SELECT u.id
+  FROM users u
+  WHERE u.deleted_at IS NULL
+    AND ${is_internal_clause}
+),
+tx AS (
+  SELECT e.user_id, e.created_at
+  FROM expenses e
+  UNION ALL
+  SELECT i.user_id, i.created_at
+  FROM incomes i
+),
+weekly_active AS (
+  SELECT DISTINCT t.user_id
+  FROM tx t
+  INNER JOIN real_users ru ON ru.id = t.user_id
+  WHERE t.created_at >= NOW() - INTERVAL '7 days'
+),
+liability_users AS (
+  SELECT l.user_id, BOOL_OR(NOT l.is_archived) AS has_active
+  FROM liabilities l
+  INNER JOIN real_users ru ON ru.id = l.user_id
+  GROUP BY l.user_id
+),
+receivable_users AS (
+  SELECT r.user_id, BOOL_OR(NOT r.is_archived) AS has_active
+  FROM receivables r
+  INNER JOIN real_users ru ON ru.id = r.user_id
+  GROUP BY r.user_id
+)
+SELECT
+  (SELECT COUNT(*)::bigint FROM liability_users) AS users_with_liability,
+  (
+    SELECT COUNT(*)::bigint FROM liability_users lu WHERE lu.has_active
+  ) AS users_with_active_liability,
+  (
+    SELECT COUNT(*)::bigint
+    FROM liability_users lu
+    WHERE EXISTS (
+      SELECT 1 FROM weekly_active wa WHERE wa.user_id = lu.user_id
+    )
+  ) AS liability_users_weekly_active,
+  (SELECT COUNT(*)::bigint FROM receivable_users) AS users_with_receivable,
+  (
+    SELECT COUNT(*)::bigint FROM receivable_users ru WHERE ru.has_active
+  ) AS users_with_active_receivable,
+  (
+    SELECT COUNT(*)::bigint
+    FROM receivable_users ru
+    WHERE EXISTS (
+      SELECT 1 FROM weekly_active wa WHERE wa.user_id = ru.user_id
+    )
+  ) AS receivable_users_weekly_active,
+  (
+    SELECT COUNT(*)::bigint
+    FROM liability_users lu
+    WHERE EXISTS (
+      SELECT 1 FROM receivable_users ru WHERE ru.user_id = lu.user_id
+    )
+  ) AS users_with_both,
+  (SELECT COUNT(*)::bigint FROM weekly_active) AS real_users_weekly_active;
+SQL
+}
+
 main() {
   if [[ $# -lt 1 ]]; then
     usage
@@ -443,6 +633,8 @@ main() {
   shift
 
   local since="$DEFAULT_SINCE"
+  local min_days=30
+  local max_days=45
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -452,6 +644,22 @@ main() {
           exit 1
         fi
         since="$2"
+        shift 2
+        ;;
+      --min-days)
+        if [[ $# -lt 2 ]]; then
+          echo "error: --min-days requires a positive integer" >&2
+          exit 1
+        fi
+        min_days="$2"
+        shift 2
+        ;;
+      --max-days)
+        if [[ $# -lt 2 ]]; then
+          echo "error: --max-days requires a positive integer" >&2
+          exit 1
+        fi
+        max_days="$2"
         shift 2
         ;;
       -h|--help)
@@ -487,6 +695,14 @@ main() {
     subs-summary)
       require_env
       cmd_subs_summary
+      ;;
+    retention-input)
+      require_env
+      cmd_retention_input "$min_days" "$max_days"
+      ;;
+    liabilities-usage)
+      require_env
+      cmd_liabilities_usage
       ;;
     *)
       echo "error: unknown subcommand: $subcommand" >&2
