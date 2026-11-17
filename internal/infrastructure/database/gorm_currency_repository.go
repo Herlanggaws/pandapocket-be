@@ -186,16 +186,26 @@ func (r *GormCurrencyRepository) SetUserDefaultCurrency(ctx context.Context, use
 	return r.db.WithContext(ctx).Save(&preferences).Error
 }
 
-// GetUserDefaultCurrency gets the default currency for a user
+// GetUserDefaultCurrency gets the default currency for a user.
+// When preferences are missing (common right after register/SSO), bootstrap them
+// with the system default (IDR preferred) so ensure-default and create-expense
+// do not fail with "no default currency set" / "default wallet not found".
 func (r *GormCurrencyRepository) GetUserDefaultCurrency(ctx context.Context, userID finance.UserID) (*finance.Currency, error) {
 	var preferences UserPreferences
 
 	err := r.db.WithContext(ctx).Where("user_id = ?", userID.Value()).First(&preferences).Error
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, err
+		}
+		currencyID, cerr := NewGormPreferencesRepository(r.db).FindDefaultCurrencyID(ctx)
+		if cerr != nil {
 			return nil, errors.New("no default currency set")
 		}
-		return nil, err
+		if serr := r.SetUserDefaultCurrency(ctx, userID, finance.NewCurrencyID(currencyID)); serr != nil {
+			return nil, serr
+		}
+		return r.FindByID(ctx, finance.NewCurrencyID(currencyID))
 	}
 
 	return r.FindByID(ctx, finance.NewCurrencyID(int(preferences.PrimaryCurrencyID)))
